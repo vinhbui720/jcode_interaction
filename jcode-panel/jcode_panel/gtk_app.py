@@ -89,7 +89,7 @@ class FloatingInput(Gtk.Window):
         self.set_default_size(520, 52)
         self.target_window_id = ""
         self.keyboard_grabbed = False
-        self.gtk_grabbed = False
+        self.suppress_listener = None
 
     def _draw_transparent(self, _widget, cr):
         cr.set_source_rgba(0, 0, 0, 0)
@@ -111,8 +111,7 @@ class FloatingInput(Gtk.Window):
 
         self.show_all()
         self.realize()
-        Gtk.grab_add(self)
-        self.gtk_grabbed = True
+        self._start_suppress_keyboard_listener()
         self._follow_mouse_tick(initial=(x, y))
         if self.follow_source_id:
             GLib.source_remove(self.follow_source_id)
@@ -199,13 +198,36 @@ class FloatingInput(Gtk.Window):
                 seat.ungrab()
         except Exception:
             pass
-        if self.gtk_grabbed:
+        self._stop_suppress_keyboard_listener()
+        self.keyboard_grabbed = False
+        self.suppress_listener = None
+
+    def _start_suppress_keyboard_listener(self) -> None:
+        if self.suppress_listener:
+            return
+        try:
+            from pynput import keyboard  # type: ignore
+
+            def on_press(key):
+                GLib.idle_add(self.app._route_ambient_key, key, True, True)
+
+            def on_release(key):
+                GLib.idle_add(self.app._route_ambient_key, key, False, True)
+
+            self.suppress_listener = keyboard.Listener(on_press=on_press, on_release=on_release, suppress=True)
+            self.suppress_listener.daemon = True
+            self.suppress_listener.start()
+        except Exception as exc:
+            append_log(f"Suppressing keyboard listener unavailable: {exc}")
+
+    def _stop_suppress_keyboard_listener(self) -> None:
+        listener = self.suppress_listener
+        self.suppress_listener = None
+        if listener:
             try:
-                Gtk.grab_remove(self)
+                listener.stop()
             except Exception:
                 pass
-        self.keyboard_grabbed = False
-        self.gtk_grabbed = False
 
     def _on_focus_out(self, *_args):
         # Keep keyboard focus biased to the input, but do not capture mouse.
@@ -231,6 +253,9 @@ class FloatingInput(Gtk.Window):
         super().hide()
 
     def _fast_mouse_position(self) -> tuple[int | None, int | None]:
+        x, y, _window_id = xdotool_mouse_position_full()
+        if x is not None and y is not None:
+            return x, y
         display = Gdk.Display.get_default()
         seat = display.get_default_seat() if display else None
         pointer = seat.get_pointer() if seat else None
@@ -765,7 +790,7 @@ class PanelApp:
         if self.client.session_id != active or not self.client.process or self.client.process.poll() is not None:
             self.client.set_session(active)
 
-    def _route_ambient_key(self, key, pressed: bool):
+    def _route_ambient_key(self, key, pressed: bool, force: bool = False):
         name = getattr(key, "name", None) or ""
         char = getattr(key, "char", None)
         lowered = str(name).lower()
@@ -780,9 +805,11 @@ class PanelApp:
             return False
         if not pressed or not self.floating.get_visible():
             return False
+        if self.floating.suppress_listener and not force:
+            return False
         # If GTK successfully focused the entry, let normal GTK text handling
         # happen. Ambient routing is only the fallback when another app has focus.
-        if self.floating.entry.has_focus():
+        if self.floating.entry.has_focus() and not force:
             return False
         if lowered in {"enter", "return"}:
             self.floating.submit()
