@@ -134,3 +134,11 @@ def test_update_result_shape():
     result = UpdateResult(True, "Already up to date")
     assert result.ok
     assert not result.changed
+
+from jcode_panel.control import ControlResponse
+
+
+def test_control_response_shape():
+    response = ControlResponse(True, "running")
+    assert response.ok
+    assert response.message == "running"

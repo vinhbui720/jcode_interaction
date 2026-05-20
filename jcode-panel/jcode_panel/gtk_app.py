@@ -9,6 +9,7 @@ gi.require_version("AppIndicator3", "0.1")
 from gi.repository import AppIndicator3, GLib, Gtk, Gdk  # type: ignore
 
 from .config import AppConfig
+from .control import ControlResponse, ControlServer
 from .services import AppController
 from .context import BrowserBridge, capture_active_context
 from .dropdown import ConversationBuffer
@@ -17,6 +18,7 @@ from .diagnostics import append_log
 from .hotkeys import start_hotkey_listener
 from .jcode_client import JcodeClient, JcodeUnavailable
 from .protocol import PanelEvent, PanelEventKind
+from .notify import notify
 from .terminal import launch
 from .updater import self_update
 
@@ -164,13 +166,16 @@ class PanelApp:
     def __init__(self):
         self.config = AppConfig.load()
         self.controller = AppController(self.config)
+        self.control_server = ControlServer(self._handle_control)
+        self.control_server.start()
         self.bridge = BrowserBridge()
         self.bridge.start()
         self.client = JcodeClient(self.controller.active_session)
         self.conversation = ConversationBuffer(self.config.ui.dropdown_max_messages)
         self.active_context = capture_active_context()
-        self.indicator = AppIndicator3.Indicator.new("jcode-panel", "applications-system", AppIndicator3.IndicatorCategory.APPLICATION_STATUS)
+        self.indicator = AppIndicator3.Indicator.new("jcode-panel", "jcode-panel", AppIndicator3.IndicatorCategory.APPLICATION_STATUS)
         self.indicator.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
+        self.indicator.set_label("jcode", "")
         self.menu = Gtk.Menu()
         for label, cb in [("Open", self.toggle_dropdown), ("Prompt", self.show_prompt), ("Settings", self.show_settings), ("Update app", self.update_app), ("Quit", Gtk.main_quit)]:
             item = Gtk.MenuItem(label=label)
@@ -185,6 +190,7 @@ class PanelApp:
         self._warn_wayland_if_needed()
         self._start_hotkey_listener()
         self._connect_jcode_async()
+        notify("jcode-panel is running", "Use the top-bar icon, jcode-panel, or jcp to open it.")
 
     def _warn_wayland_if_needed(self):
         if os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland":
@@ -235,12 +241,29 @@ class PanelApp:
     def show_prompt(self):
         self.floating.show_at_pointer()
 
+    def _handle_control(self, command: str) -> ControlResponse:
+        if command == "prompt":
+            GLib.idle_add(self.show_prompt)
+            return ControlResponse(True, "Opened jcode-panel prompt")
+        if command in {"show", "open"}:
+            GLib.idle_add(self.show_dropdown)
+            return ControlResponse(True, "Opened jcode-panel")
+        if command == "status":
+            return ControlResponse(True, "jcode-panel is running")
+        if command == "quit":
+            GLib.idle_add(Gtk.main_quit)
+            return ControlResponse(True, "Quitting jcode-panel")
+        return ControlResponse(False, f"Unknown command: {command}")
+
+    def show_dropdown(self):
+        self.dropdown.show_all()
+        self.dropdown.present()
+
     def toggle_dropdown(self):
         if self.dropdown.get_visible():
             self.dropdown.hide()
         else:
-            self.dropdown.show_all()
-            self.dropdown.present()
+            self.show_dropdown()
 
     def open_terminal(self):
         session = self.controller.active_session or ""
@@ -268,10 +291,13 @@ class PanelApp:
         dlg.destroy()
 
 
-def run_gtk_app(open_prompt: bool = False) -> int:
+def run_gtk_app(open_prompt: bool = False, open_dropdown: bool = False) -> int:
     app = PanelApp()
     if open_prompt:
         GLib.idle_add(app.show_prompt)
+    if open_dropdown:
+        GLib.idle_add(app.show_dropdown)
     Gtk.main()
     app.bridge.stop()
+    app.control_server.stop()
     return 0

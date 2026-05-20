@@ -99,3 +99,15 @@ jcode-panel --install-integration obsidian
 ```
 
 Each integration owns its code under `integrations/<app>_plugin` or `extension/` and has a Python installer under `jcode_panel/integrations/`.
+
+## Resident app behavior
+
+`jcode-panel` is designed to run all the time:
+
+- Login autostart runs `jcode-panel --background` quietly.
+- The Ubuntu top-bar/header icon means the resident app is alive.
+- Closing the dropdown only hides it; the app keeps working.
+- `jcode-panel` opens the main dropdown/config UI of the running app.
+- `jcp` opens the prompt of the running app.
+- `jcode-panel --status` checks if it is alive.
+- `jcode-panel --quit` intentionally stops the resident app.

@@ -46,7 +46,7 @@ cat > "$HOME/.config/autostart/jcode-panel.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=jcode-panel
-Exec=env PYTHONPATH=$PWD python3 -m jcode_panel.main
+Exec=env PYTHONPATH=$PWD python3 -m jcode_panel.main --background
 X-GNOME-Autostart-enabled=true
 EOF
 mkdir -p "$HOME/.local/share/applications"

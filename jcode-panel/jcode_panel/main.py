@@ -9,6 +9,7 @@ from .config import AppConfig
 from .context import BrowserBridge, capture_active_context
 from .services import AppController
 from .dropdown import ConversationBuffer
+from .control import send_control
 from .diagnostics import append_log, run_diagnostics
 from .jcode_client import JcodeClient, JcodeUnavailable
 from .terminal import launch
@@ -52,13 +53,38 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--send", metavar="PROMPT", help="send one prompt without opening GUI")
     parser.add_argument("--diagnose", action="store_true", help="print launch diagnostics")
     parser.add_argument("--open-terminal", metavar="SESSION", help="open a session in configured terminal")
-    parser.add_argument("--prompt", action="store_true", help="open GUI directly to floating prompt")
+    parser.add_argument("--prompt", action="store_true", help="open floating prompt in running app, or start app and open it")
+    parser.add_argument("--show", action="store_true", help="open dropdown/main GUI in running app")
+    parser.add_argument("--status", action="store_true", help="check whether resident app is running")
+    parser.add_argument("--quit", action="store_true", help="quit resident app")
+    parser.add_argument("--background", action="store_true", help="start resident app quietly for autostart")
     parser.add_argument("--self-update", action="store_true", help="fast-forward update this source checkout")
     parser.add_argument("--install-integration", choices=["browser", "obsidian"], help="install an app integration scaffold")
     args = parser.parse_args(argv)
 
     if args.smoke:
         return smoke()
+    no_action_args = not any([args.prompt, args.show, args.status, args.quit, args.self_update, args.install_integration, args.diagnose, args.send, args.open_terminal, args.background])
+
+    if no_action_args:
+        response = send_control("show")
+        if response.ok:
+            print(response.message)
+            return 0
+
+    if args.status:
+        response = send_control("status")
+        print(response.message if response.ok else "jcode-panel is not running")
+        return 0 if response.ok else 1
+    if args.quit:
+        response = send_control("quit")
+        print(response.message)
+        return 0 if response.ok else 1
+    if args.show:
+        response = send_control("show")
+        if response.ok:
+            print(response.message)
+            return 0
     if args.self_update:
         result = self_update()
         print(result.message)
@@ -81,6 +107,12 @@ def main(argv: list[str] | None = None) -> int:
         launch(f"jcode --resume {args.open_terminal}", cfg.general.terminal, cfg.general.terminal_template)
         return 0
 
+    if args.prompt:
+        response = send_control("prompt")
+        if response.ok:
+            print(response.message)
+            return 0
+
     # Import GTK lazily so tests/headless mode work without system packages.
     try:
         from .gtk_app import run_gtk_app
@@ -88,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
         print("GTK UI unavailable. Install python3-gi and AppIndicator3 dependencies.", file=sys.stderr)
         print(str(exc), file=sys.stderr)
         return 2
-    return run_gtk_app(open_prompt=args.prompt)
+    return run_gtk_app(open_prompt=args.prompt, open_dropdown=(args.show or no_action_args) and not args.background)
 
 
 def prompt_main() -> int:
