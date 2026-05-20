@@ -186,12 +186,10 @@ def activity_label(raw: dict[str, Any] | None, fallback: str = "") -> str:
     """Best-effort short label for currently executing tool/command events."""
     if not raw:
         return fallback.strip()
-    for nested_key in ("activity", "current", "current_tool", "tool_call", "command", "bash"):
-        nested = raw.get(nested_key)
-        if isinstance(nested, dict):
-            nested_label = activity_label(nested, "")
-            if nested_label:
-                return nested_label
+    for nested in _nested_activity_dicts(raw):
+        nested_label = activity_label(nested, "")
+        if nested_label:
+            return nested_label
     for key in (
         "command",
         "cmd",
@@ -211,6 +209,7 @@ def activity_label(raw: dict[str, Any] | None, fallback: str = "") -> str:
         "message",
         "phase",
         "detail",
+        "current",
     ):
         value = raw.get(key)
         if isinstance(value, str) and value.strip():
@@ -225,12 +224,10 @@ def activity_label(raw: dict[str, Any] | None, fallback: str = "") -> str:
 
 def activity_state(raw: dict[str, Any] | None, fallback: str = "") -> str:
     if raw:
-        for nested_key in ("activity", "current", "current_tool", "tool_call", "command", "bash"):
-            nested = raw.get(nested_key)
-            if isinstance(nested, dict):
-                nested_state = activity_state(nested, "")
-                if nested_state:
-                    return nested_state
+        for nested in _nested_activity_dicts(raw):
+            nested_state = activity_state(nested, "")
+            if nested_state:
+                return nested_state
         for key in ("state", "status", "phase", "event", "action"):
             value = raw.get(key)
             if isinstance(value, str) and value.strip():
@@ -246,11 +243,30 @@ def activity_is_terminal(event: PanelEvent) -> bool:
     state = activity_state(event.raw, event.text)
     if isinstance(raw.get("active"), bool):
         return not raw["active"]
-    activity = raw.get("activity")
-    if isinstance(activity, dict) and isinstance(activity.get("active"), bool):
-        return not activity["active"]
+    nested_active = _nested_active(raw)
+    if nested_active is not None:
+        return not nested_active
     terminal_terms = ("done", "end", "complete", "completed", "finished", "success", "failed", "error", "cancel")
     return any(term in typ for term in terminal_terms) or any(term in state for term in terminal_terms)
+
+
+def _nested_activity_dicts(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    nested: list[dict[str, Any]] = []
+    for nested_key in ("activity", "current", "current_tool", "tool_call", "command", "bash", "status", "ui"):
+        value = raw.get(nested_key)
+        if isinstance(value, dict):
+            nested.append(value)
+    return nested
+
+
+def _nested_active(raw: dict[str, Any]) -> bool | None:
+    for nested in _nested_activity_dicts(raw):
+        if isinstance(nested.get("active"), bool):
+            return nested["active"]
+        child_active = _nested_active(nested)
+        if child_active is not None:
+            return child_active
+    return None
 
 
 def _compact_activity(value: str) -> str:

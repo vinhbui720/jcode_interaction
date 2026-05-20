@@ -149,6 +149,35 @@ def test_protocol_backend_chat_status_can_finish_activity():
     assert activity_is_terminal(event)
 
 
+def test_protocol_backend_chat_status_current_drives_live_activity():
+    event = parse_panel_event(
+        '{"type":"backend/chat/status","current":{"tool_name":"read","target":"README.md","state":"running","active":true}}'
+    )
+    assert event.kind == PanelEventKind.STATUS
+    assert activity_label(event.raw, event.text) == "read"
+    assert activity_state(event.raw, event.text) == "running"
+    assert not activity_is_terminal(event)
+
+
+def test_protocol_backend_chat_status_current_can_finish_activity():
+    event = parse_panel_event(
+        '{"type":"backend/chat/status","current":{"tool_name":"read","target":"README.md","state":"completed","active":false}}'
+    )
+    assert event.kind == PanelEventKind.STATUS
+    assert activity_label(event.raw, event.text) == "read"
+    assert activity_state(event.raw, event.text) == "completed"
+    assert activity_is_terminal(event)
+
+
+def test_protocol_backend_chat_status_nested_status_current():
+    event = parse_panel_event(
+        '{"type":"backend/chat/status","status":{"current":{"command":"pytest -q","state":"running","active":true}}}'
+    )
+    assert activity_label(event.raw, event.text) == "pytest -q"
+    assert activity_state(event.raw, event.text) == "running"
+    assert not activity_is_terminal(event)
+
+
 def test_protocol_activity_helpers_keep_streaming_message_active():
     delta = parse_panel_event('{"type":"text_delta","text":"a"}')
     assert delta.kind == PanelEventKind.MESSAGE
