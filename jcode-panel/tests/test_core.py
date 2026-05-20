@@ -109,3 +109,11 @@ def test_diagnostics_report_text_and_status():
     assert not report.ok
     assert "[OK] a" in text
     assert "fix: fix it" in text
+
+from jcode_panel.hotkeys import HotkeyStatus
+
+
+def test_hotkey_status_shape():
+    status = HotkeyStatus(False, "nope")
+    assert not status.enabled
+    assert "tray menu" in status.fallback

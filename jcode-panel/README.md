@@ -60,3 +60,11 @@ Install/autostart:
 ```
 
 The installer does not install or configure jcode automatically. If diagnostics report jcode missing or not logged in, open a terminal and complete the normal jcode setup flow.
+
+## Wayland / hotkey fallback
+
+Ubuntu Wayland can block global hotkeys. The app still tries to bind F8, but if the compositor blocks it you can use:
+
+- tray menu → `Prompt`
+- application launcher → `jcode-panel Prompt`
+- command line: `PYTHONPATH=. python3 -m jcode_panel.main --prompt`

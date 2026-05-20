@@ -49,9 +49,12 @@ cat > "$HOME/.config/autostart/jcode-panel.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=jcode-panel
-Exec=python3 -m jcode_panel.main
+Exec=env PYTHONPATH=$PWD python3 -m jcode_panel.main
 X-GNOME-Autostart-enabled=true
 EOF
+mkdir -p "$HOME/.local/share/applications"
+sed "s#Exec=jcode-panel#Exec=env PYTHONPATH=$PWD python3 -m jcode_panel.main#" jcode-panel.desktop > "$HOME/.local/share/applications/jcode-panel.desktop"
+sed "s#Exec=jcode-panel --prompt#Exec=env PYTHONPATH=$PWD python3 -m jcode_panel.main --prompt#" jcode-panel-prompt.desktop > "$HOME/.local/share/applications/jcode-panel-prompt.desktop"
 
 PYTHONPATH="$PWD" python3 -m jcode_panel.main --diagnose || true
 

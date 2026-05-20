@@ -14,6 +14,7 @@ from .context import BrowserBridge, capture_active_context
 from .dropdown import ConversationBuffer
 from .floating import CompletionState
 from .diagnostics import append_log
+from .hotkeys import start_hotkey_listener
 from .jcode_client import JcodeClient, JcodeUnavailable
 from .protocol import PanelEvent, PanelEventKind
 from .terminal import launch
@@ -183,22 +184,8 @@ class PanelApp:
             self._add_system("Wayland detected: global hotkey and active-window context may be limited. v1 is X11-first.")
 
     def _start_hotkey_listener(self):
-        try:
-            from pynput import keyboard  # type: ignore
-        except Exception as exc:
-            self._add_system(f"Global hotkey unavailable: {exc}")
-            return
-
-        hotkey = self.config.general.hotkey.lower()
-
-        def on_press(key):
-            name = getattr(key, "name", None) or getattr(key, "char", "")
-            if str(name).lower() == hotkey:
-                GLib.idle_add(self.show_prompt)
-
-        listener = keyboard.Listener(on_press=on_press)
-        listener.daemon = True
-        listener.start()
+        status = start_hotkey_listener(self.config.general.hotkey, lambda: GLib.idle_add(self.show_prompt))
+        self._add_system(status.message)
 
     def _connect_jcode_async(self):
         def worker():
@@ -269,8 +256,10 @@ class PanelApp:
         dlg.destroy()
 
 
-def run_gtk_app() -> int:
+def run_gtk_app(open_prompt: bool = False) -> int:
     app = PanelApp()
+    if open_prompt:
+        GLib.idle_add(app.show_prompt)
     Gtk.main()
     app.bridge.stop()
     return 0

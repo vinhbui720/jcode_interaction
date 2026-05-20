@@ -50,6 +50,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--send", metavar="PROMPT", help="send one prompt without opening GUI")
     parser.add_argument("--diagnose", action="store_true", help="print launch diagnostics")
     parser.add_argument("--open-terminal", metavar="SESSION", help="open a session in configured terminal")
+    parser.add_argument("--prompt", action="store_true", help="open GUI directly to floating prompt")
     args = parser.parse_args(argv)
 
     if args.smoke:
@@ -72,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
         print("GTK UI unavailable. Install python3-gi and AppIndicator3 dependencies.", file=sys.stderr)
         print(str(exc), file=sys.stderr)
         return 2
-    return run_gtk_app()
+    return run_gtk_app(open_prompt=args.prompt)
 
 
 if __name__ == "__main__":
