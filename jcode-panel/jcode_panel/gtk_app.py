@@ -50,9 +50,9 @@ class FloatingInput(Gtk.Window):
         self.target_x: float | None = None
         self.target_y: float | None = None
         self.typed_once = False
-        self.set_border_width(10)
+        self.set_border_width(0)
         self.set_opacity(app.config.ui.floating_opacity)
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         add_class(box, "floating-root")
         self.entry = Gtk.Entry()
         self.entry.set_can_focus(True)
@@ -63,7 +63,7 @@ class FloatingInput(Gtk.Window):
         self.connect("button-press-event", self._on_pointer_interaction)
         box.pack_start(self.entry, True, True, 0)
         self.add(box)
-        self.set_default_size(460, 58)
+        self.set_default_size(520, 52)
         self.target_window_id = ""
 
     def show_at_pointer(self):

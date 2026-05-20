@@ -8,7 +8,7 @@ def load_css(Gtk, Gdk) -> None:
       font-size: 13px;
     }
     window, dialog {
-      background: #1e1e2e;
+      background: transparent;
       color: #cdd6f4;
     }
     .panel-root {
@@ -18,11 +18,11 @@ def load_css(Gtk, Gdk) -> None:
       padding: 12px;
     }
     .floating-root {
-      background: rgba(30, 30, 46, 0.94);
-      border: 1px solid #45475a;
-      border-radius: 14px;
-      padding: 10px;
-      box-shadow: 0 18px 48px rgba(0,0,0,0.45);
+      background: transparent;
+      border: none;
+      padding: 0;
+      margin: 0;
+      box-shadow: none;
     }
     .context-strip {
       color: #89b4fa;
@@ -33,15 +33,18 @@ def load_css(Gtk, Gdk) -> None:
     }
     entry {
       color: #cdd6f4;
-      background: #313244;
-      border: 1px solid #45475a;
-      border-radius: 12px;
-      padding: 10px 12px;
+      background: rgba(24, 24, 37, 0.96);
+      border: 1.5px solid rgba(203, 166, 247, 0.72);
+      border-radius: 999px;
+      padding: 12px 20px;
+      min-height: 24px;
       caret-color: #cba6f7;
+      box-shadow: 0 16px 44px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.04) inset;
     }
     entry:focus {
       border-color: #cba6f7;
-      box-shadow: 0 0 0 2px rgba(203,166,247,0.20);
+      background: rgba(30, 30, 46, 0.98);
+      box-shadow: 0 18px 52px rgba(0,0,0,0.56), 0 0 0 3px rgba(203,166,247,0.22);
     }
     textview, textview text {
       color: #cdd6f4;
