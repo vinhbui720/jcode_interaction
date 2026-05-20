@@ -63,7 +63,13 @@ The installer does not install or configure jcode automatically. If diagnostics 
 
 ## Wayland / hotkey fallback
 
-Ubuntu Wayland can block global hotkeys. The app still tries to bind F8, but if the compositor blocks it you can use:
+Ubuntu Wayland can block app-level global hotkeys from `pynput`. The installer now creates a GNOME-native custom shortcut:
+
+- **F8 → `jcp` → open jcode-panel prompt**
+
+If F8 still does not work, check Ubuntu Settings → Keyboard → Custom Shortcuts and make sure `jcode-panel Prompt` is bound to F8.
+
+Fallbacks:
 
 - tray menu → `Prompt`
 - application launcher → `jcode-panel Prompt`

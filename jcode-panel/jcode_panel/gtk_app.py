@@ -20,6 +20,7 @@ from .jcode_client import JcodeClient, JcodeUnavailable
 from .protocol import PanelEvent, PanelEventKind
 from .notify import notify
 from .terminal import launch
+from .style import add_class, load_css
 from .updater import self_update
 
 
@@ -34,7 +35,9 @@ class FloatingInput(Gtk.Window):
         self.set_border_width(10)
         self.set_opacity(app.config.ui.floating_opacity)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        add_class(box, "floating-root")
         self.context_label = Gtk.Label(label="")
+        add_class(self.context_label, "context-strip")
         self.context_label.set_xalign(0)
         self.entry = Gtk.Entry()
         self.entry.connect("activate", self._on_enter)
@@ -94,9 +97,11 @@ class Dropdown(Gtk.Window):
         super().__init__(type=Gtk.WindowType.TOPLEVEL)
         self.app = app
         self.set_title("jcode-panel")
-        self.set_default_size(420, 360)
-        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.set_default_size(460, 420)
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        add_class(root, "panel-root")
         self.text = Gtk.TextView(editable=False, cursor_visible=False, monospace=True)
+        self.text.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
         self.buffer = self.text.get_buffer()
         scroller = Gtk.ScrolledWindow()
         scroller.add(self.text)
@@ -292,6 +297,7 @@ class PanelApp:
 
 
 def run_gtk_app(open_prompt: bool = False, open_dropdown: bool = False) -> int:
+    load_css(Gtk, Gdk)
     app = PanelApp()
     if open_prompt:
         GLib.idle_add(app.show_prompt)

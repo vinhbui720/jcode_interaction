@@ -15,6 +15,7 @@ from .jcode_client import JcodeClient, JcodeUnavailable
 from .terminal import launch
 from .updater import self_update
 from .integrations import IntegrationRegistry
+from .gnome_shortcut import install_f8_shortcut
 
 
 def smoke() -> int:
@@ -60,11 +61,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--background", action="store_true", help="start resident app quietly for autostart")
     parser.add_argument("--self-update", action="store_true", help="fast-forward update this source checkout")
     parser.add_argument("--install-integration", choices=["browser", "obsidian"], help="install an app integration scaffold")
+    parser.add_argument("--install-shortcut", action="store_true", help="install GNOME F8 shortcut to open jcode-panel prompt")
     args = parser.parse_args(argv)
 
     if args.smoke:
         return smoke()
-    no_action_args = not any([args.prompt, args.show, args.status, args.quit, args.self_update, args.install_integration, args.diagnose, args.send, args.open_terminal, args.background])
+    no_action_args = not any([
+        args.prompt,
+        args.show,
+        args.status,
+        args.quit,
+        args.self_update,
+        args.install_integration,
+        args.install_shortcut,
+        args.diagnose,
+        args.send,
+        args.open_terminal,
+        args.background,
+    ])
 
     if no_action_args:
         response = send_control("show")
@@ -87,6 +101,10 @@ def main(argv: list[str] | None = None) -> int:
             return 0
     if args.self_update:
         result = self_update()
+        print(result.message)
+        return 0 if result.ok else 1
+    if args.install_shortcut:
+        result = install_f8_shortcut()
         print(result.message)
         return 0 if result.ok else 1
     if args.install_integration:

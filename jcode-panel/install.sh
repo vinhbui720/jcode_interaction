@@ -57,6 +57,7 @@ sed "s#Exec=jcode-panel#Exec=$HOME/.local/bin/jcode-panel#; s#Icon=applications-
 sed "s#Exec=jcode-panel --prompt#Exec=$HOME/.local/bin/jcp#; s#Icon=applications-system#Icon=jcode-panel#" jcode-panel-prompt.desktop > "$HOME/.local/share/applications/jcode-panel-prompt.desktop"
 
 PYTHONPATH="$PWD" python3 -m jcode_panel.main --diagnose || true
+PYTHONPATH="$PWD" python3 -m jcode_panel.main --install-shortcut || true
 
 echo "Installed autostart entry. Browser extension is in ./extension and is optional."
 echo "Aliases installed:"

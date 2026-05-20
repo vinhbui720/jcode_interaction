@@ -142,3 +142,11 @@ def test_control_response_shape():
     response = ControlResponse(True, "running")
     assert response.ok
     assert response.message == "running"
+
+from jcode_panel.gnome_shortcut import ShortcutResult
+
+
+def test_shortcut_result_shape():
+    result = ShortcutResult(True, "installed")
+    assert result.ok
+    assert result.message == "installed"
