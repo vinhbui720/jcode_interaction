@@ -128,7 +128,7 @@ def _coerce_progress(value: Any) -> float | None:
 
 
 def _extract_text(data: dict[str, Any]) -> str:
-    for key in ("text", "content", "message", "delta", "output"):
+    for key in ("text", "content", "message", "delta", "output", "phase", "detail", "connection"):
         value = data.get(key)
         if isinstance(value, str) and value:
             return value

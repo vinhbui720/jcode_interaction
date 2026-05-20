@@ -51,7 +51,7 @@ class FloatingInput(Gtk.Window):
         self.target_y: float | None = None
         self.typed_once = False
         self.set_border_width(0)
-        self.set_opacity(app.config.ui.floating_opacity)
+        self.set_opacity(1.0)
         self.set_app_paintable(True)
         screen = self.get_screen()
         visual = screen.get_rgba_visual() if screen else None
@@ -67,6 +67,7 @@ class FloatingInput(Gtk.Window):
         self.entry.connect("changed", self._on_changed)
         self.connect("key-press-event", self._on_key)
         self.connect("button-press-event", self._on_pointer_interaction)
+        self.connect("focus-out-event", self._on_focus_out)
         box.pack_start(self.entry, True, True, 0)
         self.add(box)
         self.set_default_size(520, 52)
@@ -136,6 +137,12 @@ class FloatingInput(Gtk.Window):
                 subprocess.Popen(["xdotool", "windowactivate", "--sync", str(xid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception:
             pass
+
+    def _on_focus_out(self, *_args):
+        # Keep keyboard focus biased to the input, but do not capture mouse.
+        if self.get_visible():
+            GLib.timeout_add(20, self._focus_entry)
+        return False
 
     def _focus_entry(self) -> bool:
         if self.get_visible():
@@ -277,6 +284,60 @@ class Dropdown(Gtk.Window):
         self.buffer.set_text("\n\n".join(lines))
 
 
+class AnswerToast(Gtk.Window):
+    def __init__(self, app: "PanelApp"):
+        super().__init__(type=Gtk.WindowType.TOPLEVEL)
+        self.app = app
+        self.set_decorated(False)
+        self.set_keep_above(True)
+        self.set_skip_taskbar_hint(True)
+        self.set_skip_pager_hint(True)
+        self.set_accept_focus(False)
+        self.set_type_hint(Gdk.WindowTypeHint.NOTIFICATION)
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        add_class(root, "toast-root")
+        title = Gtk.Label(label="jcode feedback")
+        title.set_xalign(0)
+        add_class(title, "toast-title")
+        self.label = Gtk.Label(label="")
+        self.label.set_xalign(0)
+        self.label.set_line_wrap(True)
+        self.label.set_max_width_chars(52)
+        add_class(self.label, "toast-text")
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        open_btn = Gtk.Button(label="Open")
+        open_btn.connect("clicked", lambda _b: self.app.show_dropdown())
+        prompt_btn = Gtk.Button(label="Reply")
+        prompt_btn.connect("clicked", lambda _b: self.app.show_prompt())
+        close_btn = Gtk.Button(label="Dismiss")
+        close_btn.connect("clicked", lambda _b: self.hide())
+        actions.pack_start(open_btn, False, False, 0)
+        actions.pack_start(prompt_btn, False, False, 0)
+        actions.pack_end(close_btn, False, False, 0)
+        root.pack_start(title, False, False, 0)
+        root.pack_start(self.label, True, True, 0)
+        root.pack_start(actions, False, False, 0)
+        self.add(root)
+        self.set_default_size(380, 150)
+
+    def update_feedback(self, text: str):
+        text = text.strip()
+        if not text:
+            return
+        self.label.set_text(text[-900:])
+        self.show_all()
+        self._move_to_corner()
+
+    def _move_to_corner(self):
+        screen = Gdk.Screen.get_default()
+        if not screen:
+            return
+        monitor = screen.get_monitor_at_point(0, 0)
+        geo = screen.get_monitor_geometry(monitor)
+        width, height = self.get_size()
+        self.move(max(0, geo.x + geo.width - width - 24), max(0, geo.y + geo.height - height - 48))
+
+
 class SettingsDialog(Gtk.Dialog):
     def __init__(self, app: "PanelApp"):
         super().__init__(title="jcode-panel Settings", transient_for=app.dropdown, flags=0)
@@ -325,6 +386,8 @@ class PanelApp:
         self.client = JcodeClient(self.controller.active_session)
         self.conversation = ConversationBuffer(self.config.ui.dropdown_max_messages)
         self.active_context = capture_active_context()
+        self.process_status = "idle"
+        self.feedback_text = ""
         self.last_prompt_toggle_at = 0.0
         self._ambient_shift = False
         self._ambient_ctrl = False
@@ -341,6 +404,7 @@ class PanelApp:
         self.indicator.set_menu(self.menu)
         self.dropdown = Dropdown(self)
         self.floating = FloatingInput(self)
+        self.toast = AnswerToast(self)
         if self.config.general.auto_update_on_start:
             self.update_app()
         self._warn_wayland_if_needed()
@@ -403,11 +467,38 @@ class PanelApp:
             self.controller.switch_session(event.session_id)
         self.conversation.add_event(event)
         self.dropdown.refresh()
-        self.indicator.set_label(self.conversation.latest_preview(self.config.general.debug), "")
+        if event.kind in {PanelEventKind.STATUS, PanelEventKind.PROGRESS, PanelEventKind.TOOL}:
+            self.process_status = event.text or event.kind.value
+            self._update_header_status()
+        elif event.kind == PanelEventKind.ERROR:
+            self.process_status = "error"
+            self.feedback_text = event.text or "Error"
+            self._update_header_status()
+            self.toast.update_feedback(self.feedback_text)
+        elif event.kind == PanelEventKind.MESSAGE and event.text:
+            if event.raw and event.raw.get("type") == "done":
+                # `done` repeats the full answer after text_delta chunks. Use it
+                # only if no deltas were rendered.
+                if not self.feedback_text:
+                    self.feedback_text = event.text
+            else:
+                self.feedback_text += event.text
+            self.process_status = "answering"
+            self._update_header_status()
+            self.toast.update_feedback(self.feedback_text)
         return False
+
+    def _update_header_status(self):
+        label = self.process_status.strip() or "idle"
+        if len(label) > 48:
+            label = label[:45] + "..."
+        self.indicator.set_label(label, "")
 
     def send_prompt(self, text: str, include_context: bool):
         payload, metadata = self.controller.build_prompt(text, self.active_context, include_context)
+        self.feedback_text = ""
+        self.process_status = "sending"
+        self._update_header_status()
         self.conversation.add_user(text)
         self.dropdown.refresh()
         try:

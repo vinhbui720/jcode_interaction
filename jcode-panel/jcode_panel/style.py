@@ -39,12 +39,12 @@ def load_css(Gtk, Gdk) -> None:
       padding: 12px 20px;
       min-height: 24px;
       caret-color: #cba6f7;
-      box-shadow: 0 16px 44px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.04) inset;
+      box-shadow: none;
     }
     entry:focus {
       border-color: #cba6f7;
       background: rgba(30, 30, 46, 0.98);
-      box-shadow: 0 18px 52px rgba(0,0,0,0.56), 0 0 0 3px rgba(203,166,247,0.22);
+      box-shadow: none;
     }
     textview, textview text {
       color: #cdd6f4;
@@ -58,6 +58,25 @@ def load_css(Gtk, Gdk) -> None:
       background: #181825;
       padding: 8px;
     }
+
+    .toast-root {
+      background: rgba(30, 30, 46, 0.96);
+      border: 1px solid #45475a;
+      border-radius: 16px;
+      padding: 12px;
+      box-shadow: 0 18px 50px rgba(0,0,0,0.50);
+    }
+    .toast-title {
+      color: #cba6f7;
+      font-weight: 700;
+      font-size: 12px;
+    }
+    .toast-text {
+      color: #cdd6f4;
+      background: transparent;
+      font-size: 12px;
+    }
+
     button {
       color: #cdd6f4;
       background: #313244;
