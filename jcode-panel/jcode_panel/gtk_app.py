@@ -72,6 +72,7 @@ class FloatingInput(Gtk.Window):
         self.add(box)
         self.set_default_size(520, 52)
         self.target_window_id = ""
+        self.keyboard_grabbed = False
 
     def _draw_transparent(self, _widget, cr):
         cr.set_source_rgba(0, 0, 0, 0)
@@ -104,6 +105,7 @@ class FloatingInput(Gtk.Window):
         GLib.timeout_add(25, self._focus_entry)
         GLib.timeout_add(75, self._focus_entry)
         GLib.timeout_add(160, self._focus_entry)
+        GLib.timeout_add(40, self._grab_keyboard)
 
     def _follow_mouse_tick(self, initial: tuple[int | None, int | None] | None = None) -> bool:
         if not self.follow_mouse or not self.get_visible():
@@ -144,6 +146,38 @@ class FloatingInput(Gtk.Window):
         except Exception:
             pass
 
+    def _grab_keyboard(self) -> bool:
+        if not self.get_visible():
+            return False
+        try:
+            window = self.get_window()
+            display = Gdk.Display.get_default()
+            seat = display.get_default_seat() if display else None
+            if window and seat:
+                result = seat.grab(
+                    window,
+                    Gdk.SeatCapabilities.KEYBOARD,
+                    False,  # owner_events=false blocks keyboard delivery to other apps
+                    None,
+                    None,
+                    None,
+                )
+                self.keyboard_grabbed = result == Gdk.GrabStatus.SUCCESS
+        except Exception as exc:
+            append_log(f"Keyboard grab failed: {exc}")
+        self._focus_entry()
+        return False
+
+    def _release_keyboard(self) -> None:
+        try:
+            display = Gdk.Display.get_default()
+            seat = display.get_default_seat() if display else None
+            if seat and self.keyboard_grabbed:
+                seat.ungrab()
+        except Exception:
+            pass
+        self.keyboard_grabbed = False
+
     def _on_focus_out(self, *_args):
         # Keep keyboard focus biased to the input, but do not capture mouse.
         if self.get_visible():
@@ -161,6 +195,7 @@ class FloatingInput(Gtk.Window):
     def hide(self):
         self.follow_mouse = False
         self.typed_once = False
+        self._release_keyboard()
         if self.follow_source_id:
             GLib.source_remove(self.follow_source_id)
             self.follow_source_id = 0
