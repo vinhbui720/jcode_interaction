@@ -187,6 +187,21 @@ def test_protocol_backend_chat_status_preview_uses_current_when_text_empty():
     assert event_preview(event) == "pytest -q"
 
 
+def test_protocol_backend_chat_status_extracts_feedback_text():
+    event = parse_panel_event(
+        '{"type":"backend/chat/status","current":{"command":"pytest -q","state":"running","active":true},"feedback":"Running regression tests"}'
+    )
+    assert event.kind == PanelEventKind.STATUS
+    assert event.text == "Running regression tests"
+    assert activity_label(event.raw, event.text) == "pytest -q"
+
+
+def test_protocol_backend_chat_status_extracts_answer_text():
+    event = parse_panel_event('{"type":"persistent-section/status","answer":"Done with panel changes"}')
+    assert event.kind == PanelEventKind.STATUS
+    assert event.text == "Done with panel changes"
+
+
 def test_protocol_backend_chat_status_nested_status_current():
     event = parse_panel_event(
         '{"type":"backend/chat/status","status":{"current":{"command":"pytest -q","state":"running","active":true}}}'

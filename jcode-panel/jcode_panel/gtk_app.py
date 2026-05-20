@@ -595,6 +595,10 @@ class PanelApp:
         if event.kind in {PanelEventKind.STATUS, PanelEventKind.PROGRESS, PanelEventKind.TOOL}:
             self._record_activity_event(event)
             self._update_header_status()
+            feedback = self._event_feedback_text(event)
+            if feedback:
+                self.feedback_text = feedback
+                self.toast.update_feedback(self.feedback_text)
         elif event.kind == PanelEventKind.ERROR:
             self._finish_activity("error")
             self.process_status = "error"
@@ -625,6 +629,7 @@ class PanelApp:
         state = activity_state(event.raw, event.text or event.kind.value) or event.kind.value
         now = time.monotonic()
         if activity_is_terminal(event):
+            self.process_status = state or label
             self._finish_activity(state or label)
             return
         if not self.live_activity.active or label != self.live_activity.label:
@@ -667,6 +672,25 @@ class PanelApp:
         if minutes:
             return f"{minutes}m{secs:02d}s"
         return f"{secs}s"
+
+    def _event_feedback_text(self, event: PanelEvent) -> str:
+        raw = event.raw or {}
+        for key in ("feedback", "answer"):
+            value = raw.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+            if isinstance(value, dict):
+                nested = PanelEvent(kind=event.kind, text="", raw=value)
+                text = self._event_feedback_text(nested)
+                if text:
+                    return text
+        ui = raw.get("ui")
+        if isinstance(ui, dict):
+            for key in ("feedback", "answer", "message"):
+                value = ui.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+        return ""
 
     def send_prompt(self, text: str, include_context: bool):
         self._sync_client_session()

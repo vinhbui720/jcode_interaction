@@ -144,7 +144,18 @@ def _coerce_progress(value: Any) -> float | None:
 
 
 def _extract_text(data: dict[str, Any]) -> str:
-    for key in ("text", "content", "message", "delta", "output", "phase", "detail", "connection"):
+    for key in (
+        "text",
+        "content",
+        "message",
+        "delta",
+        "output",
+        "feedback",
+        "answer",
+        "phase",
+        "detail",
+        "connection",
+    ):
         value = data.get(key)
         if isinstance(value, str) and value:
             return value
@@ -255,7 +266,7 @@ def _nested_activity_dicts(raw: dict[str, Any]) -> list[dict[str, Any]]:
     # `backend/chat/status` can include both a legacy `activity` snapshot and a
     # fresher `current` UI model. Prefer `current` so the panel header/dropdown
     # follows the live item instead of showing stale activity text.
-    for nested_key in ("current", "activity", "current_tool", "tool_call", "command", "bash", "status", "ui"):
+    for nested_key in ("current", "activity", "current_tool", "tool_call", "command", "bash", "status", "ui", "feedback"):
         value = raw.get(nested_key)
         if isinstance(value, dict):
             nested.append(value)
