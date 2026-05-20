@@ -117,3 +117,13 @@ Each integration owns its code under `integrations/<app>_plugin` or `extension/`
 - `jcp` opens the prompt of the running app.
 - `jcode-panel --status` checks if it is alive.
 - `jcode-panel --quit` intentionally stops the resident app.
+
+## Floating prompt positioning
+
+GNOME Wayland does not allow normal apps to place windows at arbitrary screen coordinates. To make the floating prompt follow the mouse, jcode-panel forces the GTK backend to X11/XWayland:
+
+```text
+GDK_BACKEND=x11
+```
+
+This is set automatically by the installed launchers and autostart entry.

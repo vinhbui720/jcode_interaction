@@ -1,7 +1,11 @@
 from __future__ import annotations
 
-import threading
 import os
+# Force XWayland/X11 on GNOME Wayland so floating prompt positioning works.
+# Native Wayland intentionally prevents arbitrary window placement.
+os.environ.setdefault("GDK_BACKEND", "x11")
+
+import threading
 
 import gi
 gi.require_version("Gtk", "3.0")
@@ -214,6 +218,7 @@ class PanelApp:
         if self.config.general.auto_update_on_start:
             self.update_app()
         self._warn_wayland_if_needed()
+        self._add_system(f"GTK backend: {os.environ.get('GDK_BACKEND', 'default')}")
         self._start_hotkey_listener()
         self._connect_jcode_async()
         notify("jcode-panel is running", "Use the top-bar icon, jcode-panel, or jcp to open it.")
