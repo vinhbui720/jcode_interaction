@@ -31,12 +31,19 @@ from .updater import self_update
 
 class FloatingInput(Gtk.Window):
     def __init__(self, app: "PanelApp"):
-        super().__init__(type=Gtk.WindowType.POPUP)
+        super().__init__(type=Gtk.WindowType.TOPLEVEL)
         self.app = app
         self.context_enabled = True
         self.completions = CompletionState()
         self.set_decorated(False)
         self.set_keep_above(True)
+        self.set_skip_taskbar_hint(True)
+        self.set_skip_pager_hint(True)
+        self.set_accept_focus(True)
+        self.set_focus_on_map(True)
+        self.set_type_hint(Gdk.WindowTypeHint.UTILITY)
+        self.follow_mouse = False
+        self.follow_source_id = 0
         self.set_border_width(10)
         self.set_opacity(app.config.ui.floating_opacity)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
@@ -45,6 +52,7 @@ class FloatingInput(Gtk.Window):
         add_class(self.context_label, "context-strip")
         self.context_label.set_xalign(0)
         self.entry = Gtk.Entry()
+        self.entry.set_can_focus(True)
         self.entry.connect("activate", self._on_enter)
         self.entry.connect("key-press-event", self._on_key)
         box.pack_start(self.context_label, False, False, 0)
@@ -61,19 +69,40 @@ class FloatingInput(Gtk.Window):
         # GTK/Wayland often ignores move() before a window is mapped. Capture
         # the pointer first, show/realize the popup, then move it repeatedly on
         # idle so X11/XWayland has a chance to honor the coordinates.
-        x, y = self._mouse_position()
+        self.follow_mouse = True
         self.show_all()
         self.realize()
-        self._move_near(x, y)
-        GLib.idle_add(self._move_near, x, y)
-        GLib.timeout_add(80, self._move_near, x, y)
+        self._follow_mouse_tick()
+        if self.follow_source_id:
+            GLib.source_remove(self.follow_source_id)
+        self.follow_source_id = GLib.timeout_add(60, self._follow_mouse_tick)
         self.present()
+        self.grab_focus()
         self.entry.grab_focus()
+        GLib.idle_add(self._focus_entry)
+        GLib.timeout_add(80, self._focus_entry)
 
-    def _move_near(self, x: int | None, y: int | None) -> bool:
+    def _follow_mouse_tick(self) -> bool:
+        if not self.follow_mouse or not self.get_visible():
+            self.follow_source_id = 0
+            return False
+        x, y = self._mouse_position()
         if x is not None and y is not None:
-            self.move(max(0, x - 12), max(0, y + 12))
+            self.move(max(0, x + 16), max(0, y + 18))
+        return True
+
+    def _focus_entry(self) -> bool:
+        if self.get_visible():
+            self.present()
+            self.entry.grab_focus()
         return False
+
+    def hide(self):
+        self.follow_mouse = False
+        if self.follow_source_id:
+            GLib.source_remove(self.follow_source_id)
+            self.follow_source_id = 0
+        super().hide()
 
     def _mouse_position(self) -> tuple[int | None, int | None]:
         x, y = xdotool_mouse_position()
