@@ -267,6 +267,19 @@ def test_jcode_client_repl_args_and_adopt_session():
     assert client.session_id == "new-session"
 
 
+def test_jcode_client_model_repl_args_and_slash_fallback(monkeypatch):
+    client = JcodeClient("panel-session", model="gpt-5.5")
+    assert client._repl_args() == ["jcode", "-m", "gpt-5.5", "repl", "--resume", "panel-session"]
+
+    def fake_check_output(*_args, **_kwargs):
+        raise RuntimeError("no completion api")
+
+    monkeypatch.setattr("jcode_panel.jcode_client.subprocess.check_output", fake_check_output)
+    completions = client.completions("/u")
+    assert "/usage" in completions
+    assert "/ustage" in completions
+
+
 def test_jcode_client_new_section_waits_for_bootstrap_session():
     client = JcodeClient("")
     assert client._repl_args() == ["jcode", "repl"]

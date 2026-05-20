@@ -29,8 +29,9 @@ class JcodeClient:
     panel switches to the long-lived REPL for all later prompts.
     """
 
-    def __init__(self, session_id: str = ""):
+    def __init__(self, session_id: str = "", model: str = ""):
         self.session_id = session_id.strip()
+        self.model = model.strip()
         self.process: subprocess.Popen | None = None
         self.events: "queue.Queue[PanelEvent]" = queue.Queue()
         self._reader: threading.Thread | None = None
@@ -56,7 +57,10 @@ class JcodeClient:
             self.events.put(PanelEvent(kind=PanelEventKind.STATUS, text="jcode-panel ready; first prompt will create a session"))
 
     def _repl_args(self) -> list[str]:
-        args = ["jcode", "repl"]
+        args = ["jcode"]
+        if self.model:
+            args += ["-m", self.model]
+        args += ["repl"]
         if self.session_id:
             args += ["--resume", self.session_id]
         return args
@@ -132,7 +136,10 @@ class JcodeClient:
 
     def _run_first_prompt(self, prompt: str) -> None:
         """Bootstrap a new real Jcode session, then keep it alive via REPL."""
-        args = ["jcode", "run", "--ndjson", prompt]
+        args = ["jcode"]
+        if self.model:
+            args += ["-m", self.model]
+        args += ["run", "--ndjson", prompt]
         self.events.put(PanelEvent(kind=PanelEventKind.STATUS, text="Creating new jcode session..."))
         discovered_session = ""
         try:
@@ -179,6 +186,17 @@ class JcodeClient:
         """
         self.session_id = session_id.strip()
 
+    def set_model(self, model: str) -> None:
+        model = model.strip()
+        if model == self.model:
+            return
+        self.model = model
+        if self.session_id:
+            session = self.session_id
+            self.disconnect()
+            self.session_id = session
+            self._ensure_repl()
+
     def rename_session(self, session_id: str, name: str) -> None:
         session_id = session_id.strip()
         name = name.strip()
@@ -221,6 +239,24 @@ class JcodeClient:
 
     def completions(self, prefix: str) -> list[str]:
         self.ensure_available()
+        fallback = [
+            "/help",
+            "/model",
+            "/usage",
+            "/ustage",
+            "/resume",
+            "/new",
+            "/clear",
+            "/compact",
+            "/skill",
+            "/swarm",
+            "/memory",
+            "/permissions",
+            "/provider",
+            "/login",
+            "/quit",
+        ]
+        fallback_matches = [x for x in fallback if x.startswith(prefix)]
         api_attempts = [
             ["jcode", "completion", "--json", prefix],
             ["jcode", "completions", "--json", prefix],
@@ -230,13 +266,12 @@ class JcodeClient:
                 out = subprocess.check_output(args, text=True, stderr=subprocess.DEVNULL, timeout=2)
                 data = json.loads(out)
                 if isinstance(data, list):
-                    return [CompletionItem.from_any(x).value for x in data]
+                    return _dedupe([CompletionItem.from_any(x).value for x in data] + fallback_matches)
                 if isinstance(data, dict) and isinstance(data.get("items"), list):
-                    return [CompletionItem.from_any(x).value for x in data["items"]]
+                    return _dedupe([CompletionItem.from_any(x).value for x in data["items"]] + fallback_matches)
             except Exception:
                 pass
-        fallback = ["/help", "/resume", "/skill", "/swarm", "/memory"]
-        return [x for x in fallback if x.startswith(prefix)]
+        return fallback_matches
 
     def resume_command(self, session: str) -> str:
         return f"jcode --resume {session}"
@@ -244,3 +279,13 @@ class JcodeClient:
 
 def parse_event(line: str) -> PanelEvent:
     return parse_panel_event(line)
+
+
+def _dedupe(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        if item and item not in seen:
+            seen.add(item)
+            result.append(item)
+    return result

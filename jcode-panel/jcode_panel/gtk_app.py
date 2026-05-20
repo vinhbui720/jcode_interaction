@@ -8,6 +8,7 @@ os.environ.setdefault("GDK_BACKEND", "x11")
 import threading
 import time
 import subprocess
+import json
 from dataclasses import dataclass
 
 import gi
@@ -156,6 +157,7 @@ class FloatingInput(Gtk.Window):
     def _on_changed(self, _entry):
         if self.entry.get_text():
             self.typed_once = True
+        self.completions.update([])
 
     def _activate_self(self) -> None:
         try:
@@ -290,6 +292,9 @@ class FloatingInput(Gtk.Window):
 
     def _on_enter(self, _entry):
         text = self.entry.get_text().strip()
+        if text.startswith("/") and self.app.handle_slash_command(text):
+            self.hide()
+            return
         self.app.active_context = self._capture_context_on_submit()
         self.hide()
         if text:
@@ -888,6 +893,130 @@ class PanelApp:
             self.floating.hide()
         else:
             self.floating.show_at_pointer()
+
+    def handle_slash_command(self, text: str) -> bool:
+        parts = text.strip().split(maxsplit=1)
+        command = parts[0].lower()
+        arg = parts[1].strip() if len(parts) > 1 else ""
+        if command == "/model":
+            if arg:
+                self.set_model(arg)
+            else:
+                self.show_model_dialog()
+            return True
+        if command in {"/usage", "/ustage"}:
+            self.show_usage_dialog()
+            return True
+        if command in {"/help", "/?"}:
+            self._show_text_dialog(
+                "jcode-panel slash commands",
+                "Popup commands:\n"
+                "  /model            choose a model from a table\n"
+                "  /model <name>     switch directly to a model\n"
+                "  /usage, /ustage   show provider usage limits\n"
+                "  /help             show this help\n\n"
+                "Other slash commands are sent to jcode as normal prompts.",
+            )
+            return True
+        return False
+
+    def show_model_dialog(self):
+        threading.Thread(target=self._load_models_and_show_dialog, daemon=True).start()
+
+    def _load_models_and_show_dialog(self):
+        try:
+            raw = subprocess.check_output(["jcode", "model", "list", "--json"], text=True, stderr=subprocess.STDOUT, timeout=8, cwd=os.path.expanduser("~"))
+            data = json.loads(raw)
+            models = [str(x) for x in data.get("models", [])]
+            selected = str(data.get("selected_model") or self.client.model or "")
+            provider = str(data.get("provider") or "auto")
+            GLib.idle_add(self._show_model_dialog_ui, models, selected, provider)
+        except Exception as exc:
+            GLib.idle_add(self._show_text_dialog, "jcode model", f"Could not load models:\n{exc}")
+
+    def _show_model_dialog_ui(self, models: list[str], selected: str, provider: str):
+        dlg = Gtk.Dialog(title=f"Choose jcode model ({provider})", transient_for=self.dropdown, flags=0)
+        dlg.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        dlg.add_button("Use model", Gtk.ResponseType.OK)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=12)
+        box.pack_start(Gtk.Label(label="Select model for panel prompts"), False, False, 0)
+        combo = Gtk.ComboBoxText()
+        active_index = 0
+        for index, model in enumerate(models):
+            combo.append_text(model)
+            if model == selected:
+                active_index = index
+        if models:
+            combo.set_active(active_index)
+        box.pack_start(combo, False, False, 0)
+        hint = Gtk.Label(label="Tip: type /model <name> to switch directly. New sends use the selected model.")
+        hint.set_xalign(0)
+        hint.set_line_wrap(True)
+        box.pack_start(hint, False, False, 0)
+        dlg.get_content_area().add(box)
+        dlg.show_all()
+        response = dlg.run()
+        model = combo.get_active_text() or ""
+        dlg.destroy()
+        if response == Gtk.ResponseType.OK and model:
+            self.set_model(model)
+        return False
+
+    def set_model(self, model: str):
+        model = model.strip()
+        if not model:
+            return
+        try:
+            self.client.set_model(model)
+            self.process_status = f"model: {model}"
+            self._update_header_status()
+            self._add_system(f"Selected jcode model: {model}")
+            self.toast.update_feedback(f"Model switched to {model}")
+        except Exception as exc:
+            self._add_system(f"Model switch failed: {exc}")
+            self.toast.update_feedback(f"Model switch failed: {exc}")
+
+    def show_usage_dialog(self):
+        threading.Thread(target=self._load_usage_and_show_dialog, daemon=True).start()
+
+    def _load_usage_and_show_dialog(self):
+        try:
+            raw = subprocess.check_output(["jcode", "usage", "--json"], text=True, stderr=subprocess.STDOUT, timeout=12, cwd=os.path.expanduser("~"))
+            data = json.loads(raw)
+            lines = ["Provider | Window | Used | Reset", "-" * 72]
+            for provider in data.get("providers", []):
+                provider_name = str(provider.get("provider_name") or provider.get("name") or "provider")
+                error = provider.get("error")
+                if error:
+                    lines.append(f"{provider_name} | error | {error} | ")
+                    continue
+                for limit in provider.get("limits", []):
+                    name = str(limit.get("name") or "limit")
+                    pct = limit.get("usage_percent")
+                    used = "?" if pct is None else f"{float(pct):.1f}%"
+                    reset = str(limit.get("reset_in") or limit.get("resets_at") or "")
+                    lines.append(f"{provider_name} | {name} | {used} | {reset}")
+                for key, value in provider.get("extra_info", []):
+                    lines.append(f"{provider_name} | {key} | {value} | ")
+            GLib.idle_add(self._show_text_dialog, "jcode usage", "\n".join(lines))
+        except Exception as exc:
+            GLib.idle_add(self._show_text_dialog, "jcode usage", f"Could not load usage:\n{exc}")
+
+    def _show_text_dialog(self, title: str, text: str):
+        dlg = Gtk.Dialog(title=title, transient_for=self.dropdown, flags=0)
+        dlg.add_button("Close", Gtk.ResponseType.CLOSE)
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_min_content_width(760)
+        scroller.set_min_content_height(360)
+        view = Gtk.TextView(editable=False, cursor_visible=False, monospace=True)
+        view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        view.get_buffer().set_text(text)
+        scroller.add(view)
+        dlg.get_content_area().add(scroller)
+        dlg.show_all()
+        dlg.run()
+        dlg.destroy()
+        return False
 
     def _handle_control(self, command: str) -> ControlResponse:
         if command == "prompt":
