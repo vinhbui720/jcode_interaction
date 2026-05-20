@@ -325,6 +325,7 @@ class AnswerToast(Gtk.Window):
         root.pack_start(actions, False, False, 0)
         self.add(root)
         self.set_default_size(380, 150)
+        self.hide_source_id = 0
 
     def update_feedback(self, text: str):
         text = text.strip()
@@ -333,6 +334,23 @@ class AnswerToast(Gtk.Window):
         self.label.set_text(text[-900:])
         self.show_all()
         self._move_to_corner()
+        self._reset_idle_hide_timer()
+
+    def hide(self):
+        if self.hide_source_id:
+            GLib.source_remove(self.hide_source_id)
+            self.hide_source_id = 0
+        super().hide()
+
+    def _reset_idle_hide_timer(self):
+        if self.hide_source_id:
+            GLib.source_remove(self.hide_source_id)
+        self.hide_source_id = GLib.timeout_add_seconds(60, self._idle_hide)
+
+    def _idle_hide(self) -> bool:
+        self.hide_source_id = 0
+        self.hide()
+        return False
 
     def _move_to_corner(self):
         screen = Gdk.Screen.get_default()
