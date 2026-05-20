@@ -26,7 +26,7 @@ from .protocol import PanelEvent, PanelEventKind
 from .notify import notify
 from .terminal import launch
 from .style import add_class, load_css
-from .positioning import xdotool_mouse_position, xdotool_mouse_position_full
+from .positioning import xdotool_mouse_position_full
 from .updater import self_update
 
 
@@ -45,7 +45,6 @@ class FloatingInput(Gtk.Window):
         self.set_type_hint(Gdk.WindowTypeHint.UTILITY)
         self.follow_mouse = False
         self.follow_source_id = 0
-        self.follow_ticks = 0
         self.current_x: float | None = None
         self.current_y: float | None = None
         self.target_x: float | None = None
@@ -78,10 +77,9 @@ class FloatingInput(Gtk.Window):
         self.entry.set_text("")
         self.typed_once = False
 
-        # GTK/Wayland often ignores move() before a window is mapped. Capture
-        # the pointer first, show/realize the popup, then move it repeatedly on
-        # idle so X11/XWayland has a chance to honor the coordinates.
-        self.follow_ticks = 0
+        # Capture context from the window under the mouse once, then use fast
+        # GDK pointer reads for live movement. Avoid spawning xdotool in the
+        # animation loop because subprocess polling causes visible jerk.
         self.current_x = None
         self.current_y = None
         self.target_x = None
@@ -92,25 +90,20 @@ class FloatingInput(Gtk.Window):
         self._follow_mouse_tick(initial=(x, y))
         if self.follow_source_id:
             GLib.source_remove(self.follow_source_id)
-        self.follow_source_id = GLib.timeout_add(110, self._follow_mouse_tick)
+        self.follow_source_id = GLib.timeout_add(16, self._follow_mouse_tick)
         self.present()
+        self.set_focus(self.entry)
         self.grab_focus()
         self.entry.grab_focus()
         GLib.idle_add(self._focus_entry)
-        GLib.timeout_add(80, self._focus_entry)
+        GLib.timeout_add(40, self._focus_entry)
+        GLib.timeout_add(120, self._focus_entry)
 
     def _follow_mouse_tick(self, initial: tuple[int | None, int | None] | None = None) -> bool:
         if not self.follow_mouse or not self.get_visible():
             self.follow_source_id = 0
             return False
-        self.follow_ticks += 1
-        # Stop after about 1.3s if the user has not typed. This gives a smooth
-        # cursor-follow reveal without permanently burning CPU or fighting focus.
-        if self.follow_ticks > 12:
-            self.follow_mouse = False
-            self.follow_source_id = 0
-            return False
-        x, y = initial if initial is not None else self._mouse_position()
+        x, y = initial if initial is not None else self._fast_mouse_position()
         if x is None or y is None:
             return True
         self.target_x = float(max(0, x + 20))
@@ -118,8 +111,8 @@ class FloatingInput(Gtk.Window):
         if self.current_x is None or self.current_y is None:
             self.current_x, self.current_y = self.target_x, self.target_y
         else:
-            # Smooth easing avoids jitter but still tracks interaction.
-            alpha = 0.42
+            # Smooth but responsive realtime tracking.
+            alpha = 0.55
             self.current_x += (self.target_x - self.current_x) * alpha
             self.current_y += (self.target_y - self.current_y) * alpha
             if abs(self.target_x - self.current_x) < 1:
@@ -130,15 +123,12 @@ class FloatingInput(Gtk.Window):
         return True
 
     def _on_pointer_interaction(self, *_args):
-        self.follow_mouse = False
+        # Keep tracking; user explicitly asked realtime follow while popup is on.
         return False
 
     def _on_changed(self, _entry):
-        # Once the user starts typing, stop following so the UI does not fight
-        # text selection/cursor interaction. Empty prompt keeps following.
         if self.entry.get_text():
             self.typed_once = True
-            self.follow_mouse = False
 
     def _focus_entry(self) -> bool:
         if self.get_visible():
@@ -154,10 +144,7 @@ class FloatingInput(Gtk.Window):
             self.follow_source_id = 0
         super().hide()
 
-    def _mouse_position(self) -> tuple[int | None, int | None]:
-        x, y = xdotool_mouse_position()
-        if x is not None and y is not None:
-            return x, y
+    def _fast_mouse_position(self) -> tuple[int | None, int | None]:
         display = Gdk.Display.get_default()
         seat = display.get_default_seat() if display else None
         pointer = seat.get_pointer() if seat else None
