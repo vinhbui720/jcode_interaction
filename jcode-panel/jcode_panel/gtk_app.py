@@ -9,6 +9,7 @@ gi.require_version("AppIndicator3", "0.1")
 from gi.repository import AppIndicator3, GLib, Gtk, Gdk  # type: ignore
 
 from .config import AppConfig
+from .services import AppController
 from .context import BrowserBridge, capture_active_context
 from .dropdown import ConversationBuffer
 from .floating import CompletionState
@@ -154,9 +155,10 @@ class SettingsDialog(Gtk.Dialog):
 class PanelApp:
     def __init__(self):
         self.config = AppConfig.load()
+        self.controller = AppController(self.config)
         self.bridge = BrowserBridge()
         self.bridge.start()
-        self.client = JcodeClient(self.config.session.saved_session)
+        self.client = JcodeClient(self.controller.active_session)
         self.conversation = ConversationBuffer(self.config.ui.dropdown_max_messages)
         self.active_context = capture_active_context()
         self.indicator = AppIndicator3.Indicator.new("jcode-panel", "applications-system", AppIndicator3.IndicatorCategory.APPLICATION_STATUS)
@@ -221,13 +223,12 @@ class PanelApp:
         return False
 
     def send_prompt(self, text: str, include_context: bool):
-        payload = text
-        if include_context:
-            payload = self.active_context.as_prompt_block() + "\n\n" + text
+        payload, metadata = self.controller.build_prompt(text, self.active_context, include_context)
         self.conversation.add_user(text)
         self.dropdown.refresh()
         try:
-            self.client.send(payload)
+            self.client.send(payload, metadata)
+            self.controller.record_sent_prompt(text)
         except Exception as exc:
             self._add_system(str(exc))
 
@@ -242,7 +243,7 @@ class PanelApp:
             self.dropdown.present()
 
     def open_terminal(self):
-        session = self.config.session.saved_session or ""
+        session = self.controller.active_session or ""
         launch(f"jcode --resume {session}" if session else "jcode", self.config.general.terminal, self.config.general.terminal_template)
 
     def open_jcode(self):

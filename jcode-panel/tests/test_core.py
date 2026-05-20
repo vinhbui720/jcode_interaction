@@ -53,3 +53,37 @@ def test_terminal_template_rendering():
     args = render_command("xterm -e sh -lc {quoted_cmd}", "jcode --resume fox")
     assert args[:4] == ["xterm", "-e", "sh", "-lc"]
     assert args[4] == "jcode --resume fox"
+
+from jcode_panel.services import AppController, PromptBuilder, PromptRequest
+from jcode_panel.state import AppState
+
+
+def test_state_roundtrip_and_prompt_dedupe(tmp_path: Path):
+    path = tmp_path / "state.toml"
+    state = AppState(saved_session="fox")
+    state.remember_prompt("hello")
+    state.remember_prompt("hello")
+    state.remember_prompt("world")
+    state.save(path)
+    loaded = AppState.load(path)
+    assert loaded.saved_session == "fox"
+    assert loaded.prompt_history == ["hello", "world"]
+
+
+def test_prompt_builder_context_fallback_and_metadata():
+    ctx = ActiveContext(app="Firefox", window_title="Issue", browser=BrowserContext(url="https://example.com"))
+    builder = PromptBuilder()
+    text = builder.build_text(PromptRequest("explain", ctx, include_context=True))
+    assert text.startswith("[Context]")
+    assert text.endswith("explain")
+    metadata_req = PromptRequest("explain", ctx, include_context=True, metadata_supported=True)
+    assert builder.build_text(metadata_req) == "explain"
+    metadata = builder.build_metadata(metadata_req)
+    assert metadata and metadata["browser"]["url"] == "https://example.com"
+
+
+def test_app_controller_active_session_prefers_state():
+    cfg = AppConfig()
+    cfg.session.saved_session = "config-session"
+    controller = AppController(cfg, AppState(saved_session="state-session"))
+    assert controller.active_session == "state-session"

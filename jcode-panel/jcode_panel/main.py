@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .config import AppConfig
 from .context import BrowserBridge, capture_active_context
+from .services import AppController
 from .dropdown import ConversationBuffer
 from .jcode_client import JcodeClient, JcodeUnavailable
 from .terminal import launch
@@ -25,15 +26,15 @@ def smoke() -> int:
 
 def run_headless_once(prompt: str) -> int:
     cfg = AppConfig.load()
+    controller = AppController(cfg)
     ctx = capture_active_context()
-    client = JcodeClient(cfg.session.saved_session)
+    client = JcodeClient(controller.active_session)
     try:
         client.start_server()
         client.connect()
-        payload = prompt
-        if cfg.session.send_context_default:
-            payload = ctx.as_prompt_block() + "\n\n" + prompt
-        client.send(payload)
+        payload, metadata = controller.build_prompt(prompt, ctx, cfg.session.send_context_default)
+        client.send(payload, metadata)
+        controller.record_sent_prompt(prompt)
         return 0
     except JcodeUnavailable as exc:
         print(f"jcode unavailable: {exc}", file=sys.stderr)
