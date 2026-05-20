@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import threading
 import os
-import re
-import subprocess
 
 import gi
 gi.require_version("Gtk", "3.0")
@@ -23,6 +21,7 @@ from .protocol import PanelEvent, PanelEventKind
 from .notify import notify
 from .terminal import launch
 from .style import add_class, load_css
+from .positioning import xdotool_mouse_position
 from .updater import self_update
 
 
@@ -53,22 +52,29 @@ class FloatingInput(Gtk.Window):
         self.app.active_context = capture_active_context()
         self.context_enabled = self.app.config.session.send_context_default
         self.context_label.set_text("📎 " + self.app.active_context.summary())
-        x, y = self._mouse_position()
-        if x is not None and y is not None:
-            self.move(max(0, x - 12), max(0, y + 12))
         self.entry.set_text("")
+
+        # GTK/Wayland often ignores move() before a window is mapped. Capture
+        # the pointer first, show/realize the popup, then move it repeatedly on
+        # idle so X11/XWayland has a chance to honor the coordinates.
+        x, y = self._mouse_position()
         self.show_all()
+        self.realize()
+        self._move_near(x, y)
+        GLib.idle_add(self._move_near, x, y)
+        GLib.timeout_add(80, self._move_near, x, y)
         self.present()
         self.entry.grab_focus()
 
+    def _move_near(self, x: int | None, y: int | None) -> bool:
+        if x is not None and y is not None:
+            self.move(max(0, x - 12), max(0, y + 12))
+        return False
+
     def _mouse_position(self) -> tuple[int | None, int | None]:
-        try:
-            out = subprocess.check_output(["xdotool", "getmouselocation"], text=True, stderr=subprocess.DEVNULL, timeout=1)
-            match = re.search(r"x:(\d+)\s+y:(\d+)", out)
-            if match:
-                return int(match.group(1)), int(match.group(2))
-        except Exception:
-            pass
+        x, y = xdotool_mouse_position()
+        if x is not None and y is not None:
+            return x, y
         display = Gdk.Display.get_default()
         seat = display.get_default_seat() if display else None
         pointer = seat.get_pointer() if seat else None

@@ -166,3 +166,10 @@ def test_conversation_coalesces_text_delta_stream():
     buf.add_event(parse_panel_event('{"type":"message_end"}'))
     buf.add_event(parse_panel_event('{"type":"done","text":"hello world"}'))
     assert buf.messages == [("You", "hello"), ("jcode", "hello world")]
+
+from jcode_panel.positioning import parse_xdotool_mouselocation
+
+
+def test_parse_xdotool_mouselocation():
+    assert parse_xdotool_mouselocation('x:2657 y:50 screen:0 window:8388629') == (2657, 50)
+    assert parse_xdotool_mouselocation('bad') == (None, None)
