@@ -86,6 +86,11 @@ class FloatingInput(Gtk.Window):
         self.connect("button-press-event", self._on_pointer_interaction)
         self.connect("focus-out-event", self._on_focus_out)
         box.pack_start(self.entry, True, True, 0)
+        self.slash_hint = Gtk.Label(label="")
+        self.slash_hint.set_xalign(0)
+        self.slash_hint.set_line_wrap(True)
+        add_class(self.slash_hint, "slash-hint")
+        box.pack_start(self.slash_hint, False, False, 0)
         self.add(box)
         self.set_default_size(520, 52)
         self.target_window_id = ""
@@ -105,6 +110,7 @@ class FloatingInput(Gtk.Window):
         self.context_enabled = self.app.config.session.send_context_default
         self.entry.set_text("")
         self.entry.set_placeholder_text("Ask jcode...")
+        self._update_slash_hint("")
         self.typed_once = False
         self.follow_mouse = True
         self.current_x = None
@@ -155,9 +161,23 @@ class FloatingInput(Gtk.Window):
         return False
 
     def _on_changed(self, _entry):
-        if self.entry.get_text():
+        text = self.entry.get_text().strip()
+        if text:
             self.typed_once = True
         self.completions.update([])
+        self._update_slash_hint(text)
+
+    def _update_slash_hint(self, text: str) -> None:
+        if not hasattr(self, "slash_hint"):
+            return
+        if not text.startswith("/"):
+            self.slash_hint.set_text("")
+            self.slash_hint.hide()
+            return
+        known = ["/model", "/usage", "/ustage", "/help", "/resume", "/clear", "/compact", "/skill", "/memory"]
+        matches = [item for item in known if item.startswith(text)] or known[:6]
+        self.slash_hint.set_text("Tab complete · Enter run · " + "   ".join(matches[:6]))
+        self.slash_hint.show()
 
     def _activate_self(self) -> None:
         try:
@@ -342,6 +362,7 @@ class FloatingInput(Gtk.Window):
                 if suggestion:
                     self.entry.set_text(suggestion)
                     self.entry.set_position(-1)
+                    self._update_slash_hint(suggestion)
             return True
         return False
 
@@ -502,9 +523,19 @@ class SettingsDialog(Gtk.Dialog):
     def __init__(self, app: "PanelApp"):
         super().__init__(title="jcode-panel Settings", transient_for=app.dropdown, flags=0)
         self.app = app
+        add_class(self, "modern-dialog")
+        self.set_default_size(560, 420)
         self.add_button("Cancel", Gtk.ResponseType.CANCEL)
         self.add_button("Save", Gtk.ResponseType.OK)
-        grid = Gtk.Grid(column_spacing=8, row_spacing=8, margin=12)
+
+        notebook = Gtk.Notebook()
+        notebook.set_margin_top(12)
+        notebook.set_margin_bottom(12)
+        notebook.set_margin_start(12)
+        notebook.set_margin_end(12)
+
+        grid = Gtk.Grid(column_spacing=10, row_spacing=10, margin=14)
+        add_class(grid, "modern-card")
         self.hotkey = Gtk.Entry(text=app.config.general.hotkey)
         self.terminal = Gtk.Entry(text=app.config.general.terminal)
         self.template = Gtk.Entry(text=app.config.general.terminal_template)
@@ -516,12 +547,49 @@ class SettingsDialog(Gtk.Dialog):
         self.auto_update.set_active(app.config.general.auto_update_on_start)
         fields = [("Hotkey", self.hotkey), ("Terminal", self.terminal), ("Terminal template", self.template)]
         for row, (label, widget) in enumerate(fields):
-            grid.attach(Gtk.Label(label=label), 0, row, 1, 1)
+            field_label = Gtk.Label(label=label)
+            field_label.set_xalign(0)
+            grid.attach(field_label, 0, row, 1, 1)
             grid.attach(widget, 1, row, 1, 1)
         grid.attach(self.debug, 0, 3, 2, 1)
         grid.attach(self.context, 0, 4, 2, 1)
         grid.attach(self.auto_update, 0, 5, 2, 1)
-        self.get_content_area().add(grid)
+
+        appearance = Gtk.Grid(column_spacing=10, row_spacing=10, margin=14)
+        add_class(appearance, "modern-card")
+        self.base_color = Gtk.Entry(text=app.config.ui.base_color)
+        self.text_color = Gtk.Entry(text=app.config.ui.text_color)
+        self.font_size = Gtk.SpinButton.new_with_range(10, 24, 1)
+        self.font_size.set_value(app.config.ui.font_size)
+        self.opacity = Gtk.SpinButton.new_with_range(0.35, 1.0, 0.05)
+        self.opacity.set_digits(2)
+        self.opacity.set_value(app.config.ui.floating_opacity)
+        self.bold = Gtk.CheckButton(label="Bold text")
+        self.bold.set_active(app.config.ui.font_bold)
+        self.italic = Gtk.CheckButton(label="Italic text")
+        self.italic.set_active(app.config.ui.font_italic)
+        appearance_fields = [
+            ("Base color", self.base_color),
+            ("Font color", self.text_color),
+            ("Font size", self.font_size),
+            ("Panel opacity", self.opacity),
+        ]
+        for row, (label, widget) in enumerate(appearance_fields):
+            field_label = Gtk.Label(label=label)
+            field_label.set_xalign(0)
+            appearance.attach(field_label, 0, row, 1, 1)
+            appearance.attach(widget, 1, row, 1, 1)
+        appearance.attach(self.bold, 0, 4, 2, 1)
+        appearance.attach(self.italic, 0, 5, 2, 1)
+        hint = Gtk.Label(label="Use hex colors like #eff6ff. Changes apply after Save.")
+        hint.set_xalign(0)
+        hint.set_line_wrap(True)
+        add_class(hint, "modern-subtitle")
+        appearance.attach(hint, 0, 6, 2, 1)
+
+        notebook.append_page(grid, Gtk.Label(label="General"))
+        notebook.append_page(appearance, Gtk.Label(label="Appearance"))
+        self.get_content_area().add(notebook)
         self.show_all()
 
     def save(self):
@@ -532,6 +600,12 @@ class SettingsDialog(Gtk.Dialog):
         cfg.general.debug = self.debug.get_active()
         cfg.general.auto_update_on_start = self.auto_update.get_active()
         cfg.session.send_context_default = self.context.get_active()
+        cfg.ui.base_color = self.base_color.get_text().strip() or "#eff6ff"
+        cfg.ui.text_color = self.text_color.get_text().strip() or "#1f2937"
+        cfg.ui.font_size = int(self.font_size.get_value())
+        cfg.ui.floating_opacity = float(self.opacity.get_value())
+        cfg.ui.font_bold = self.bold.get_active()
+        cfg.ui.font_italic = self.italic.get_active()
         cfg.save()
 
 
@@ -1010,26 +1084,27 @@ class PanelApp:
         try:
             raw = subprocess.check_output(["jcode", "usage", "--json"], text=True, stderr=subprocess.STDOUT, timeout=12, cwd=os.path.expanduser("~"))
             data = json.loads(raw)
-            rows: list[tuple[str, str, str, str]] = []
+            rows: list[tuple[str, str, int, str, str]] = []
             for provider in data.get("providers", []):
                 provider_name = str(provider.get("provider_name") or provider.get("name") or "provider")
                 error = provider.get("error")
                 if error:
-                    rows.append((provider_name, "error", str(error), ""))
+                    rows.append((provider_name, "error", 0, str(error), ""))
                     continue
                 for limit in provider.get("limits", []):
                     name = str(limit.get("name") or "limit")
                     pct = limit.get("usage_percent")
-                    used = "?" if pct is None else f"{float(pct):.1f}%"
+                    pct_value = 0 if pct is None else max(0, min(100, int(round(float(pct)))))
+                    used = "unknown" if pct is None else f"{float(pct):.1f}%"
                     reset = str(limit.get("reset_in") or limit.get("resets_at") or "")
-                    rows.append((provider_name, name, used, reset))
+                    rows.append((provider_name, name, pct_value, used, reset))
                 for key, value in provider.get("extra_info", []):
-                    rows.append((provider_name, str(key), str(value), ""))
+                    rows.append((provider_name, str(key), 0, str(value), ""))
             GLib.idle_add(self._show_usage_dialog_ui, rows)
         except Exception as exc:
             GLib.idle_add(self._show_text_dialog, "jcode usage", f"Could not load usage:\n{exc}")
 
-    def _show_usage_dialog_ui(self, rows: list[tuple[str, str, str, str]]):
+    def _show_usage_dialog_ui(self, rows: list[tuple[str, str, int, str, str]]):
         dlg = Gtk.Dialog(title="jcode usage", transient_for=self.dropdown, flags=0)
         add_class(dlg, "modern-dialog")
         dlg.add_button("Close", Gtk.ResponseType.CLOSE)
@@ -1043,16 +1118,24 @@ class PanelApp:
         add_class(subtitle, "modern-subtitle")
         box.pack_start(title, False, False, 0)
         box.pack_start(subtitle, False, False, 0)
-        store = Gtk.ListStore(str, str, str, str)
+        store = Gtk.ListStore(str, str, int, str, str)
         for row in rows:
             store.append(list(row))
         tree = Gtk.TreeView(model=store)
         tree.set_headers_visible(True)
-        for title_text, index, width in [("Provider", 0, 260), ("Window", 1, 180), ("Used", 2, 90), ("Reset", 3, 130)]:
+        for title_text, index, width in [("Provider", 0, 260), ("Window", 1, 180)]:
             renderer = Gtk.CellRendererText()
             column = Gtk.TreeViewColumn(title_text, renderer, text=index)
             column.set_min_width(width)
             tree.append_column(column)
+        progress_renderer = Gtk.CellRendererProgress()
+        progress_column = Gtk.TreeViewColumn("Usage", progress_renderer, value=2, text=3)
+        progress_column.set_min_width(220)
+        tree.append_column(progress_column)
+        renderer = Gtk.CellRendererText()
+        reset_column = Gtk.TreeViewColumn("Reset", renderer, text=4)
+        reset_column.set_min_width(160)
+        tree.append_column(reset_column)
         scroller = Gtk.ScrolledWindow()
         scroller.set_min_content_width(760)
         scroller.set_min_content_height(360)
@@ -1198,11 +1281,12 @@ class PanelApp:
         response = dlg.run()
         if response == Gtk.ResponseType.OK:
             dlg.save()
+            load_css(Gtk, Gdk, self.config)
         dlg.destroy()
 
 
 def run_gtk_app(open_prompt: bool = False, open_dropdown: bool = False) -> int:
-    load_css(Gtk, Gdk)
+    load_css(Gtk, Gdk, AppConfig.load())
     app = PanelApp()
     if open_prompt:
         GLib.idle_add(app.show_prompt)

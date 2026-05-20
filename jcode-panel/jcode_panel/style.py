@@ -1,161 +1,220 @@
 from __future__ import annotations
 
 
-def load_css(Gtk, Gdk) -> None:
-    css = b'''
-    * {
+def _safe_hex(value: str, fallback: str) -> str:
+    value = (value or "").strip()
+    if len(value) == 7 and value.startswith("#") and all(c in "0123456789abcdefABCDEF" for c in value[1:]):
+        return value
+    return fallback
+
+
+def _rgba(hex_color: str, alpha: float) -> str:
+    value = _safe_hex(hex_color, "#eff6ff").lstrip("#")
+    red = int(value[0:2], 16)
+    green = int(value[2:4], 16)
+    blue = int(value[4:6], 16)
+    alpha = max(0.0, min(1.0, float(alpha)))
+    return f"rgba({red}, {green}, {blue}, {alpha:.2f})"
+
+
+def load_css(Gtk, Gdk, config=None) -> None:
+    ui = getattr(config, "ui", None)
+    base_color = _safe_hex(getattr(ui, "base_color", "#eff6ff"), "#eff6ff")
+    text_color = _safe_hex(getattr(ui, "text_color", "#1f2937"), "#1f2937")
+    opacity = max(0.35, min(1.0, float(getattr(ui, "floating_opacity", 0.92) or 0.92)))
+    panel_bg = _rgba(base_color, opacity)
+    font_size = max(10, min(24, int(getattr(ui, "font_size", 13) or 13)))
+    font_weight = "700" if getattr(ui, "font_bold", False) else "400"
+    font_style = "italic" if getattr(ui, "font_italic", False) else "normal"
+    css = f'''
+    * {{
       font-family: Inter, Cantarell, Ubuntu, sans-serif;
-      font-size: 13px;
-    }
-    window, dialog {
+      font-size: {font_size}px;
+      font-weight: {font_weight};
+      font-style: {font_style};
+    }}
+    window, dialog {{
       background: transparent;
-      color: #1f2937;
-    }
-    .panel-root {
-      background: rgba(250, 252, 255, 0.80);
+      color: {text_color};
+    }}
+    .panel-root {{
+      background: {panel_bg};
       border: 1px solid rgba(148, 163, 184, 0.42);
       border-radius: 18px;
       padding: 12px;
       box-shadow: 0 18px 46px rgba(15, 23, 42, 0.16);
-    }
-    .floating-root {
+    }}
+    .floating-root {{
       background: transparent;
       border: none;
       padding: 0;
       margin: 0;
       box-shadow: none;
-    }
-    .context-strip {
+    }}
+    .slash-hint {{
+      color: #1e3a8a;
+      background: rgba(239, 246, 255, 0.94);
+      border: 1px solid rgba(96, 165, 250, 0.36);
+      border-radius: 14px;
+      padding: 8px 12px;
+      margin-top: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      font-style: normal;
+    }}
+    .context-strip {{
       color: #2563eb;
       background: rgba(239, 246, 255, 0.80);
       border-radius: 9px;
       padding: 6px 8px;
       margin-bottom: 6px;
-    }
-    entry {
+    }}
+    entry {{
       color: #111827;
-      background: rgba(255, 255, 255, 0.80);
+      background: rgba(255, 255, 255, 0.88);
       border: 1.5px solid rgba(96, 165, 250, 0.64);
       border-radius: 999px;
       padding: 12px 20px;
       min-height: 24px;
       caret-color: #2563eb;
       box-shadow: none;
-    }
-    entry:focus {
+    }}
+    entry:focus {{
       border-color: #2563eb;
-      background: rgba(255, 255, 255, 0.92);
+      background: rgba(255, 255, 255, 0.96);
       box-shadow: none;
-    }
-    textview, textview text {
-      color: #1f2937;
-      background: rgba(255, 255, 255, 0.62);
+    }}
+    textview, textview text {{
+      color: {text_color};
+      background: rgba(255, 255, 255, 0.72);
       font-family: JetBrains Mono, Fira Code, monospace;
       font-size: 12px;
-    }
-    scrolledwindow {
+    }}
+    scrolledwindow {{
       border: 1px solid rgba(148, 163, 184, 0.34);
       border-radius: 12px;
-      background: rgba(255, 255, 255, 0.56);
+      background: rgba(255, 255, 255, 0.70);
       padding: 8px;
-    }
+    }}
 
-    .toast-root {
-      background: rgba(250, 252, 255, 0.80);
+    .toast-root {{
+      background: rgba(250, 252, 255, 0.84);
       border: 1px solid rgba(148, 163, 184, 0.38);
       border-radius: 16px;
       padding: 12px;
       box-shadow: 0 18px 48px rgba(15, 23, 42, 0.16);
-    }
-    .toast-title {
+    }}
+    .toast-title {{
       color: #2563eb;
       font-weight: 700;
+      font-style: normal;
       font-size: 12px;
-    }
-    .toast-text {
-      color: #1f2937;
+    }}
+    .toast-text {{
+      color: {text_color};
       background: transparent;
       font-size: 12px;
-    }
-    .toast-icon-button {
+    }}
+    .toast-icon-button {{
       min-width: 28px;
       min-height: 28px;
       padding: 5px;
       color: #1f2937;
-      background: rgba(255, 255, 255, 0.56);
+      background: rgba(255, 255, 255, 0.70);
       border: 1px solid rgba(96, 165, 250, 0.24);
       border-radius: 999px;
-    }
-    .toast-icon-button:hover {
+    }}
+    .toast-icon-button:hover {{
       background: rgba(219, 234, 254, 0.86);
       border-color: rgba(37, 99, 235, 0.42);
-    }
-    .toast-icon-button:active {
+    }}
+    .toast-icon-button:active {{
       background: rgba(147, 197, 253, 0.86);
       color: #0f172a;
-    }
+    }}
 
-    .modern-dialog {
-      background: rgba(248, 250, 252, 0.98);
+    .modern-dialog {{
+      background: #f8fafc;
       color: #0f172a;
       border-radius: 18px;
-    }
-    .modern-card {
-      background: rgba(255, 255, 255, 0.96);
+    }}
+    .modern-card {{
+      background: rgba(255, 255, 255, 0.98);
       border: 1px solid rgba(148, 163, 184, 0.34);
       border-radius: 16px;
       padding: 14px;
       color: #0f172a;
-    }
-    .modern-title {
+    }}
+    .modern-title {{
       color: #0f172a;
       font-weight: 800;
       font-size: 18px;
-    }
-    .modern-subtitle {
+      font-style: normal;
+    }}
+    .modern-subtitle {{
       color: #475569;
       font-size: 12px;
-    }
-    treeview, treeview.view {
+      font-style: normal;
+    }}
+    notebook, notebook stack, notebook header {{
+      background: #f8fafc;
+      color: #0f172a;
+    }}
+    notebook tab {{
+      background: #e2e8f0;
+      color: #0f172a;
+      border-radius: 10px 10px 0 0;
+      padding: 8px 12px;
+    }}
+    notebook tab:checked {{
+      background: #ffffff;
+      color: #2563eb;
+    }}
+    treeview, treeview.view {{
       color: #0f172a;
       background: #ffffff;
       border-radius: 10px;
-    }
-    treeview:selected, treeview.view:selected {
+    }}
+    treeview:selected, treeview.view:selected {{
       color: #ffffff;
       background: #2563eb;
-    }
-    treeview header button {
+    }}
+    treeview header button {{
       color: #334155;
       background: #f8fafc;
       border-radius: 0;
       border: 0;
       border-bottom: 1px solid rgba(148, 163, 184, 0.4);
       font-weight: 700;
-    }
+    }}
+    levelbar block.filled {{
+      background: #2563eb;
+      border-radius: 999px;
+    }}
+    levelbar block.empty {{
+      background: #dbeafe;
+      border-radius: 999px;
+    }}
 
-    button {
+    button {{
       color: #1f2937;
-      background: rgba(255, 255, 255, 0.62);
+      background: rgba(255, 255, 255, 0.72);
       border: 1px solid rgba(148, 163, 184, 0.38);
       border-radius: 999px;
       padding: 7px 10px;
-    }
-    button:hover {
+    }}
+    button:hover {{
       background: rgba(219, 234, 254, 0.88);
       border-color: rgba(37, 99, 235, 0.42);
-    }
-    button:active {
+    }}
+    button:active {{
       background: rgba(147, 197, 253, 0.92);
       color: #0f172a;
-    }
-    label {
+    }}
+    label, checkbutton {{
       color: #1f2937;
-    }
-    checkbutton {
-      color: #1f2937;
-    }
-    '''
+    }}
+    '''.encode()
     provider = Gtk.CssProvider()
     provider.load_from_data(css)
     screen = Gdk.Screen.get_default()

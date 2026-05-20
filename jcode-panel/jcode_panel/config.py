@@ -40,6 +40,11 @@ class SessionConfig:
 class UIConfig:
     dropdown_max_messages: int = 20
     floating_opacity: float = 0.92
+    base_color: str = "#eff6ff"
+    text_color: str = "#1f2937"
+    font_size: int = 13
+    font_bold: bool = False
+    font_italic: bool = False
 
 
 @dataclass
