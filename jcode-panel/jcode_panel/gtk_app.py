@@ -414,7 +414,7 @@ class AnswerToast(Gtk.Window):
         prompt_btn = self._icon_button("mail-reply-sender-symbolic", "Reply")
         prompt_btn.connect("clicked", lambda _b: self.app.show_prompt())
         close_btn = self._icon_button("window-close-symbolic", "Dismiss")
-        close_btn.connect("clicked", lambda _b: self.hide())
+        close_btn.connect("clicked", lambda _b: self.app.stop_answering("dismissed"))
         actions.pack_start(open_btn, False, False, 0)
         actions.pack_start(prompt_btn, False, False, 0)
         actions.pack_end(close_btn, False, False, 0)
@@ -469,6 +469,9 @@ class AnswerToast(Gtk.Window):
             GLib.source_remove(self.refresh_source_id)
             self.refresh_source_id = 0
         super().hide()
+
+    def dismiss(self):
+        self.hide()
 
     def _reset_idle_hide_timer(self):
         if self.hide_source_id:
@@ -542,7 +545,9 @@ class PanelApp:
         self.live_activity = LiveActivity()
         self.activity_tick_id = 0
         self.send_watchdog_id = 0
+        self.answer_timeout_id = 0
         self.send_sequence = 0
+        self.answer_sequence = 0
         self.feedback_text = ""
         self.dropdown_refresh_id = 0
         self.last_prompt_toggle_at = 0.0
@@ -649,6 +654,8 @@ class PanelApp:
             self._update_header_status()
             self.toast.update_feedback(self.feedback_text)
         elif event.kind == PanelEventKind.MESSAGE and event.text:
+            if self.answer_sequence != self.send_sequence:
+                return False
             terminal_message = activity_is_terminal(event)
             if event.raw and event.raw.get("type") == "done":
                 # `done` repeats the full answer after text_delta chunks. Use it
@@ -658,8 +665,9 @@ class PanelApp:
             else:
                 self.feedback_text += event.text
             self.process_status = "answering"
+            self._schedule_answer_timeout(self.answer_sequence)
             if terminal_message:
-                self._finish_activity("answering")
+                self.stop_answering("complete")
             else:
                 self.live_activity = LiveActivity(label="jcode", state="answering", started_at=self.live_activity.started_at or time.monotonic(), active=True)
                 self._ensure_activity_tick()
@@ -701,6 +709,28 @@ class PanelApp:
         if self.activity_tick_id:
             GLib.source_remove(self.activity_tick_id)
             self.activity_tick_id = 0
+
+    def stop_answering(self, status: str = "idle"):
+        self.answer_sequence += 1
+        if self.answer_timeout_id:
+            GLib.source_remove(self.answer_timeout_id)
+            self.answer_timeout_id = 0
+        self._finish_activity(status)
+        self.process_status = status or "idle"
+        self._update_header_status()
+        if status == "dismissed":
+            self.toast.dismiss()
+
+    def _schedule_answer_timeout(self, answer_sequence: int) -> None:
+        if self.answer_timeout_id:
+            GLib.source_remove(self.answer_timeout_id)
+        self.answer_timeout_id = GLib.timeout_add_seconds(45, self._answer_timeout, answer_sequence)
+
+    def _answer_timeout(self, answer_sequence: int) -> bool:
+        self.answer_timeout_id = 0
+        if answer_sequence == self.answer_sequence and self.live_activity.active and self.live_activity.state == "answering":
+            self.stop_answering("timed out")
+        return False
 
     def _ensure_activity_tick(self):
         if not self.activity_tick_id:
@@ -752,6 +782,10 @@ class PanelApp:
         self._sync_client_session()
         self.send_sequence += 1
         send_sequence = self.send_sequence
+        self.answer_sequence = send_sequence
+        if self.answer_timeout_id:
+            GLib.source_remove(self.answer_timeout_id)
+            self.answer_timeout_id = 0
         # Panel prompt should go to jcode exactly as typed. Context is captured
         # for UI display/state, but not prepended or sent as extra metadata.
         payload, metadata = text.strip(), None
