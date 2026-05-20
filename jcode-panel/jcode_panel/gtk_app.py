@@ -97,7 +97,13 @@ class FloatingInput(Gtk.Window):
         if self.follow_source_id:
             GLib.source_remove(self.follow_source_id)
         self.follow_source_id = GLib.timeout_add(16, self._follow_mouse_tick)
-        self.present()
+        self.present_with_time(Gtk.get_current_event_time())
+        self.set_focus(self.entry)
+        self.entry.grab_focus()
+        GLib.idle_add(self._focus_entry)
+        GLib.timeout_add(25, self._focus_entry)
+        GLib.timeout_add(75, self._focus_entry)
+        GLib.timeout_add(160, self._focus_entry)
 
     def _follow_mouse_tick(self, initial: tuple[int | None, int | None] | None = None) -> bool:
         if not self.follow_mouse or not self.get_visible():
@@ -522,6 +528,10 @@ class PanelApp:
             self._ambient_alt = pressed
             return False
         if not pressed or not self.floating.get_visible():
+            return False
+        # If GTK successfully focused the entry, let normal GTK text handling
+        # happen. Ambient routing is only the fallback when another app has focus.
+        if self.floating.entry.has_focus():
             return False
         if lowered in {"enter", "return"}:
             self.floating.submit()
