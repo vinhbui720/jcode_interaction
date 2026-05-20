@@ -75,6 +75,7 @@ def parse_panel_event(line: str) -> PanelEvent:
         return PanelEvent(kind=PanelEventKind.RAW, text=str(data), raw={"value": data})
 
     typ = str(data.get("type") or data.get("kind") or "message")
+    normalized_typ = typ.lower().replace("-", "_")
     if typ.startswith("panel."):
         typ = typ.removeprefix("panel.")
 
@@ -109,8 +110,14 @@ def parse_panel_event(line: str) -> PanelEvent:
         "command_end": PanelEventKind.TOOL,
         "bash": PanelEventKind.TOOL,
         "exec": PanelEventKind.TOOL,
+        "backend/chat/status": PanelEventKind.STATUS,
+        "chat/status": PanelEventKind.STATUS,
+        "backend_chat_status": PanelEventKind.STATUS,
+        "chat_status": PanelEventKind.STATUS,
+        "persistent_section_status": PanelEventKind.STATUS,
+        "persistent-section/status": PanelEventKind.STATUS,
     }
-    kind = aliases.get(typ, PanelEventKind.RAW)
+    kind = aliases.get(typ, aliases.get(normalized_typ, PanelEventKind.RAW))
     completions = [CompletionItem.from_any(x) for x in data.get("items", [])] if kind == PanelEventKind.COMPLETIONS else []
     return PanelEvent(
         kind=kind,
@@ -179,14 +186,27 @@ def activity_label(raw: dict[str, Any] | None, fallback: str = "") -> str:
     """Best-effort short label for currently executing tool/command events."""
     if not raw:
         return fallback.strip()
+    for nested_key in ("activity", "current", "current_tool", "tool_call", "command", "bash"):
+        nested = raw.get(nested_key)
+        if isinstance(nested, dict):
+            nested_label = activity_label(nested, "")
+            if nested_label:
+                return nested_label
     for key in (
         "command",
         "cmd",
+        "args",
+        "argv",
+        "input",
         "tool_input",
         "tool_name",
+        "tool",
         "name",
         "title",
         "label",
+        "operation",
+        "description",
+        "target",
         "text",
         "message",
         "phase",
@@ -205,6 +225,12 @@ def activity_label(raw: dict[str, Any] | None, fallback: str = "") -> str:
 
 def activity_state(raw: dict[str, Any] | None, fallback: str = "") -> str:
     if raw:
+        for nested_key in ("activity", "current", "current_tool", "tool_call", "command", "bash"):
+            nested = raw.get(nested_key)
+            if isinstance(nested, dict):
+                nested_state = activity_state(nested, "")
+                if nested_state:
+                    return nested_state
         for key in ("state", "status", "phase", "event", "action"):
             value = raw.get(key)
             if isinstance(value, str) and value.strip():
@@ -215,8 +241,14 @@ def activity_state(raw: dict[str, Any] | None, fallback: str = "") -> str:
 def activity_is_terminal(event: PanelEvent) -> bool:
     if event.kind == PanelEventKind.ERROR:
         return True
-    typ = str((event.raw or {}).get("type") or (event.raw or {}).get("kind") or "").lower()
+    raw = event.raw or {}
+    typ = str(raw.get("type") or raw.get("kind") or "").lower()
     state = activity_state(event.raw, event.text)
+    if isinstance(raw.get("active"), bool):
+        return not raw["active"]
+    activity = raw.get("activity")
+    if isinstance(activity, dict) and isinstance(activity.get("active"), bool):
+        return not activity["active"]
     terminal_terms = ("done", "end", "complete", "completed", "finished", "success", "failed", "error", "cancel")
     return any(term in typ for term in terminal_terms) or any(term in state for term in terminal_terms)
 

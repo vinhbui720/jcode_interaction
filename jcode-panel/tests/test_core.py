@@ -122,6 +122,25 @@ def test_protocol_activity_helpers_detect_terminal_events():
     assert activity_is_terminal(event)
 
 
+def test_protocol_backend_chat_status_drives_live_activity():
+    event = parse_panel_event(
+        '{"type":"backend/chat/status","activity":{"tool_name":"bash","command":"pytest -q","state":"running","active":true}}'
+    )
+    assert event.kind == PanelEventKind.STATUS
+    assert activity_label(event.raw, event.text) == "pytest -q"
+    assert activity_state(event.raw, event.text) == "running"
+    assert not activity_is_terminal(event)
+
+
+def test_protocol_backend_chat_status_can_finish_activity():
+    event = parse_panel_event(
+        '{"type":"persistent-section/status","activity":{"tool_name":"bash","command":"pytest -q","state":"completed","active":false}}'
+    )
+    assert event.kind == PanelEventKind.STATUS
+    assert activity_label(event.raw, event.text) == "pytest -q"
+    assert activity_is_terminal(event)
+
+
 def test_protocol_activity_helpers_keep_streaming_message_active():
     delta = parse_panel_event('{"type":"text_delta","text":"a"}')
     assert delta.kind == PanelEventKind.MESSAGE
