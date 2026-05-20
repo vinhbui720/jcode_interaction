@@ -1030,6 +1030,9 @@ class PanelApp:
         path = screenshot_dir / f"screenshot-{int(time.time())}.png"
         GLib.idle_add(self.toast.update_feedback, "Select a screenshot area...")
         GLib.idle_add(self._set_capture_status, "screenshot grab")
+        if self._capture_gnome_shell_area(path):
+            GLib.idle_add(self._send_screenshot_prompt, prompt, str(path))
+            return
         commands = [
             ["gnome-screenshot", "-a", "-f", str(path)],
             ["gnome-screenshot", "-f", str(path)],
@@ -1050,6 +1053,65 @@ class PanelApp:
             except Exception as exc:
                 error = str(exc)
         GLib.idle_add(self._screenshot_failed, error or "No screenshot tool found")
+
+    def _capture_gnome_shell_area(self, path: Path) -> bool:
+        """Capture a user-selected area via GNOME Shell DBus.
+
+        Ubuntu's Ctrl+Shift+A screenshot UI is GNOME Shell itself. Many installs
+        no longer ship the `gnome-screenshot` CLI, so use the same shell DBus
+        API directly.
+        """
+        try:
+            select = subprocess.check_output(
+                [
+                    "gdbus",
+                    "call",
+                    "--session",
+                    "--dest",
+                    "org.gnome.Shell",
+                    "--object-path",
+                    "/org/gnome/Shell/Screenshot",
+                    "--method",
+                    "org.gnome.Shell.Screenshot.SelectArea",
+                ],
+                text=True,
+                stderr=subprocess.STDOUT,
+                timeout=60,
+                cwd=str(Path.home()),
+            )
+            numbers = [int(part) for part in select.replace("(", " ").replace(")", " ").replace(",", " ").split() if part.lstrip("-").isdigit()]
+            if len(numbers) < 4:
+                return False
+            x, y, width, height = numbers[:4]
+            if width <= 0 or height <= 0:
+                return False
+            result = subprocess.check_output(
+                [
+                    "gdbus",
+                    "call",
+                    "--session",
+                    "--dest",
+                    "org.gnome.Shell",
+                    "--object-path",
+                    "/org/gnome/Shell/Screenshot",
+                    "--method",
+                    "org.gnome.Shell.Screenshot.ScreenshotArea",
+                    str(x),
+                    str(y),
+                    str(width),
+                    str(height),
+                    "true",
+                    str(path),
+                ],
+                text=True,
+                stderr=subprocess.STDOUT,
+                timeout=15,
+                cwd=str(Path.home()),
+            )
+            return "true" in result.lower() and path.exists() and path.stat().st_size > 0
+        except Exception as exc:
+            append_log(f"GNOME Shell screenshot failed: {exc}")
+            return False
 
     def _set_capture_status(self, label: str) -> bool:
         self.process_status = label
