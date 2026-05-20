@@ -213,23 +213,24 @@ def test_jcode_client_repl_args_and_adopt_session():
     assert client.session_id == "new-session"
 
 
-def test_jcode_client_new_section_uses_plain_persistent_repl():
+def test_jcode_client_new_section_waits_for_bootstrap_session():
     client = JcodeClient("")
     assert client._repl_args() == ["jcode", "repl"]
+    client.connect = lambda: None  # shape-only regression: no saved session means no repl args are used yet
 
 
-def test_jcode_client_send_uses_repl_for_new_section(monkeypatch):
+def test_jcode_client_send_bootstraps_new_section(monkeypatch):
     client = JcodeClient("")
     calls = []
 
-    def fake_send_to_repl(_self, prompt: str):
+    def fake_run_first_prompt(_self, prompt: str):
         calls.append(prompt)
 
-    def fail_first_prompt(_self, prompt: str):
-        raise AssertionError(f"unexpected one-shot bootstrap: {prompt}")
+    def fail_send_to_repl(_self, prompt: str):
+        raise AssertionError(f"unexpected repl send before session exists: {prompt}")
 
-    monkeypatch.setattr("jcode_panel.jcode_client.JcodeClient._send_to_repl", fake_send_to_repl)
-    monkeypatch.setattr("jcode_panel.jcode_client.JcodeClient._run_first_prompt", fail_first_prompt)
+    monkeypatch.setattr("jcode_panel.jcode_client.JcodeClient._run_first_prompt", fake_run_first_prompt)
+    monkeypatch.setattr("jcode_panel.jcode_client.JcodeClient._send_to_repl", fail_send_to_repl)
 
     client._send_prompt("hello")
 
