@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import queue
+import re
 import shutil
 import subprocess
 import threading
@@ -10,6 +11,9 @@ from pathlib import Path
 from typing import Callable
 
 from .protocol import CompletionItem, ConnectionState, PanelEvent, PanelEventKind, parse_panel_event
+
+
+ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
 
 class JcodeUnavailable(RuntimeError):
@@ -83,7 +87,7 @@ class JcodeClient:
             return
         try:
             for line in proc.stdout:
-                line = line.rstrip("\n")
+                line = ANSI_RE.sub("", line.rstrip("\n"))
                 if not line or line.strip() == ">":
                     continue
                 # Hide REPL chrome from chat, keep useful activity lines.

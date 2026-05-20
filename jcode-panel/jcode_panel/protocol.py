@@ -69,7 +69,7 @@ def parse_panel_event(line: str) -> PanelEvent:
     try:
         data = json.loads(line)
     except Exception:
-        return PanelEvent(kind=PanelEventKind.RAW, text=line, raw=None)
+        return PanelEvent(kind=PanelEventKind.MESSAGE, text=line, role="assistant", raw=None)
 
     if not isinstance(data, dict):
         return PanelEvent(kind=PanelEventKind.RAW, text=str(data), raw={"value": data})

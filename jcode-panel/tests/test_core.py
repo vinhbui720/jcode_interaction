@@ -32,7 +32,9 @@ def test_parse_structured_and_plain_events():
     event = parse_event('{"type":"status","text":"Running tests"}')
     assert event.kind == PanelEventKind.STATUS
     assert event.text == "Running tests"
-    assert parse_event("hello").text == "hello"
+    plain = parse_event("hello")
+    assert plain.kind == PanelEventKind.MESSAGE
+    assert plain.text == "hello"
 
 
 def test_conversation_preview_debug_and_status():

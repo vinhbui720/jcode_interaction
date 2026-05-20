@@ -670,9 +670,9 @@ class PanelApp:
     def _handle_transient_status(self, event: PanelEvent) -> bool:
         text = (event.text or "").strip().lower()
         if text.startswith("sending prompt"):
-            self.process_status = "sent to jcode"
+            self.process_status = "waiting for jcode"
             if self.live_activity.state == "sending":
-                self._finish_activity("sent")
+                self._finish_activity("waiting")
             return True
         if text in {"jcode response complete", "message_end", "message end"}:
             self._finish_activity("complete")
