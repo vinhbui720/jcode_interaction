@@ -169,6 +169,24 @@ def test_protocol_backend_chat_status_current_can_finish_activity():
     assert activity_is_terminal(event)
 
 
+def test_protocol_backend_chat_status_prefers_current_over_activity():
+    event = parse_panel_event(
+        '{"type":"backend/chat/status",'
+        '"activity":{"tool_name":"bash","command":"stale pytest","state":"running","active":true},'
+        '"current":{"tool_name":"read","target":"README.md","state":"completed","active":false}}'
+    )
+    assert activity_label(event.raw, event.text) == "read"
+    assert activity_state(event.raw, event.text) == "completed"
+    assert activity_is_terminal(event)
+
+
+def test_protocol_backend_chat_status_preview_uses_current_when_text_empty():
+    event = parse_panel_event(
+        '{"type":"backend/chat/status","current":{"tool_name":"bash","command":"pytest -q","state":"running","active":true}}'
+    )
+    assert event_preview(event) == "pytest -q"
+
+
 def test_protocol_backend_chat_status_nested_status_current():
     event = parse_panel_event(
         '{"type":"backend/chat/status","status":{"current":{"command":"pytest -q","state":"running","active":true}}}'
@@ -193,6 +211,29 @@ def test_jcode_client_repl_args_and_adopt_session():
     assert client._repl_args() == ["jcode", "repl", "--resume", "panel-session"]
     client.adopt_session("new-session")
     assert client.session_id == "new-session"
+
+
+def test_jcode_client_new_section_uses_plain_persistent_repl():
+    client = JcodeClient("")
+    assert client._repl_args() == ["jcode", "repl"]
+
+
+def test_jcode_client_send_uses_repl_for_new_section(monkeypatch):
+    client = JcodeClient("")
+    calls = []
+
+    def fake_send_to_repl(_self, prompt: str):
+        calls.append(prompt)
+
+    def fail_first_prompt(_self, prompt: str):
+        raise AssertionError(f"unexpected one-shot bootstrap: {prompt}")
+
+    monkeypatch.setattr("jcode_panel.jcode_client.JcodeClient._send_to_repl", fake_send_to_repl)
+    monkeypatch.setattr("jcode_panel.jcode_client.JcodeClient._run_first_prompt", fail_first_prompt)
+
+    client._send_prompt("hello")
+
+    assert calls == ["hello"]
 
 
 def test_protocol_parses_completion_items_and_session():

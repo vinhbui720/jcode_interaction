@@ -18,12 +18,11 @@ class JcodeUnavailable(RuntimeError):
 class JcodeClient:
     """Panel-owned jcode client wrapper.
 
-    For saved sessions this keeps one `jcode repl --resume <session>` process
-    alive and writes prompts to stdin. That preserves the real CLI client's
-    history/tools/command execution until the panel quits or the user switches
-    sections. For brand-new sections, the first prompt still uses
-    `jcode run --ndjson` once so we can discover and persist the new session id;
-    subsequent prompts switch to the long-lived REPL client.
+    This keeps one `jcode repl` process alive and writes prompts to stdin. Saved
+    sections start with `jcode repl --resume <session>`; brand-new sections start
+    plain `jcode repl` and persist the session id as soon as the stream reports
+    one. Keeping a single long-lived client avoids split history where the panel
+    sends chat through one client while the terminal opens another.
     """
 
     def __init__(self, session_id: str = ""):
@@ -46,11 +45,7 @@ class JcodeClient:
 
     def connect(self) -> None:
         self.ensure_available()
-        if self.session_id:
-            self._ensure_repl()
-        else:
-            self.state = ConnectionState.CONNECTED
-            self.events.put(PanelEvent(kind=PanelEventKind.STATUS, text="jcode-panel ready; first prompt will create a session"))
+        self._ensure_repl()
 
     def _repl_args(self) -> list[str]:
         args = ["jcode", "repl"]
@@ -108,10 +103,7 @@ class JcodeClient:
 
     def _send_prompt(self, prompt: str) -> None:
         with self._send_lock:
-            if self.session_id:
-                self._send_to_repl(prompt)
-            else:
-                self._run_first_prompt(prompt)
+            self._send_to_repl(prompt)
 
     def _send_to_repl(self, prompt: str) -> None:
         self._ensure_repl()
@@ -156,22 +148,21 @@ class JcodeClient:
 
     def set_session(self, session_id: str) -> None:
         session_id = session_id.strip()
-        if session_id == self.session_id:
+        if session_id == self.session_id and self.process and self.process.poll() is None:
             return
         self.disconnect()
         self.session_id = session_id
-        if self.session_id:
-            try:
-                self._ensure_repl()
-            except Exception as exc:
-                self.last_error = str(exc)
-                self.events.put(PanelEvent(kind=PanelEventKind.ERROR, text=f"jcode repl start failed: {exc}"))
+        try:
+            self._ensure_repl()
+        except Exception as exc:
+            self.last_error = str(exc)
+            self.events.put(PanelEvent(kind=PanelEventKind.ERROR, text=f"jcode repl start failed: {exc}"))
 
     def adopt_session(self, session_id: str) -> None:
         """Remember a session id discovered from events without restarting IO.
 
-        Used while the one-shot bootstrap command is still streaming. Once it
-        exits cleanly, `_run_first_prompt` starts the persistent REPL.
+        Used while the resident REPL is streaming. The current process already
+        owns the session, so restarting would lose live command/tool context.
         """
         self.session_id = session_id.strip()
 

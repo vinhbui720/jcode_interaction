@@ -15,11 +15,26 @@ class MonkeyPatch:
         self._undo = []
 
     def setattr(self, target: str, value) -> None:
-        module_name, attr = target.rsplit(".", 1)
-        module = importlib.import_module(module_name)
-        old = getattr(module, attr)
-        setattr(module, attr, value)
-        self._undo.append((module, attr, old))
+        parts = target.split(".")
+        module = None
+        module_index = 0
+        for index in range(len(parts), 0, -1):
+            module_name = ".".join(parts[:index])
+            try:
+                module = importlib.import_module(module_name)
+            except ModuleNotFoundError:
+                continue
+            module_index = index
+            break
+        if module is None or module_index >= len(parts):
+            raise AttributeError(target)
+        obj = module
+        for attr in parts[module_index:-1]:
+            obj = getattr(obj, attr)
+        attr = parts[-1]
+        old = getattr(obj, attr)
+        setattr(obj, attr, value)
+        self._undo.append((obj, attr, old))
 
     def undo(self) -> None:
         while self._undo:

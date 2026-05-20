@@ -317,8 +317,8 @@ class Dropdown(Gtk.Window):
         root.pack_start(scroller, True, True, 0)
         actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         for label, cb in [
-            ("⌨ Terminal", self.app.open_terminal),
-            ("▣ jcode", self.app.open_jcode),
+            ("⌨ Same session", self.app.open_terminal),
+            ("▣ Panel", self.app.show_prompt),
             ("+ New", self.app.new_session),
             ("↩ Resume", self.app.resume_session),
             ("⚙ Settings", self.app.show_settings),
@@ -669,6 +669,7 @@ class PanelApp:
         return f"{secs}s"
 
     def send_prompt(self, text: str, include_context: bool):
+        self._sync_client_session()
         payload, metadata = self.controller.build_prompt(text, self.active_context, include_context)
         self.feedback_text = ""
         self.process_status = "sending"
@@ -683,6 +684,12 @@ class PanelApp:
         except Exception as exc:
             self._add_system(str(exc))
 
+
+    def _sync_client_session(self) -> None:
+        """Keep the resident REPL aligned with the panel section state."""
+        active = self.controller.active_session or ""
+        if self.client.session_id != active or not self.client.process or self.client.process.poll() is not None:
+            self.client.set_session(active)
 
     def _route_ambient_key(self, key, pressed: bool):
         name = getattr(key, "name", None) or ""
@@ -792,8 +799,13 @@ class PanelApp:
             self.show_dropdown()
 
     def open_terminal(self):
+        self._sync_client_session()
         session = self.controller.active_session or ""
-        launch(f"jcode --resume {session}" if session else "jcode", self.config.general.terminal, self.config.general.terminal_template)
+        if not session:
+            self._add_system("No saved jcode session yet. Send the first panel prompt, then open the same session terminal.")
+            self.show_prompt()
+            return
+        launch(f"jcode --resume {session}", self.config.general.terminal, self.config.general.terminal_template)
 
     def open_jcode(self):
         self.open_terminal()

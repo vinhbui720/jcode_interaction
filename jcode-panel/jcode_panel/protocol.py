@@ -176,7 +176,7 @@ def event_preview(event: PanelEvent, debug: bool = False) -> str:
         pct = f" {int(event.progress * 100)}%" if event.progress is not None else ""
         return f"{event.text}{pct}"[:160]
     if event.kind == PanelEventKind.STATUS:
-        return event.text[:160]
+        return (event.text or activity_label(event.raw, ""))[:160]
     if event.kind == PanelEventKind.SESSION and event.session_id:
         return f"Session: {event.session_id}"
     return (event.text or event.kind.value)[:160]
@@ -252,7 +252,10 @@ def activity_is_terminal(event: PanelEvent) -> bool:
 
 def _nested_activity_dicts(raw: dict[str, Any]) -> list[dict[str, Any]]:
     nested: list[dict[str, Any]] = []
-    for nested_key in ("activity", "current", "current_tool", "tool_call", "command", "bash", "status", "ui"):
+    # `backend/chat/status` can include both a legacy `activity` snapshot and a
+    # fresher `current` UI model. Prefer `current` so the panel header/dropdown
+    # follows the live item instead of showing stale activity text.
+    for nested_key in ("current", "activity", "current_tool", "tool_call", "command", "bash", "status", "ui"):
         value = raw.get(nested_key)
         if isinstance(value, dict):
             nested.append(value)
