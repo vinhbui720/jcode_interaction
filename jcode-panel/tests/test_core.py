@@ -155,3 +155,14 @@ def test_shortcut_result_shape():
 def test_protocol_extracts_common_ndjson_text_shapes():
     assert parse_panel_event('{"type":"assistant","delta":"hi"}').text == "hi"
     assert parse_panel_event('{"type":"message","content":[{"text":"a"},{"text":"b"}]}').text == "ab"
+
+
+def test_conversation_coalesces_text_delta_stream():
+    buf = ConversationBuffer(max_messages=10)
+    buf.add_user("hello")
+    buf.add_event(parse_panel_event('{"type":"connection_phase","phase":"streaming"}'))
+    buf.add_event(parse_panel_event('{"type":"text_delta","text":"hello"}'))
+    buf.add_event(parse_panel_event('{"type":"text_delta","text":" world"}'))
+    buf.add_event(parse_panel_event('{"type":"message_end"}'))
+    buf.add_event(parse_panel_event('{"type":"done","text":"hello world"}'))
+    assert buf.messages == [("You", "hello"), ("jcode", "hello world")]
