@@ -41,15 +41,11 @@ class JcodeClient:
 
     def connect(self) -> None:
         self.ensure_available()
-        self.state = ConnectionState.CONNECTING
-        args = ["jcode", "connect"]
-        if self.session_id:
-            args += ["--resume", self.session_id]
-        self.process = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        # `jcode connect` is a TUI client and can exit/break pipes when driven
+        # without a PTY. The panel quick-prompt path uses `jcode run` per
+        # prompt until a formal stable panel API exists.
         self.state = ConnectionState.CONNECTED
-        self.events.put(PanelEvent(kind=PanelEventKind.STATUS, text="Connected to jcode"))
-        self._reader = threading.Thread(target=self._read_stdout, daemon=True)
-        self._reader.start()
+        self.events.put(PanelEvent(kind=PanelEventKind.STATUS, text="jcode-panel ready"))
 
     def _read_stdout(self) -> None:
         assert self.process and self.process.stdout
@@ -66,14 +62,32 @@ class JcodeClient:
                 self.events.put(PanelEvent(kind=PanelEventKind.STATUS, text="Disconnected from jcode"))
 
     def send(self, prompt: str, context: dict | None = None) -> None:
-        if not self.process or not self.process.stdin:
-            raise JcodeUnavailable("jcode client is not connected")
-        if self.process.poll() is not None:
-            self.state = ConnectionState.DISCONNECTED
-            raise JcodeUnavailable("jcode client process has exited")
-        # Future structured metadata can be negotiated here. Fallback sends text.
-        self.process.stdin.write(prompt + "\n")
-        self.process.stdin.flush()
+        self.ensure_available()
+        if not prompt.strip():
+            return
+        threading.Thread(target=self._run_prompt, args=(prompt,), daemon=True).start()
+
+    def _run_prompt(self, prompt: str) -> None:
+        args = ["jcode", "run", "--ndjson"]
+        if self.session_id:
+            args += ["--resume", self.session_id]
+        args.append(prompt)
+        self.events.put(PanelEvent(kind=PanelEventKind.STATUS, text="Sending prompt to jcode..."))
+        try:
+            proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+            assert proc.stdout
+            for line in proc.stdout:
+                line = line.rstrip("\n")
+                if line:
+                    self.events.put(parse_event(line))
+            code = proc.wait()
+            if code == 0:
+                self.events.put(PanelEvent(kind=PanelEventKind.STATUS, text="jcode response complete"))
+            else:
+                self.events.put(PanelEvent(kind=PanelEventKind.ERROR, text=f"jcode run exited with code {code}"))
+        except Exception as exc:
+            self.last_error = str(exc)
+            self.events.put(PanelEvent(kind=PanelEventKind.ERROR, text=f"jcode run failed: {exc}"))
 
     def stream(self, on_event: Callable[[PanelEvent], None]) -> None:
         while True:

@@ -150,3 +150,8 @@ def test_shortcut_result_shape():
     result = ShortcutResult(True, "installed")
     assert result.ok
     assert result.message == "installed"
+
+
+def test_protocol_extracts_common_ndjson_text_shapes():
+    assert parse_panel_event('{"type":"assistant","delta":"hi"}').text == "hi"
+    assert parse_panel_event('{"type":"message","content":[{"text":"a"},{"text":"b"}]}').text == "ab"

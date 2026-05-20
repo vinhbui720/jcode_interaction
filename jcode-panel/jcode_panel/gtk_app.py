@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import threading
 import os
+import re
+import subprocess
 
 import gi
 gi.require_version("Gtk", "3.0")
@@ -51,16 +53,29 @@ class FloatingInput(Gtk.Window):
         self.app.active_context = capture_active_context()
         self.context_enabled = self.app.config.session.send_context_default
         self.context_label.set_text("📎 " + self.app.active_context.summary())
+        x, y = self._mouse_position()
+        if x is not None and y is not None:
+            self.move(max(0, x - 12), max(0, y + 12))
+        self.entry.set_text("")
+        self.show_all()
+        self.present()
+        self.entry.grab_focus()
+
+    def _mouse_position(self) -> tuple[int | None, int | None]:
+        try:
+            out = subprocess.check_output(["xdotool", "getmouselocation"], text=True, stderr=subprocess.DEVNULL, timeout=1)
+            match = re.search(r"x:(\d+)\s+y:(\d+)", out)
+            if match:
+                return int(match.group(1)), int(match.group(2))
+        except Exception:
+            pass
         display = Gdk.Display.get_default()
         seat = display.get_default_seat() if display else None
         pointer = seat.get_pointer() if seat else None
         if pointer:
             _screen, x, y = pointer.get_position()
-            self.move(x, y)
-        self.entry.set_text("")
-        self.show_all()
-        self.present()
-        self.entry.grab_focus()
+            return x, y
+        return None, None
 
     def _on_enter(self, _entry):
         text = self.entry.get_text().strip()

@@ -79,7 +79,10 @@ def parse_panel_event(line: str) -> PanelEvent:
         typ = typ.removeprefix("panel.")
 
     aliases = {
+        "assistant": PanelEventKind.MESSAGE,
         "assistant_message": PanelEventKind.MESSAGE,
+        "response": PanelEventKind.MESSAGE,
+        "delta": PanelEventKind.MESSAGE,
         "message": PanelEventKind.MESSAGE,
         "status": PanelEventKind.STATUS,
         "progress": PanelEventKind.PROGRESS,
@@ -94,7 +97,7 @@ def parse_panel_event(line: str) -> PanelEvent:
     completions = [CompletionItem.from_any(x) for x in data.get("items", [])] if kind == PanelEventKind.COMPLETIONS else []
     return PanelEvent(
         kind=kind,
-        text=str(data.get("text") or data.get("content") or data.get("message") or ""),
+        text=_extract_text(data),
         role=str(data.get("role") or data.get("speaker") or "jcode"),
         session_id=str(data.get("session_id") or data.get("sessionId") or data.get("session") or ""),
         progress=_coerce_progress(data.get("progress") or data.get("percent")),
@@ -114,6 +117,30 @@ def _coerce_progress(value: Any) -> float | None:
     if number > 1:
         number = number / 100.0
     return max(0.0, min(1.0, number))
+
+
+def _extract_text(data: dict[str, Any]) -> str:
+    for key in ("text", "content", "message", "delta", "output"):
+        value = data.get(key)
+        if isinstance(value, str) and value:
+            return value
+    # Some event streams use nested message/content arrays. Keep this generic
+    # and conservative so unknown JSON does not render as empty "raw".
+    message = data.get("message")
+    if isinstance(message, dict):
+        return _extract_text(message)
+    content = data.get("content")
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = _extract_text(item)
+                if text:
+                    parts.append(text)
+        return "".join(parts)
+    return ""
 
 
 def event_preview(event: PanelEvent, debug: bool = False) -> str:
