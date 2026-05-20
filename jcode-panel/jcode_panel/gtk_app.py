@@ -335,6 +335,13 @@ class AnswerToast(Gtk.Window):
         self.set_skip_pager_hint(True)
         self.set_accept_focus(False)
         self.set_type_hint(Gdk.WindowTypeHint.NOTIFICATION)
+        self.set_opacity(0.88)
+        self.set_app_paintable(True)
+        screen = self.get_screen()
+        visual = screen.get_rgba_visual() if screen else None
+        if visual:
+            self.set_visual(visual)
+        self.connect("draw", self._draw_transparent)
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         add_class(root, "toast-root")
         title = Gtk.Label(label="jcode feedback")
@@ -346,11 +353,11 @@ class AnswerToast(Gtk.Window):
         self.label.set_max_width_chars(52)
         add_class(self.label, "toast-text")
         actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
-        open_btn = Gtk.Button(label="Open")
+        open_btn = self._icon_button("view-list-symbolic", "Open conversation")
         open_btn.connect("clicked", lambda _b: self.app.show_dropdown())
-        prompt_btn = Gtk.Button(label="Reply")
+        prompt_btn = self._icon_button("mail-reply-sender-symbolic", "Reply")
         prompt_btn.connect("clicked", lambda _b: self.app.show_prompt())
-        close_btn = Gtk.Button(label="Dismiss")
+        close_btn = self._icon_button("window-close-symbolic", "Dismiss")
         close_btn.connect("clicked", lambda _b: self.hide())
         actions.pack_start(open_btn, False, False, 0)
         actions.pack_start(prompt_btn, False, False, 0)
@@ -361,6 +368,22 @@ class AnswerToast(Gtk.Window):
         self.add(root)
         self.set_default_size(380, 150)
         self.hide_source_id = 0
+
+    def _draw_transparent(self, _widget, cr):
+        cr.set_source_rgba(0, 0, 0, 0)
+        cr.set_operator(0)  # cairo.OPERATOR_CLEAR without importing cairo
+        cr.paint()
+        cr.set_operator(2)  # cairo.OPERATOR_OVER
+        return False
+
+    def _icon_button(self, icon_name: str, tooltip: str) -> Gtk.Button:
+        image = Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.BUTTON)
+        button = Gtk.Button()
+        button.set_image(image)
+        button.set_always_show_image(True)
+        button.set_tooltip_text(tooltip)
+        add_class(button, "toast-icon-button")
+        return button
 
     def update_feedback(self, text: str):
         text = text.strip()

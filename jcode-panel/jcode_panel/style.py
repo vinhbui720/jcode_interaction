@@ -60,11 +60,11 @@ def load_css(Gtk, Gdk) -> None:
     }
 
     .toast-root {
-      background: rgba(30, 30, 46, 0.96);
-      border: 1px solid #45475a;
+      background: rgba(24, 24, 37, 0.34);
+      border: 1px solid rgba(203, 166, 247, 0.28);
       border-radius: 16px;
       padding: 12px;
-      box-shadow: 0 18px 50px rgba(0,0,0,0.50);
+      box-shadow: 0 18px 50px rgba(0,0,0,0.22);
     }
     .toast-title {
       color: #cba6f7;
@@ -75,6 +75,23 @@ def load_css(Gtk, Gdk) -> None:
       color: #cdd6f4;
       background: transparent;
       font-size: 12px;
+    }
+    .toast-icon-button {
+      min-width: 28px;
+      min-height: 28px;
+      padding: 5px;
+      color: #cdd6f4;
+      background: rgba(49, 50, 68, 0.34);
+      border: 1px solid rgba(203, 166, 247, 0.20);
+      border-radius: 999px;
+    }
+    .toast-icon-button:hover {
+      background: rgba(203, 166, 247, 0.22);
+      border-color: rgba(203, 166, 247, 0.48);
+    }
+    .toast-icon-button:active {
+      background: rgba(203, 166, 247, 0.44);
+      color: #181825;
     }
 
     button {
