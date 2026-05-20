@@ -66,6 +66,34 @@ def _run(args: list[str]) -> str:
         return ""
 
 
+def _first_command_output(commands: list[list[str]]) -> str:
+    for command in commands:
+        value = _run(command)
+        if value:
+            return value
+    return ""
+
+
+def capture_selected_text() -> str:
+    """Best-effort capture of the X11 primary selection.
+
+    This is intentionally non-invasive: it only reads existing selections and
+    silently degrades when xclip/xsel are unavailable or the session is Wayland.
+    """
+    return _first_command_output([
+        ["xclip", "-o", "-selection", "primary"],
+        ["xsel", "-o", "--primary"],
+    ])
+
+
+def capture_clipboard_text() -> str:
+    """Best-effort capture of clipboard text for context-aware prompts."""
+    return _first_command_output([
+        ["xclip", "-o", "-selection", "clipboard"],
+        ["xsel", "-o", "--clipboard"],
+    ])
+
+
 def capture_active_context(window_id: str = "") -> ActiveContext:
     window = window_id or _run(["xdotool", "getactivewindow"])
     title = _run(["xdotool", "getwindowname", window]) if window else ""
@@ -76,7 +104,9 @@ def capture_active_context(window_id: str = "") -> ActiveContext:
             parts = [p.strip().strip('"') for p in wm_class.split("=")[-1].split(",")]
             app = parts[-1] if parts else ""
     browser = _latest_browser if (_latest_browser.title or _latest_browser.url or _latest_browser.selected_text) else None
-    return ActiveContext(app=app, window_title=title, browser=browser)
+    selected_text = capture_selected_text()
+    clipboard_text = capture_clipboard_text()
+    return ActiveContext(app=app, window_title=title, browser=browser, selected_text=selected_text, clipboard_text=clipboard_text)
 
 
 class BrowserBridge:

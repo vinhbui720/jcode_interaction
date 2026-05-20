@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from jcode_panel.config import AppConfig
-from jcode_panel.context import ActiveContext, BrowserContext
+from jcode_panel.context import ActiveContext, BrowserContext, capture_active_context
 from jcode_panel.dropdown import ConversationBuffer
 from jcode_panel.floating import CompletionState
 from jcode_panel.jcode_client import JcodeClient, parse_event
@@ -70,7 +70,13 @@ def test_state_roundtrip_and_prompt_dedupe(tmp_path: Path):
 
 
 def test_prompt_builder_context_fallback_and_metadata():
-    ctx = ActiveContext(app="Firefox", window_title="Issue", browser=BrowserContext(url="https://example.com"))
+    ctx = ActiveContext(
+        app="Firefox",
+        window_title="Issue",
+        browser=BrowserContext(url="https://example.com"),
+        selected_text="marked",
+        clipboard_text="copied",
+    )
     builder = PromptBuilder()
     text = builder.build_text(PromptRequest("explain", ctx, include_context=True))
     assert text.startswith("[Context]")
@@ -79,6 +85,8 @@ def test_prompt_builder_context_fallback_and_metadata():
     assert builder.build_text(metadata_req) == "explain"
     metadata = builder.build_metadata(metadata_req)
     assert metadata and metadata["browser"]["url"] == "https://example.com"
+    assert metadata["selected_text"] == "marked"
+    assert metadata["clipboard_text"] == "copied"
 
 
 def test_app_controller_active_session_prefers_state():
@@ -251,3 +259,24 @@ def test_context_prompt_block_includes_selection_and_clipboard():
     block = ctx.as_prompt_block()
     assert "Selected text: marked" in block
     assert "Clipboard: file:///tmp/a.png" in block
+
+
+def test_capture_active_context_reads_selection_and_clipboard(monkeypatch):
+    responses = {
+        ("xdotool", "getwindowname", "123"): "Doc.pdf",
+        ("xprop", "-id", "123", "WM_CLASS"): 'WM_CLASS(STRING) = "evince", "Evince"',
+        ("xclip", "-o", "-selection", "primary"): "highlighted text",
+        ("xclip", "-o", "-selection", "clipboard"): "copied text",
+    }
+
+    def fake_run(args):
+        return responses.get(tuple(args), "")
+
+    monkeypatch.setattr("jcode_panel.context._run", fake_run)
+
+    ctx = capture_active_context("123")
+
+    assert ctx.app == "Evince"
+    assert ctx.window_title == "Doc.pdf"
+    assert ctx.selected_text == "highlighted text"
+    assert ctx.clipboard_text == "copied text"

@@ -35,6 +35,8 @@ class PromptBuilder:
         return {
             "app": ctx.app,
             "window_title": ctx.window_title,
+            "selected_text": ctx.selected_text,
+            "clipboard_text": ctx.clipboard_text,
             "browser": None if not browser else {
                 "title": browser.title,
                 "url": browser.url,
