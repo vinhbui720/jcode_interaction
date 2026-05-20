@@ -244,6 +244,7 @@ class JcodeClient:
             "/model",
             "/usage",
             "/ustage",
+            "/screen-shot",
             "/resume",
             "/new",
             "/clear",

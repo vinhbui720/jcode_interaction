@@ -9,7 +9,9 @@ import threading
 import time
 import subprocess
 import json
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 
 import gi
 gi.require_version("Gtk", "3.0")
@@ -175,7 +177,7 @@ class FloatingInput(Gtk.Window):
             self.slash_hint.hide()
             self._resize_for_suggestions(False)
             return
-        known = ["/model", "/usage", "/ustage", "/help", "/resume", "/clear", "/compact", "/skill", "/memory"]
+        known = ["/model", "/usage", "/ustage", "/screen-shot", "/help", "/resume", "/clear", "/compact", "/skill", "/memory"]
         matches = [item for item in known if item.startswith(text)] or known[:6]
         self.slash_hint.set_text("Tab complete · Enter run · " + "   ".join(matches[:6]))
         self.slash_hint.show()
@@ -999,6 +1001,10 @@ class PanelApp:
         if command in {"/usage", "/ustage"}:
             self.show_usage_dialog()
             return True
+        if command in {"/screen-shot", "/screenshot"}:
+            prompt = arg or "Analyze this screenshot."
+            GLib.timeout_add(250, self.capture_screenshot_and_send, prompt)
+            return True
         if command in {"/help", "/?"}:
             self._show_text_dialog(
                 "jcode-panel slash commands",
@@ -1006,10 +1012,65 @@ class PanelApp:
                 "  /model            choose a model from a table\n"
                 "  /model <name>     switch directly to a model\n"
                 "  /usage, /ustage   show provider usage limits\n"
+                "  /screen-shot      grab a screenshot and send it to jcode\n"
+                "  /screen-shot <q>  send screenshot with a question\n"
                 "  /help             show this help\n\n"
                 "Other slash commands are sent to jcode as normal prompts.",
             )
             return True
+        return False
+
+    def capture_screenshot_and_send(self, prompt: str = "Analyze this screenshot.") -> bool:
+        threading.Thread(target=self._capture_screenshot_worker, args=(prompt,), daemon=True).start()
+        return False
+
+    def _capture_screenshot_worker(self, prompt: str) -> None:
+        screenshot_dir = Path(tempfile.gettempdir()) / "jcode-panel-screenshots"
+        screenshot_dir.mkdir(parents=True, exist_ok=True)
+        path = screenshot_dir / f"screenshot-{int(time.time())}.png"
+        GLib.idle_add(self.toast.update_feedback, "Select a screenshot area...")
+        GLib.idle_add(self._set_capture_status, "screenshot grab")
+        commands = [
+            ["gnome-screenshot", "-a", "-f", str(path)],
+            ["gnome-screenshot", "-f", str(path)],
+            ["grim", str(path)],
+            ["scrot", str(path)],
+            ["import", "-window", "root", str(path)],
+        ]
+        error = ""
+        for command in commands:
+            try:
+                result = subprocess.run(command, cwd=str(Path.home()), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=60)
+                if result.returncode == 0 and path.exists() and path.stat().st_size > 0:
+                    GLib.idle_add(self._send_screenshot_prompt, prompt, str(path))
+                    return
+                error = (result.stderr or "").strip() or f"{command[0]} exited {result.returncode}"
+            except FileNotFoundError:
+                continue
+            except Exception as exc:
+                error = str(exc)
+        GLib.idle_add(self._screenshot_failed, error or "No screenshot tool found")
+
+    def _set_capture_status(self, label: str) -> bool:
+        self.process_status = label
+        self.live_activity = LiveActivity(label=label, state="capturing", started_at=time.monotonic(), active=True)
+        self._ensure_activity_tick()
+        self._update_header_status()
+        return False
+
+    def _send_screenshot_prompt(self, prompt: str, path: str) -> bool:
+        self._finish_activity("captured")
+        message = f"{prompt.strip() or 'Analyze this screenshot.'}\n\nScreenshot file: {path}"
+        self.toast.update_feedback(f"Screenshot captured: {path}")
+        self.send_prompt(message, include_context=False)
+        return False
+
+    def _screenshot_failed(self, error: str) -> bool:
+        self._finish_activity("screenshot failed")
+        self.process_status = "screenshot failed"
+        self._update_header_status()
+        self._add_system(f"Screenshot failed: {error}")
+        self.toast.update_feedback(f"Screenshot failed: {error}")
         return False
 
     def show_model_dialog(self):
