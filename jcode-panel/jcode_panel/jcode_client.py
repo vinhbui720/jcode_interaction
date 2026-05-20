@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import threading
 import time
+from pathlib import Path
 from typing import Callable
 
 from .protocol import CompletionItem, ConnectionState, PanelEvent, PanelEventKind, parse_panel_event
@@ -68,6 +69,7 @@ class JcodeClient:
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            cwd=str(Path.home()),
         )
         self.state = ConnectionState.CONNECTED
         self._reader = threading.Thread(target=self._read_stdout, daemon=True)
@@ -130,7 +132,7 @@ class JcodeClient:
         self.events.put(PanelEvent(kind=PanelEventKind.STATUS, text="Creating new jcode session..."))
         discovered_session = ""
         try:
-            proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+            proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, cwd=str(Path.home()))
             assert proc.stdout
             for line in proc.stdout:
                 line = line.rstrip("\n")

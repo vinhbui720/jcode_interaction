@@ -752,7 +752,9 @@ class PanelApp:
         self._sync_client_session()
         self.send_sequence += 1
         send_sequence = self.send_sequence
-        payload, metadata = self.controller.build_prompt(text, self.active_context, include_context)
+        # Panel prompt should go to jcode exactly as typed. Context is captured
+        # for UI display/state, but not prepended or sent as extra metadata.
+        payload, metadata = text.strip(), None
         self.feedback_text = ""
         self.process_status = "sending"
         self.live_activity = LiveActivity(label="jcode", state="sending", started_at=time.monotonic(), active=True)

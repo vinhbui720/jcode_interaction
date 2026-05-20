@@ -20,29 +20,10 @@ class PromptBuilder:
     """Builds outgoing user prompts without depending on GTK."""
 
     def build_text(self, request: PromptRequest) -> str:
-        text = request.text.strip()
-        if not text:
-            return ""
-        if not request.include_context or not request.context or request.metadata_supported:
-            return text
-        return request.context.as_prompt_block() + "\n\n" + text
+        return request.text.strip()
 
     def build_metadata(self, request: PromptRequest) -> dict | None:
-        if not request.include_context or not request.context or not request.metadata_supported:
-            return None
-        ctx = request.context
-        browser = ctx.browser
-        return {
-            "app": ctx.app,
-            "window_title": ctx.window_title,
-            "selected_text": ctx.selected_text,
-            "clipboard_text": ctx.clipboard_text,
-            "browser": None if not browser else {
-                "title": browser.title,
-                "url": browser.url,
-                "selected_text": browser.selected_text,
-            },
-        }
+        return None
 
 
 class AppController:

@@ -8,7 +8,7 @@ from jcode_panel.jcode_client import JcodeClient, parse_event
 from jcode_panel.protocol import PanelEventKind, activity_is_terminal, activity_label, activity_state, event_preview, parse_panel_event
 from jcode_panel.services import AppController, PromptBuilder, PromptRequest
 from jcode_panel.state import AppState
-from jcode_panel.terminal import render_command
+from jcode_panel.terminal import launch, render_command
 
 
 def test_default_config_roundtrip(tmp_path: Path):
@@ -56,6 +56,24 @@ def test_terminal_template_rendering():
     assert args[:4] == ["xterm", "-e", "sh", "-lc"]
     assert args[4] == "jcode --resume fox"
 
+
+def test_terminal_launch_defaults_to_home_cwd(monkeypatch):
+    calls = []
+
+    class FakeProcess:
+        def wait(self):
+            return 0
+
+    def fake_popen(args, cwd=None):
+        calls.append((args, cwd))
+        return FakeProcess()
+
+    monkeypatch.setattr("jcode_panel.terminal.subprocess.Popen", fake_popen)
+
+    launch("jcode --resume fox", template="xterm -e sh -lc {quoted_cmd}")
+
+    assert calls[0][1] == str(Path.home())
+
 def test_state_roundtrip_and_prompt_dedupe(tmp_path: Path):
     path = tmp_path / "state.toml"
     state = AppState(saved_session="fox", saved_session_name="Panel Fox")
@@ -69,7 +87,7 @@ def test_state_roundtrip_and_prompt_dedupe(tmp_path: Path):
     assert loaded.prompt_history == ["hello", "world"]
 
 
-def test_prompt_builder_context_fallback_and_metadata():
+def test_prompt_builder_sends_direct_text_without_context_or_metadata():
     ctx = ActiveContext(
         app="Firefox",
         window_title="Issue",
@@ -78,15 +96,9 @@ def test_prompt_builder_context_fallback_and_metadata():
         clipboard_text="copied",
     )
     builder = PromptBuilder()
-    text = builder.build_text(PromptRequest("explain", ctx, include_context=True))
-    assert text.startswith("[Context]")
-    assert text.endswith("explain")
-    metadata_req = PromptRequest("explain", ctx, include_context=True, metadata_supported=True)
-    assert builder.build_text(metadata_req) == "explain"
-    metadata = builder.build_metadata(metadata_req)
-    assert metadata and metadata["browser"]["url"] == "https://example.com"
-    assert metadata["selected_text"] == "marked"
-    assert metadata["clipboard_text"] == "copied"
+    request = PromptRequest(" explain ", ctx, include_context=True, metadata_supported=True)
+    assert builder.build_text(request) == "explain"
+    assert builder.build_metadata(request) is None
 
 
 def test_app_controller_active_session_prefers_state():
