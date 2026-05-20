@@ -173,3 +173,9 @@ from jcode_panel.positioning import parse_xdotool_mouselocation
 def test_parse_xdotool_mouselocation():
     assert parse_xdotool_mouselocation('x:2657 y:50 screen:0 window:8388629') == (2657, 50)
     assert parse_xdotool_mouselocation('bad') == (None, None)
+
+from jcode_panel.positioning import parse_xdotool_mouselocation_full
+
+
+def test_parse_xdotool_mouselocation_full_window():
+    assert parse_xdotool_mouselocation_full('x:2657 y:50 screen:0 window:8388629') == (2657, 50, '8388629')

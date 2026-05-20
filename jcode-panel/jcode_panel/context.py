@@ -57,8 +57,8 @@ def _run(args: list[str]) -> str:
         return ""
 
 
-def capture_active_context() -> ActiveContext:
-    window = _run(["xdotool", "getactivewindow"])
+def capture_active_context(window_id: str = "") -> ActiveContext:
+    window = window_id or _run(["xdotool", "getactivewindow"])
     title = _run(["xdotool", "getwindowname", window]) if window else ""
     app = ""
     if window:
