@@ -3,6 +3,7 @@ from __future__ import annotations
 import shlex
 import shutil
 import subprocess
+import threading
 from dataclasses import dataclass
 
 
@@ -43,4 +44,6 @@ def launch(command: str, preferred: str = "auto", template: str = "") -> subproc
     adapter = TerminalAdapter("custom", template) if template else detect_terminal(preferred)
     if not adapter:
         raise RuntimeError("No supported terminal emulator found")
-    return subprocess.Popen(render_command(adapter.template, command))
+    proc = subprocess.Popen(render_command(adapter.template, command))
+    threading.Thread(target=proc.wait, daemon=True).start()
+    return proc

@@ -2,11 +2,29 @@
 from __future__ import annotations
 
 import importlib.util
+import importlib
 import pathlib
 import traceback
 
 ROOT = pathlib.Path(__file__).resolve().parent
 TEST_DIR = ROOT / "tests"
+
+
+class MonkeyPatch:
+    def __init__(self) -> None:
+        self._undo = []
+
+    def setattr(self, target: str, value) -> None:
+        module_name, attr = target.rsplit(".", 1)
+        module = importlib.import_module(module_name)
+        old = getattr(module, attr)
+        setattr(module, attr, value)
+        self._undo.append((module, attr, old))
+
+    def undo(self) -> None:
+        while self._undo:
+            module, attr, old = self._undo.pop()
+            setattr(module, attr, old)
 
 
 def main() -> int:
@@ -25,17 +43,27 @@ def main() -> int:
                 continue
             total += 1
             try:
-                if "tmp_path" in fn.__code__.co_varnames[: fn.__code__.co_argcount]:
+                argnames = fn.__code__.co_varnames[: fn.__code__.co_argcount]
+                kwargs = {}
+                monkeypatch = None
+                if "monkeypatch" in argnames:
+                    monkeypatch = MonkeyPatch()
+                    kwargs["monkeypatch"] = monkeypatch
+                if "tmp_path" in argnames:
                     import tempfile
                     with tempfile.TemporaryDirectory() as d:
-                        fn(pathlib.Path(d))
+                        kwargs["tmp_path"] = pathlib.Path(d)
+                        fn(**kwargs)
                 else:
-                    fn()
+                    fn(**kwargs)
                 print(f"PASS {path.name}::{name}")
             except Exception:
                 failed += 1
                 print(f"FAIL {path.name}::{name}")
                 traceback.print_exc()
+            finally:
+                if monkeypatch:
+                    monkeypatch.undo()
     print(f"{total - failed}/{total} tests passed")
     return 1 if failed else 0
 
