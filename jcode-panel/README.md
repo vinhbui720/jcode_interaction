@@ -68,3 +68,34 @@ Ubuntu Wayland can block global hotkeys. The app still tries to bind F8, but if 
 - tray menu → `Prompt`
 - application launcher → `jcode-panel Prompt`
 - command line: `PYTHONPATH=. python3 -m jcode_panel.main --prompt`
+
+## Executor-friendly usage
+
+After `./install.sh`, no terminal command is needed for normal use:
+
+- App launcher: **jcode-panel**
+- App launcher: **jcode-panel Prompt**
+- Tray menu: **Prompt**
+- Alias: `jcode-panel`
+- Alias: `jcp` opens the prompt directly
+
+## Self update
+
+Source installs can update safely with a fast-forward only pull:
+
+```bash
+jcode-panel --self-update
+```
+
+The tray menu also has **Update app**. It never force-resets or deletes local work.
+
+## Integrations
+
+Integrations are structured as installable app adapters. Browser exists now; Obsidian scaffold exists for later.
+
+```bash
+jcode-panel --install-integration browser
+jcode-panel --install-integration obsidian
+```
+
+Each integration owns its code under `integrations/<app>_plugin` or `extension/` and has a Python installer under `jcode_panel/integrations/`.

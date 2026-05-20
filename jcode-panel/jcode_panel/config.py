@@ -25,6 +25,7 @@ class GeneralConfig:
     terminal_template: str = ""
     autostart: bool = True
     debug: bool = False
+    auto_update_on_start: bool = False
 
 
 @dataclass

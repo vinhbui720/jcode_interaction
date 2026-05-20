@@ -44,7 +44,7 @@ EOF
   exit 1
 fi
 
-mkdir -p "$HOME/.config/autostart" "$HOME/.local/bin"
+mkdir -p "$HOME/.config/autostart" "$HOME/.local/bin" "$HOME/.local/share/icons/hicolor/scalable/apps"
 cat > "$HOME/.config/autostart/jcode-panel.desktop" <<EOF
 [Desktop Entry]
 Type=Application
@@ -53,10 +53,16 @@ Exec=env PYTHONPATH=$PWD python3 -m jcode_panel.main
 X-GNOME-Autostart-enabled=true
 EOF
 mkdir -p "$HOME/.local/share/applications"
-sed "s#Exec=jcode-panel#Exec=env PYTHONPATH=$PWD python3 -m jcode_panel.main#" jcode-panel.desktop > "$HOME/.local/share/applications/jcode-panel.desktop"
-sed "s#Exec=jcode-panel --prompt#Exec=env PYTHONPATH=$PWD python3 -m jcode_panel.main --prompt#" jcode-panel-prompt.desktop > "$HOME/.local/share/applications/jcode-panel-prompt.desktop"
+cp assets/icon.svg "$HOME/.local/share/icons/hicolor/scalable/apps/jcode-panel.svg"
+ln -sf "$PWD/bin/jcode-panel" "$HOME/.local/bin/jcode-panel"
+ln -sf "$PWD/bin/jcp" "$HOME/.local/bin/jcp"
+sed "s#Exec=jcode-panel#Exec=$HOME/.local/bin/jcode-panel#; s#Icon=applications-system#Icon=jcode-panel#" jcode-panel.desktop > "$HOME/.local/share/applications/jcode-panel.desktop"
+sed "s#Exec=jcode-panel --prompt#Exec=$HOME/.local/bin/jcp#; s#Icon=applications-system#Icon=jcode-panel#" jcode-panel-prompt.desktop > "$HOME/.local/share/applications/jcode-panel-prompt.desktop"
 
 PYTHONPATH="$PWD" python3 -m jcode_panel.main --diagnose || true
 
 echo "Installed autostart entry. Browser extension is in ./extension and is optional."
-echo "Run manually with: PYTHONPATH=$PWD python3 -m jcode_panel.main"
+echo "Aliases installed:"
+echo "  jcode-panel        # open app"
+echo "  jcp                # open prompt"
+echo "Desktop launchers installed with jcode-panel icon."

@@ -3,6 +3,6 @@ Type=Application
 Name=jcode-panel
 Comment=Minimal top-bar GUI client for jcode
 Exec=jcode-panel
-Icon=applications-system
+Icon=jcode-panel
 Terminal=false
 Categories=Utility;Development;

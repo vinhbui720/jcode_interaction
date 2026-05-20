@@ -117,3 +117,20 @@ def test_hotkey_status_shape():
     status = HotkeyStatus(False, "nope")
     assert not status.enabled
     assert "tray menu" in status.fallback
+
+from jcode_panel.integrations import IntegrationRegistry
+from jcode_panel.updater import UpdateResult
+
+
+def test_integration_registry_lists_browser_and_obsidian():
+    registry = IntegrationRegistry(Path(__file__).resolve().parents[1])
+    statuses = registry.list_statuses()
+    names = {s.name for s in statuses}
+    assert "Browser Context Extension" in names
+    assert "Obsidian Context Plugin" in names
+
+
+def test_update_result_shape():
+    result = UpdateResult(True, "Already up to date")
+    assert result.ok
+    assert not result.changed

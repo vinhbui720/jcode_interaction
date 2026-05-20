@@ -18,6 +18,7 @@ from .hotkeys import start_hotkey_listener
 from .jcode_client import JcodeClient, JcodeUnavailable
 from .protocol import PanelEvent, PanelEventKind
 from .terminal import launch
+from .updater import self_update
 
 
 class FloatingInput(Gtk.Window):
@@ -136,12 +137,15 @@ class SettingsDialog(Gtk.Dialog):
         self.debug.set_active(app.config.general.debug)
         self.context = Gtk.CheckButton(label="Send context by default")
         self.context.set_active(app.config.session.send_context_default)
+        self.auto_update = Gtk.CheckButton(label="Auto-update app on start")
+        self.auto_update.set_active(app.config.general.auto_update_on_start)
         fields = [("Hotkey", self.hotkey), ("Terminal", self.terminal), ("Terminal template", self.template)]
         for row, (label, widget) in enumerate(fields):
             grid.attach(Gtk.Label(label=label), 0, row, 1, 1)
             grid.attach(widget, 1, row, 1, 1)
         grid.attach(self.debug, 0, 3, 2, 1)
         grid.attach(self.context, 0, 4, 2, 1)
+        grid.attach(self.auto_update, 0, 5, 2, 1)
         self.get_content_area().add(grid)
         self.show_all()
 
@@ -151,6 +155,7 @@ class SettingsDialog(Gtk.Dialog):
         cfg.general.terminal = self.terminal.get_text().strip() or "auto"
         cfg.general.terminal_template = self.template.get_text().strip()
         cfg.general.debug = self.debug.get_active()
+        cfg.general.auto_update_on_start = self.auto_update.get_active()
         cfg.session.send_context_default = self.context.get_active()
         cfg.save()
 
@@ -167,7 +172,7 @@ class PanelApp:
         self.indicator = AppIndicator3.Indicator.new("jcode-panel", "applications-system", AppIndicator3.IndicatorCategory.APPLICATION_STATUS)
         self.indicator.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
         self.menu = Gtk.Menu()
-        for label, cb in [("Open", self.toggle_dropdown), ("Prompt", self.show_prompt), ("Settings", self.show_settings), ("Quit", Gtk.main_quit)]:
+        for label, cb in [("Open", self.toggle_dropdown), ("Prompt", self.show_prompt), ("Settings", self.show_settings), ("Update app", self.update_app), ("Quit", Gtk.main_quit)]:
             item = Gtk.MenuItem(label=label)
             item.connect("activate", lambda _i, c=cb: c())
             self.menu.append(item)
@@ -175,6 +180,8 @@ class PanelApp:
         self.indicator.set_menu(self.menu)
         self.dropdown = Dropdown(self)
         self.floating = FloatingInput(self)
+        if self.config.general.auto_update_on_start:
+            self.update_app()
         self._warn_wayland_if_needed()
         self._start_hotkey_listener()
         self._connect_jcode_async()
@@ -247,6 +254,11 @@ class PanelApp:
 
     def resume_session(self):
         launch("jcode --resume", self.config.general.terminal, self.config.general.terminal_template)
+
+
+    def update_app(self):
+        result = self_update()
+        self._add_system(result.message)
 
     def show_settings(self):
         dlg = SettingsDialog(self)
