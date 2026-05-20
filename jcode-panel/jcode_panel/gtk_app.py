@@ -21,7 +21,6 @@ from .context import BrowserBridge, capture_active_context
 from .dropdown import ConversationBuffer
 from .floating import CompletionState
 from .diagnostics import append_log
-from .hotkeys import start_hotkey_listener
 from .jcode_client import JcodeClient, JcodeUnavailable
 from .protocol import PanelEvent, PanelEventKind
 from .notify import notify
@@ -41,8 +40,8 @@ class FloatingInput(Gtk.Window):
         self.set_keep_above(True)
         self.set_skip_taskbar_hint(True)
         self.set_skip_pager_hint(True)
-        self.set_accept_focus(True)
-        self.set_focus_on_map(True)
+        self.set_accept_focus(False)
+        self.set_focus_on_map(False)
         self.set_type_hint(Gdk.WindowTypeHint.UTILITY)
         self.follow_mouse = False
         self.follow_source_id = 0
@@ -74,23 +73,17 @@ class FloatingInput(Gtk.Window):
         self.entry.set_text("")
         self.entry.set_placeholder_text("Ask jcode...")
         self.typed_once = False
-        self.follow_mouse = False
+        self.follow_mouse = True
+        self.current_x = None
+        self.current_y = None
 
         self.show_all()
         self.realize()
-        if x is not None and y is not None:
-            self.move(max(0, x + 20), max(0, y + 24))
-        self.present_with_time(Gtk.get_current_event_time())
-        self._activate_self()
-        self.set_focus(self.entry)
-        self.grab_focus()
-        self.entry.grab_focus()
-        Gtk.grab_add(self)
-        GLib.idle_add(self._focus_entry)
-        GLib.timeout_add(20, self._focus_entry)
-        GLib.timeout_add(60, self._focus_entry)
-        GLib.timeout_add(140, self._focus_entry)
-        GLib.timeout_add(260, self._focus_entry)
+        self._follow_mouse_tick(initial=(x, y))
+        if self.follow_source_id:
+            GLib.source_remove(self.follow_source_id)
+        self.follow_source_id = GLib.timeout_add(16, self._follow_mouse_tick)
+        self.present()
 
     def _follow_mouse_tick(self, initial: tuple[int | None, int | None] | None = None) -> bool:
         if not self.follow_mouse or not self.get_visible():
@@ -145,10 +138,6 @@ class FloatingInput(Gtk.Window):
         if self.follow_source_id:
             GLib.source_remove(self.follow_source_id)
             self.follow_source_id = 0
-        try:
-            Gtk.grab_remove(self)
-        except Exception:
-            pass
         super().hide()
 
     def _fast_mouse_position(self) -> tuple[int | None, int | None]:
@@ -160,6 +149,30 @@ class FloatingInput(Gtk.Window):
             return x, y
         return None, None
 
+
+    def append_text(self, text: str) -> None:
+        if not text:
+            return
+        current = self.entry.get_text()
+        pos = self.entry.get_position()
+        if pos < 0:
+            pos = len(current)
+        updated = current[:pos] + text + current[pos:]
+        self.entry.set_text(updated)
+        self.entry.set_position(pos + len(text))
+
+    def backspace(self) -> None:
+        current = self.entry.get_text()
+        pos = self.entry.get_position()
+        if pos < 0:
+            pos = len(current)
+        if pos > 0:
+            self.entry.set_text(current[:pos - 1] + current[pos:])
+            self.entry.set_position(pos - 1)
+
+    def submit(self) -> None:
+        self._on_enter(self.entry)
+
     def _on_enter(self, _entry):
         text = self.entry.get_text().strip()
         self.app.active_context = self._capture_context_on_submit()
@@ -168,7 +181,8 @@ class FloatingInput(Gtk.Window):
             self.app.send_prompt(text, self.context_enabled)
 
     def _capture_context_on_submit(self):
-        ctx = capture_active_context(self.target_window_id)
+        _x, _y, window_id = xdotool_mouse_position_full()
+        ctx = capture_active_context(window_id or self.target_window_id)
         primary = self._clipboard_text(Gdk.SELECTION_PRIMARY)
         clipboard = self._clipboard_text(Gdk.SELECTION_CLIPBOARD)
         uris = self._clipboard_uris(Gdk.SELECTION_CLIPBOARD)
@@ -299,6 +313,9 @@ class PanelApp:
         self.conversation = ConversationBuffer(self.config.ui.dropdown_max_messages)
         self.active_context = capture_active_context()
         self.last_prompt_toggle_at = 0.0
+        self._ambient_shift = False
+        self._ambient_ctrl = False
+        self._ambient_alt = False
         self.indicator = AppIndicator3.Indicator.new("jcode-panel", "jcode-panel", AppIndicator3.IndicatorCategory.APPLICATION_STATUS)
         self.indicator.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
         self.indicator.set_label("jcode", "")
@@ -324,8 +341,29 @@ class PanelApp:
             self._add_system("Wayland detected: global hotkey and active-window context may be limited. v1 is X11-first.")
 
     def _start_hotkey_listener(self):
-        status = start_hotkey_listener(self.config.general.hotkey, lambda: GLib.idle_add(self.show_prompt))
-        self._add_system(status.message)
+        try:
+            from pynput import keyboard  # type: ignore
+        except Exception as exc:
+            self._add_system(f"Global keyboard unavailable: {exc}")
+            return
+
+        hotkey = self.config.general.hotkey.lower()
+
+        def on_press(key):
+            name = getattr(key, "name", None) or getattr(key, "char", "")
+            normalized = str(name).lower()
+            if normalized == hotkey:
+                GLib.idle_add(self.show_prompt)
+                return
+            GLib.idle_add(self._route_ambient_key, key, True)
+
+        def on_release(key):
+            GLib.idle_add(self._route_ambient_key, key, False)
+
+        listener = keyboard.Listener(on_press=on_press, on_release=on_release)
+        listener.daemon = True
+        listener.start()
+        self._add_system(f"Global keyboard active: {self.config.general.hotkey}; ambient popup typing enabled")
 
     def _connect_jcode_async(self):
         def worker():
@@ -364,6 +402,51 @@ class PanelApp:
             self.controller.record_sent_prompt(text)
         except Exception as exc:
             self._add_system(str(exc))
+
+
+    def _route_ambient_key(self, key, pressed: bool):
+        name = getattr(key, "name", None) or ""
+        char = getattr(key, "char", None)
+        lowered = str(name).lower()
+        if lowered in {"shift", "shift_l", "shift_r"}:
+            self._ambient_shift = pressed
+            return False
+        if lowered in {"ctrl", "ctrl_l", "ctrl_r", "control", "control_l", "control_r"}:
+            self._ambient_ctrl = pressed
+            return False
+        if lowered in {"alt", "alt_l", "alt_r"}:
+            self._ambient_alt = pressed
+            return False
+        if not pressed or not self.floating.get_visible():
+            return False
+        if lowered in {"enter", "return"}:
+            self.floating.submit()
+            return False
+        if lowered == "esc":
+            self.floating.hide()
+            return False
+        if lowered == "backspace":
+            self.floating.backspace()
+            return False
+        if lowered == "space":
+            self.floating.append_text(" ")
+            return False
+        if lowered == "tab":
+            self._ambient_tab_complete()
+            return False
+        if char and not self._ambient_ctrl and not self._ambient_alt:
+            self.floating.append_text(char)
+        return False
+
+    def _ambient_tab_complete(self):
+        text = self.floating.entry.get_text()
+        if text.startswith("/"):
+            if not self.floating.completions.items:
+                self.floating.completions.update(self.client.completions(text))
+            suggestion = self.floating.completions.tab()
+            if suggestion:
+                self.floating.entry.set_text(suggestion)
+                self.floating.entry.set_position(-1)
 
     def show_prompt(self):
         now = time.monotonic()
