@@ -67,6 +67,23 @@ class JcodeClient:
             return
         threading.Thread(target=self._run_prompt, args=(prompt,), daemon=True).start()
 
+    def set_session(self, session_id: str) -> None:
+        self.session_id = session_id.strip()
+
+    def rename_session(self, session_id: str, name: str) -> None:
+        session_id = session_id.strip()
+        name = name.strip()
+        if not session_id or not name:
+            return
+        try:
+            subprocess.Popen(
+                ["jcode", "session", "rename", session_id, name],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            pass
+
     def _run_prompt(self, prompt: str) -> None:
         args = ["jcode", "run", "--ndjson"]
         if self.session_id:

@@ -321,7 +321,9 @@ class Dropdown(Gtk.Window):
         return True
 
     def refresh(self):
-        lines = [f"{who}: {text}" for who, text in self.app.conversation.messages]
+        session = self.app.controller.active_session or "new session pending first prompt"
+        header = f"section: {self.app.controller.active_session_name}\nsession: {session}"
+        lines = [header] + [f"{who}: {text}" for who, text in self.app.conversation.messages]
         self.buffer.set_text("\n\n".join(lines))
 
 
@@ -490,6 +492,11 @@ class PanelApp:
         if self.config.general.auto_update_on_start:
             self.update_app()
         self._warn_wayland_if_needed()
+        self._add_system(f"Panel section: {self.controller.active_session_name}")
+        if self.controller.active_session:
+            self._add_system(f"Resuming jcode session: {self.controller.active_session}")
+        else:
+            self._add_system("No saved panel session yet. First prompt will create one and save it.")
         self._add_system(f"GTK backend: {os.environ.get('GDK_BACKEND', 'default')}")
         self._start_hotkey_listener()
         self._connect_jcode_async()
@@ -546,7 +553,12 @@ class PanelApp:
 
     def _on_event_ui(self, event: PanelEvent):
         if event.kind == PanelEventKind.SESSION and event.session_id:
+            old_session = self.controller.active_session
             self.controller.switch_session(event.session_id)
+            self.client.set_session(event.session_id)
+            if event.session_id != old_session:
+                self.client.rename_session(event.session_id, self.controller.active_session_name)
+                self._add_system(f"Saved panel section '{self.controller.active_session_name}' as {event.session_id}")
         self.conversation.add_event(event)
         self.dropdown.refresh()
         if event.kind in {PanelEventKind.STATUS, PanelEventKind.PROGRESS, PanelEventKind.TOOL}:
@@ -680,13 +692,57 @@ class PanelApp:
         launch(f"jcode --resume {session}" if session else "jcode", self.config.general.terminal, self.config.general.terminal_template)
 
     def open_jcode(self):
-        launch("jcode", self.config.general.terminal, self.config.general.terminal_template)
+        self.open_terminal()
 
     def new_session(self):
-        launch("jcode", self.config.general.terminal, self.config.general.terminal_template)
+        name = self._ask_text("New jcode-panel section", "Section name", "")
+        if name is None:
+            return
+        section_name = self.controller.start_new_section(name)
+        self.client.set_session("")
+        self.conversation = ConversationBuffer(self.config.ui.dropdown_max_messages)
+        self.feedback_text = ""
+        self.process_status = "idle"
+        self._update_header_status()
+        self._add_system(f"Started new panel section: {section_name}")
+        self._add_system("First prompt will create and save a new Jcode session for this section.")
+        self.dropdown.refresh()
 
     def resume_session(self):
-        launch("jcode --resume", self.config.general.terminal, self.config.general.terminal_template)
+        session = self._ask_text("Resume jcode-panel section", "Session id/name", self.controller.active_session)
+        if session is None or not session.strip():
+            return
+        name = self._ask_text("Resume jcode-panel section", "Section display name", self.controller.active_session_name)
+        if name is None:
+            return
+        self.controller.switch_session(session.strip(), name.strip() or session.strip())
+        self.client.set_session(session.strip())
+        self.conversation = ConversationBuffer(self.config.ui.dropdown_max_messages)
+        self.feedback_text = ""
+        self.process_status = "idle"
+        self._update_header_status()
+        self._add_system(f"Resumed panel section: {self.controller.active_session_name}")
+        self._add_system(f"Jcode session: {self.controller.active_session}")
+        self.dropdown.refresh()
+
+    def _ask_text(self, title: str, label: str, default: str = "") -> str | None:
+        dlg = Gtk.Dialog(title=title, transient_for=self.dropdown, flags=0)
+        dlg.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        dlg.add_button("OK", Gtk.ResponseType.OK)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=12)
+        box.pack_start(Gtk.Label(label=label), False, False, 0)
+        entry = Gtk.Entry(text=default or "")
+        entry.set_activates_default(True)
+        box.pack_start(entry, False, False, 0)
+        dlg.get_content_area().add(box)
+        dlg.set_default_response(Gtk.ResponseType.OK)
+        dlg.show_all()
+        response = dlg.run()
+        value = entry.get_text()
+        dlg.destroy()
+        if response != Gtk.ResponseType.OK:
+            return None
+        return value
 
 
     def update_app(self):

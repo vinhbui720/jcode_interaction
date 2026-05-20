@@ -14,6 +14,7 @@ class AppState:
     """Mutable runtime state, separate from user preferences."""
 
     saved_session: str = ""
+    saved_session_name: str = "jcode-panel"
     prompt_history: list[str] = field(default_factory=list)
     last_context_summary: str = ""
     browser_bridge_seen: bool = False
@@ -29,6 +30,7 @@ class AppState:
             history = [x for x in history.split(PROMPT_HISTORY_SEPARATOR) if x]
         return cls(
             saved_session=str(raw.get("saved_session", "")),
+            saved_session_name=str(raw.get("saved_session_name", "jcode-panel")) or "jcode-panel",
             prompt_history=list(history) if isinstance(history, list) else [],
             last_context_summary=str(raw.get("last_context_summary", "")),
             browser_bridge_seen=bool(raw.get("browser_bridge_seen", False)),
@@ -52,3 +54,6 @@ class AppState:
 
     def set_saved_session(self, session: str) -> None:
         self.saved_session = session.strip()
+
+    def set_saved_session_name(self, name: str) -> None:
+        self.saved_session_name = name.strip() or "jcode-panel"

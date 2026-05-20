@@ -58,13 +58,14 @@ def test_terminal_template_rendering():
 
 def test_state_roundtrip_and_prompt_dedupe(tmp_path: Path):
     path = tmp_path / "state.toml"
-    state = AppState(saved_session="fox")
+    state = AppState(saved_session="fox", saved_session_name="Panel Fox")
     state.remember_prompt("hello")
     state.remember_prompt("hello")
     state.remember_prompt("world")
     state.save(path)
     loaded = AppState.load(path)
     assert loaded.saved_session == "fox"
+    assert loaded.saved_session_name == "Panel Fox"
     assert loaded.prompt_history == ["hello", "world"]
 
 
@@ -85,6 +86,19 @@ def test_app_controller_active_session_prefers_state():
     cfg.session.saved_session = "config-session"
     controller = AppController(cfg, AppState(saved_session="state-session"))
     assert controller.active_session == "state-session"
+
+
+def test_app_controller_section_switch_and_new_section():
+    cfg = AppConfig()
+    controller = AppController(cfg, AppState(saved_session="old", saved_session_name="Old"))
+    controller.switch_session("new-session", "New Name")
+    assert controller.active_session == "new-session"
+    assert controller.active_session_name == "New Name"
+    assert cfg.session.saved_session == "new-session"
+    section_name = controller.start_new_section("Fresh Panel")
+    assert section_name == "Fresh Panel"
+    assert controller.active_session == ""
+    assert controller.active_session_name == "Fresh Panel"
 
 def test_protocol_parses_panel_events_and_preview():
     event = parse_panel_event('{"type":"panel.progress","text":"Running tests","percent":42}')
