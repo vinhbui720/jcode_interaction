@@ -187,6 +187,15 @@ def test_protocol_backend_chat_status_preview_uses_current_when_text_empty():
     assert event_preview(event) == "pytest -q"
 
 
+def test_conversation_status_uses_current_preview_when_text_empty():
+    buf = ConversationBuffer(max_messages=10)
+    buf.add_event(parse_panel_event(
+        '{"type":"backend/chat/status","current":{"tool_name":"bash","command":"pytest -q","state":"running","active":true}}'
+    ))
+
+    assert buf.messages == [("status", "pytest -q")]
+
+
 def test_protocol_backend_chat_status_extracts_feedback_text():
     event = parse_panel_event(
         '{"type":"backend/chat/status","current":{"command":"pytest -q","state":"running","active":true},"feedback":"Running regression tests"}'

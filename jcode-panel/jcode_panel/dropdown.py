@@ -19,9 +19,10 @@ class ConversationBuffer:
         if event.kind == PanelEventKind.SESSION:
             return
         if event.kind == PanelEventKind.STATUS:
+            preview = event_preview(event).strip("\n")
             # Keep noisy protocol/status events out of chat unless useful.
-            if text and text not in {"message_end"} and not text.startswith("websocket/"):
-                self._append_or_replace_status(text)
+            if preview and preview not in {"message_end"} and not preview.startswith("websocket/"):
+                self._append_or_replace_status(preview)
             if event.raw and event.raw.get("type") == "message_end":
                 self._streaming_index = None
             return
