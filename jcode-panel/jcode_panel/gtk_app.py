@@ -92,7 +92,7 @@ class FloatingInput(Gtk.Window):
         add_class(self.slash_hint, "slash-hint")
         box.pack_start(self.slash_hint, False, False, 0)
         self.add(box)
-        self.set_default_size(520, 52)
+        self._resize_for_suggestions(False)
         self.target_window_id = ""
         self.keyboard_grabbed = False
         self.suppress_listener = None
@@ -173,11 +173,21 @@ class FloatingInput(Gtk.Window):
         if not text.startswith("/"):
             self.slash_hint.set_text("")
             self.slash_hint.hide()
+            self._resize_for_suggestions(False)
             return
         known = ["/model", "/usage", "/ustage", "/help", "/resume", "/clear", "/compact", "/skill", "/memory"]
         matches = [item for item in known if item.startswith(text)] or known[:6]
         self.slash_hint.set_text("Tab complete · Enter run · " + "   ".join(matches[:6]))
         self.slash_hint.show()
+        self._resize_for_suggestions(True)
+
+    def _resize_for_suggestions(self, has_suggestions: bool) -> None:
+        width = max(320, min(1200, int(getattr(self.app.config.ui, "popup_width", 520) or 520)))
+        slim_height = max(32, min(220, int(getattr(self.app.config.ui, "popup_height", 42) or 42)))
+        height = slim_height + (38 if has_suggestions else 0)
+        self.set_default_size(width, height)
+        if self.get_visible():
+            self.resize(width, height)
 
     def _activate_self(self) -> None:
         try:
@@ -564,6 +574,10 @@ class SettingsDialog(Gtk.Dialog):
         self.opacity = Gtk.SpinButton.new_with_range(0.35, 1.0, 0.05)
         self.opacity.set_digits(2)
         self.opacity.set_value(app.config.ui.floating_opacity)
+        self.popup_width = Gtk.SpinButton.new_with_range(320, 1200, 10)
+        self.popup_width.set_value(app.config.ui.popup_width)
+        self.popup_height = Gtk.SpinButton.new_with_range(32, 220, 2)
+        self.popup_height.set_value(app.config.ui.popup_height)
         self.bold = Gtk.CheckButton(label="Bold text")
         self.bold.set_active(app.config.ui.font_bold)
         self.italic = Gtk.CheckButton(label="Italic text")
@@ -573,19 +587,21 @@ class SettingsDialog(Gtk.Dialog):
             ("Font color", self.text_color),
             ("Font size", self.font_size),
             ("Panel opacity", self.opacity),
+            ("Popup width", self.popup_width),
+            ("Popup slim height", self.popup_height),
         ]
         for row, (label, widget) in enumerate(appearance_fields):
             field_label = Gtk.Label(label=label)
             field_label.set_xalign(0)
             appearance.attach(field_label, 0, row, 1, 1)
             appearance.attach(widget, 1, row, 1, 1)
-        appearance.attach(self.bold, 0, 4, 2, 1)
-        appearance.attach(self.italic, 0, 5, 2, 1)
+        appearance.attach(self.bold, 0, 6, 2, 1)
+        appearance.attach(self.italic, 0, 7, 2, 1)
         hint = Gtk.Label(label="Use hex colors like #eff6ff. Changes apply after Save.")
         hint.set_xalign(0)
         hint.set_line_wrap(True)
         add_class(hint, "modern-subtitle")
-        appearance.attach(hint, 0, 6, 2, 1)
+        appearance.attach(hint, 0, 8, 2, 1)
 
         notebook.append_page(grid, Gtk.Label(label="General"))
         notebook.append_page(appearance, Gtk.Label(label="Appearance"))
@@ -604,6 +620,8 @@ class SettingsDialog(Gtk.Dialog):
         cfg.ui.text_color = self.text_color.get_text().strip() or "#1f2937"
         cfg.ui.font_size = int(self.font_size.get_value())
         cfg.ui.floating_opacity = float(self.opacity.get_value())
+        cfg.ui.popup_width = int(self.popup_width.get_value())
+        cfg.ui.popup_height = int(self.popup_height.get_value())
         cfg.ui.font_bold = self.bold.get_active()
         cfg.ui.font_italic = self.italic.get_active()
         cfg.save()

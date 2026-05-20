@@ -45,6 +45,8 @@ class UIConfig:
     font_size: int = 13
     font_bold: bool = False
     font_italic: bool = False
+    popup_width: int = 520
+    popup_height: int = 42
 
 
 @dataclass

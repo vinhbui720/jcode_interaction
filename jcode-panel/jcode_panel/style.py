@@ -40,9 +40,9 @@ def load_css(Gtk, Gdk, config=None) -> None:
     .panel-root {{
       background: {panel_bg};
       border: 1px solid rgba(148, 163, 184, 0.42);
-      border-radius: 18px;
-      padding: 12px;
-      box-shadow: 0 18px 46px rgba(15, 23, 42, 0.16);
+      border-radius: 10px;
+      padding: 10px;
+      box-shadow: none;
     }}
     .floating-root {{
       background: transparent;
@@ -55,9 +55,9 @@ def load_css(Gtk, Gdk, config=None) -> None:
       color: #1e3a8a;
       background: rgba(239, 246, 255, 0.94);
       border: 1px solid rgba(96, 165, 250, 0.36);
-      border-radius: 14px;
-      padding: 8px 12px;
-      margin-top: 6px;
+      border-radius: 8px;
+      padding: 6px 10px;
+      margin-top: 4px;
       font-size: 12px;
       font-weight: 600;
       font-style: normal;
@@ -65,7 +65,7 @@ def load_css(Gtk, Gdk, config=None) -> None:
     .context-strip {{
       color: #2563eb;
       background: rgba(239, 246, 255, 0.80);
-      border-radius: 9px;
+      border-radius: 6px;
       padding: 6px 8px;
       margin-bottom: 6px;
     }}
@@ -73,9 +73,9 @@ def load_css(Gtk, Gdk, config=None) -> None:
       color: #111827;
       background: rgba(255, 255, 255, 0.88);
       border: 1.5px solid rgba(96, 165, 250, 0.64);
-      border-radius: 999px;
-      padding: 12px 20px;
-      min-height: 24px;
+      border-radius: 10px;
+      padding: 7px 14px;
+      min-height: 18px;
       caret-color: #2563eb;
       box-shadow: none;
     }}
@@ -92,7 +92,7 @@ def load_css(Gtk, Gdk, config=None) -> None:
     }}
     scrolledwindow {{
       border: 1px solid rgba(148, 163, 184, 0.34);
-      border-radius: 12px;
+      border-radius: 8px;
       background: rgba(255, 255, 255, 0.70);
       padding: 8px;
     }}
@@ -100,9 +100,9 @@ def load_css(Gtk, Gdk, config=None) -> None:
     .toast-root {{
       background: rgba(250, 252, 255, 0.84);
       border: 1px solid rgba(148, 163, 184, 0.38);
-      border-radius: 16px;
-      padding: 12px;
-      box-shadow: 0 18px 48px rgba(15, 23, 42, 0.16);
+      border-radius: 10px;
+      padding: 10px;
+      box-shadow: none;
     }}
     .toast-title {{
       color: #2563eb;
@@ -122,7 +122,7 @@ def load_css(Gtk, Gdk, config=None) -> None:
       color: #1f2937;
       background: rgba(255, 255, 255, 0.70);
       border: 1px solid rgba(96, 165, 250, 0.24);
-      border-radius: 999px;
+      border-radius: 10px;
     }}
     .toast-icon-button:hover {{
       background: rgba(219, 234, 254, 0.86);
@@ -136,12 +136,12 @@ def load_css(Gtk, Gdk, config=None) -> None:
     .modern-dialog {{
       background: #f8fafc;
       color: #0f172a;
-      border-radius: 18px;
+      border-radius: 10px;
     }}
     .modern-card {{
       background: rgba(255, 255, 255, 0.98);
       border: 1px solid rgba(148, 163, 184, 0.34);
-      border-radius: 16px;
+      border-radius: 10px;
       padding: 14px;
       color: #0f172a;
     }}
@@ -163,7 +163,7 @@ def load_css(Gtk, Gdk, config=None) -> None:
     notebook tab {{
       background: #e2e8f0;
       color: #0f172a;
-      border-radius: 10px 10px 0 0;
+      border-radius: 6px 6px 0 0;
       padding: 8px 12px;
     }}
     notebook tab:checked {{
@@ -173,7 +173,7 @@ def load_css(Gtk, Gdk, config=None) -> None:
     treeview, treeview.view {{
       color: #0f172a;
       background: #ffffff;
-      border-radius: 10px;
+      border-radius: 6px;
     }}
     treeview:selected, treeview.view:selected {{
       color: #ffffff;
@@ -189,18 +189,18 @@ def load_css(Gtk, Gdk, config=None) -> None:
     }}
     levelbar block.filled {{
       background: #2563eb;
-      border-radius: 999px;
+      border-radius: 6px;
     }}
     levelbar block.empty {{
       background: #dbeafe;
-      border-radius: 999px;
+      border-radius: 6px;
     }}
 
     button {{
       color: #1f2937;
       background: rgba(255, 255, 255, 0.72);
       border: 1px solid rgba(148, 163, 184, 0.38);
-      border-radius: 999px;
+      border-radius: 10px;
       padding: 7px 10px;
     }}
     button:hover {{
