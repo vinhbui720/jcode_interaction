@@ -936,27 +936,54 @@ class PanelApp:
 
     def _show_model_dialog_ui(self, models: list[str], selected: str, provider: str):
         dlg = Gtk.Dialog(title=f"Choose jcode model ({provider})", transient_for=self.dropdown, flags=0)
+        add_class(dlg, "modern-dialog")
         dlg.add_button("Cancel", Gtk.ResponseType.CANCEL)
         dlg.add_button("Use model", Gtk.ResponseType.OK)
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin=12)
-        box.pack_start(Gtk.Label(label="Select model for panel prompts"), False, False, 0)
-        combo = Gtk.ComboBoxText()
-        active_index = 0
-        for index, model in enumerate(models):
-            combo.append_text(model)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin=14)
+        add_class(box, "modern-card")
+        title = Gtk.Label(label="Choose a model")
+        title.set_xalign(0)
+        add_class(title, "modern-title")
+        subtitle = Gtk.Label(label=f"Provider: {provider} · Current: {selected or 'default'}")
+        subtitle.set_xalign(0)
+        add_class(subtitle, "modern-subtitle")
+        box.pack_start(title, False, False, 0)
+        box.pack_start(subtitle, False, False, 0)
+
+        store = Gtk.ListStore(str, str)
+        active_iter = None
+        for model in models:
+            marker = "●" if model == selected else ""
+            row = store.append([marker, model])
             if model == selected:
-                active_index = index
-        if models:
-            combo.set_active(active_index)
-        box.pack_start(combo, False, False, 0)
-        hint = Gtk.Label(label="Tip: type /model <name> to switch directly. New sends use the selected model.")
+                active_iter = row
+        tree = Gtk.TreeView(model=store)
+        tree.set_headers_visible(True)
+        tree.get_selection().set_mode(Gtk.SelectionMode.SINGLE)
+        for title_text, column_index, width in [("", 0, 42), ("Model", 1, 520)]:
+            renderer = Gtk.CellRendererText()
+            column = Gtk.TreeViewColumn(title_text, renderer, text=column_index)
+            column.set_min_width(width)
+            tree.append_column(column)
+        if active_iter is not None:
+            tree.get_selection().select_iter(active_iter)
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_min_content_width(620)
+        scroller.set_min_content_height(360)
+        scroller.add(tree)
+        box.pack_start(scroller, True, True, 0)
+        hint = Gtk.Label(label="Tip: type /model <name> to switch directly. New sends use this model.")
         hint.set_xalign(0)
         hint.set_line_wrap(True)
+        add_class(hint, "modern-subtitle")
         box.pack_start(hint, False, False, 0)
         dlg.get_content_area().add(box)
         dlg.show_all()
         response = dlg.run()
-        model = combo.get_active_text() or ""
+        model = ""
+        selected_model, selected_iter = tree.get_selection().get_selected()
+        if selected_iter:
+            model = str(selected_model[selected_iter][1])
         dlg.destroy()
         if response == Gtk.ResponseType.OK and model:
             self.set_model(model)
@@ -983,24 +1010,59 @@ class PanelApp:
         try:
             raw = subprocess.check_output(["jcode", "usage", "--json"], text=True, stderr=subprocess.STDOUT, timeout=12, cwd=os.path.expanduser("~"))
             data = json.loads(raw)
-            lines = ["Provider | Window | Used | Reset", "-" * 72]
+            rows: list[tuple[str, str, str, str]] = []
             for provider in data.get("providers", []):
                 provider_name = str(provider.get("provider_name") or provider.get("name") or "provider")
                 error = provider.get("error")
                 if error:
-                    lines.append(f"{provider_name} | error | {error} | ")
+                    rows.append((provider_name, "error", str(error), ""))
                     continue
                 for limit in provider.get("limits", []):
                     name = str(limit.get("name") or "limit")
                     pct = limit.get("usage_percent")
                     used = "?" if pct is None else f"{float(pct):.1f}%"
                     reset = str(limit.get("reset_in") or limit.get("resets_at") or "")
-                    lines.append(f"{provider_name} | {name} | {used} | {reset}")
+                    rows.append((provider_name, name, used, reset))
                 for key, value in provider.get("extra_info", []):
-                    lines.append(f"{provider_name} | {key} | {value} | ")
-            GLib.idle_add(self._show_text_dialog, "jcode usage", "\n".join(lines))
+                    rows.append((provider_name, str(key), str(value), ""))
+            GLib.idle_add(self._show_usage_dialog_ui, rows)
         except Exception as exc:
             GLib.idle_add(self._show_text_dialog, "jcode usage", f"Could not load usage:\n{exc}")
+
+    def _show_usage_dialog_ui(self, rows: list[tuple[str, str, str, str]]):
+        dlg = Gtk.Dialog(title="jcode usage", transient_for=self.dropdown, flags=0)
+        add_class(dlg, "modern-dialog")
+        dlg.add_button("Close", Gtk.ResponseType.CLOSE)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin=14)
+        add_class(box, "modern-card")
+        title = Gtk.Label(label="Usage limits")
+        title.set_xalign(0)
+        add_class(title, "modern-title")
+        subtitle = Gtk.Label(label="Current provider quota windows and reset times")
+        subtitle.set_xalign(0)
+        add_class(subtitle, "modern-subtitle")
+        box.pack_start(title, False, False, 0)
+        box.pack_start(subtitle, False, False, 0)
+        store = Gtk.ListStore(str, str, str, str)
+        for row in rows:
+            store.append(list(row))
+        tree = Gtk.TreeView(model=store)
+        tree.set_headers_visible(True)
+        for title_text, index, width in [("Provider", 0, 260), ("Window", 1, 180), ("Used", 2, 90), ("Reset", 3, 130)]:
+            renderer = Gtk.CellRendererText()
+            column = Gtk.TreeViewColumn(title_text, renderer, text=index)
+            column.set_min_width(width)
+            tree.append_column(column)
+        scroller = Gtk.ScrolledWindow()
+        scroller.set_min_content_width(760)
+        scroller.set_min_content_height(360)
+        scroller.add(tree)
+        box.pack_start(scroller, True, True, 0)
+        dlg.get_content_area().add(box)
+        dlg.show_all()
+        dlg.run()
+        dlg.destroy()
+        return False
 
     def _show_text_dialog(self, title: str, text: str):
         dlg = Gtk.Dialog(title=title, transient_for=self.dropdown, flags=0)

@@ -95,6 +95,45 @@ def load_css(Gtk, Gdk) -> None:
       color: #0f172a;
     }
 
+    .modern-dialog {
+      background: rgba(248, 250, 252, 0.98);
+      color: #0f172a;
+      border-radius: 18px;
+    }
+    .modern-card {
+      background: rgba(255, 255, 255, 0.96);
+      border: 1px solid rgba(148, 163, 184, 0.34);
+      border-radius: 16px;
+      padding: 14px;
+      color: #0f172a;
+    }
+    .modern-title {
+      color: #0f172a;
+      font-weight: 800;
+      font-size: 18px;
+    }
+    .modern-subtitle {
+      color: #475569;
+      font-size: 12px;
+    }
+    treeview, treeview.view {
+      color: #0f172a;
+      background: #ffffff;
+      border-radius: 10px;
+    }
+    treeview:selected, treeview.view:selected {
+      color: #ffffff;
+      background: #2563eb;
+    }
+    treeview header button {
+      color: #334155;
+      background: #f8fafc;
+      border-radius: 0;
+      border: 0;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.4);
+      font-weight: 700;
+    }
+
     button {
       color: #1f2937;
       background: rgba(255, 255, 255, 0.62);
