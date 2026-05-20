@@ -13,7 +13,8 @@ from .services import AppController
 from .context import BrowserBridge, capture_active_context
 from .dropdown import ConversationBuffer
 from .floating import CompletionState
-from .jcode_client import JcodeClient, JcodeEvent, JcodeUnavailable
+from .jcode_client import JcodeClient, JcodeUnavailable
+from .protocol import PanelEvent, PanelEventKind
 from .terminal import launch
 
 
@@ -213,10 +214,12 @@ class PanelApp:
         self.dropdown.refresh()
         return False
 
-    def on_event(self, event: JcodeEvent):
+    def on_event(self, event: PanelEvent):
         GLib.idle_add(self._on_event_ui, event)
 
-    def _on_event_ui(self, event: JcodeEvent):
+    def _on_event_ui(self, event: PanelEvent):
+        if event.kind == PanelEventKind.SESSION and event.session_id:
+            self.controller.switch_session(event.session_id)
         self.conversation.add_event(event)
         self.dropdown.refresh()
         self.indicator.set_label(self.conversation.latest_preview(self.config.general.debug), "")

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from .jcode_client import JcodeEvent
+from .protocol import PanelEvent, PanelEventKind, event_preview
 
 
 @dataclass
@@ -12,9 +12,11 @@ class ConversationBuffer:
     def add_user(self, text: str) -> None:
         self._append("You", text)
 
-    def add_event(self, event: JcodeEvent) -> None:
-        who = "jcode" if event.kind not in {"user", "input"} else "You"
-        self._append(who, event.text)
+    def add_event(self, event: PanelEvent) -> None:
+        if event.kind == PanelEventKind.SESSION and not event.text:
+            return
+        who = event.role if event.role else "jcode"
+        self._append(who, event.text or event_preview(event))
 
     def _append(self, who: str, text: str) -> None:
         self.messages.append((who, text))

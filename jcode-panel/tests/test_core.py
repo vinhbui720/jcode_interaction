@@ -1,11 +1,13 @@
 from pathlib import Path
-import os
 
 from jcode_panel.config import AppConfig
 from jcode_panel.context import ActiveContext, BrowserContext
 from jcode_panel.dropdown import ConversationBuffer
 from jcode_panel.floating import CompletionState
 from jcode_panel.jcode_client import parse_event
+from jcode_panel.protocol import PanelEventKind, event_preview, parse_panel_event
+from jcode_panel.services import AppController, PromptBuilder, PromptRequest
+from jcode_panel.state import AppState
 from jcode_panel.terminal import render_command
 
 
@@ -28,7 +30,7 @@ def test_context_summary_and_block():
 
 def test_parse_structured_and_plain_events():
     event = parse_event('{"type":"status","text":"Running tests"}')
-    assert event.kind == "status"
+    assert event.kind == PanelEventKind.STATUS
     assert event.text == "Running tests"
     assert parse_event("hello").text == "hello"
 
@@ -53,10 +55,6 @@ def test_terminal_template_rendering():
     args = render_command("xterm -e sh -lc {quoted_cmd}", "jcode --resume fox")
     assert args[:4] == ["xterm", "-e", "sh", "-lc"]
     assert args[4] == "jcode --resume fox"
-
-from jcode_panel.services import AppController, PromptBuilder, PromptRequest
-from jcode_panel.state import AppState
-
 
 def test_state_roundtrip_and_prompt_dedupe(tmp_path: Path):
     path = tmp_path / "state.toml"
@@ -87,3 +85,17 @@ def test_app_controller_active_session_prefers_state():
     cfg.session.saved_session = "config-session"
     controller = AppController(cfg, AppState(saved_session="state-session"))
     assert controller.active_session == "state-session"
+
+def test_protocol_parses_panel_events_and_preview():
+    event = parse_panel_event('{"type":"panel.progress","text":"Running tests","percent":42}')
+    assert event.kind == PanelEventKind.PROGRESS
+    assert event.progress == 0.42
+    assert "42%" in event_preview(event)
+
+
+def test_protocol_parses_completion_items_and_session():
+    event = parse_panel_event('{"type":"panel.completions","items":[{"value":"/grill-me","detail":"ask"}]}')
+    assert event.kind == PanelEventKind.COMPLETIONS
+    assert event.completions[0].value == "/grill-me"
+    session = parse_panel_event('{"type":"panel.session","session_id":"fox"}')
+    assert session.session_id == "fox"

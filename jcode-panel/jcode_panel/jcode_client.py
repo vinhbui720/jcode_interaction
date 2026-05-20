@@ -6,15 +6,9 @@ import shutil
 import subprocess
 import threading
 import time
-from dataclasses import dataclass
-from typing import Callable, Iterable
+from typing import Callable
 
-
-@dataclass
-class JcodeEvent:
-    kind: str
-    text: str = ""
-    raw: dict | None = None
+from .protocol import CompletionItem, ConnectionState, PanelEvent, PanelEventKind, parse_panel_event
 
 
 class JcodeUnavailable(RuntimeError):
@@ -31,8 +25,10 @@ class JcodeClient:
     def __init__(self, session_id: str = ""):
         self.session_id = session_id
         self.process: subprocess.Popen | None = None
-        self.events: "queue.Queue[JcodeEvent]" = queue.Queue()
+        self.events: "queue.Queue[PanelEvent]" = queue.Queue()
         self._reader: threading.Thread | None = None
+        self.state = ConnectionState.DISCONNECTED
+        self.last_error = ""
 
     def ensure_available(self) -> None:
         if not shutil.which("jcode"):
@@ -45,28 +41,53 @@ class JcodeClient:
 
     def connect(self) -> None:
         self.ensure_available()
+        self.state = ConnectionState.CONNECTING
         args = ["jcode", "connect"]
         if self.session_id:
             args += ["--resume", self.session_id]
         self.process = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        self.state = ConnectionState.CONNECTED
+        self.events.put(PanelEvent(kind=PanelEventKind.STATUS, text="Connected to jcode"))
         self._reader = threading.Thread(target=self._read_stdout, daemon=True)
         self._reader.start()
 
     def _read_stdout(self) -> None:
         assert self.process and self.process.stdout
-        for line in self.process.stdout:
-            self.events.put(parse_event(line.rstrip("\n")))
+        try:
+            for line in self.process.stdout:
+                self.events.put(parse_event(line.rstrip("\n")))
+        except Exception as exc:
+            self.last_error = str(exc)
+            self.state = ConnectionState.ERROR
+            self.events.put(PanelEvent(kind=PanelEventKind.ERROR, text=f"jcode stream error: {exc}"))
+        finally:
+            if self.state == ConnectionState.CONNECTED:
+                self.state = ConnectionState.DISCONNECTED
+                self.events.put(PanelEvent(kind=PanelEventKind.STATUS, text="Disconnected from jcode"))
 
     def send(self, prompt: str, context: dict | None = None) -> None:
         if not self.process or not self.process.stdin:
             raise JcodeUnavailable("jcode client is not connected")
+        if self.process.poll() is not None:
+            self.state = ConnectionState.DISCONNECTED
+            raise JcodeUnavailable("jcode client process has exited")
         # Future structured metadata can be negotiated here. Fallback sends text.
         self.process.stdin.write(prompt + "\n")
         self.process.stdin.flush()
 
-    def stream(self, on_event: Callable[[JcodeEvent], None]) -> None:
+    def stream(self, on_event: Callable[[PanelEvent], None]) -> None:
         while True:
             on_event(self.events.get())
+
+    def disconnect(self) -> None:
+        if self.process and self.process.poll() is None:
+            self.process.terminate()
+        self.state = ConnectionState.DISCONNECTED
+
+    def reconnect(self) -> None:
+        self.state = ConnectionState.RECONNECTING
+        self.disconnect()
+        self.connect()
 
     def completions(self, prefix: str) -> list[str]:
         self.ensure_available()
@@ -79,9 +100,9 @@ class JcodeClient:
                 out = subprocess.check_output(args, text=True, stderr=subprocess.DEVNULL, timeout=2)
                 data = json.loads(out)
                 if isinstance(data, list):
-                    return [str(x) for x in data]
+                    return [CompletionItem.from_any(x).value for x in data]
                 if isinstance(data, dict) and isinstance(data.get("items"), list):
-                    return [str(x.get("value", x)) for x in data["items"]]
+                    return [CompletionItem.from_any(x).value for x in data["items"]]
             except Exception:
                 pass
         fallback = ["/help", "/resume", "/skill", "/swarm", "/memory"]
@@ -91,13 +112,5 @@ class JcodeClient:
         return f"jcode --resume {session}"
 
 
-def parse_event(line: str) -> JcodeEvent:
-    try:
-        data = json.loads(line)
-        if isinstance(data, dict):
-            kind = str(data.get("type") or data.get("kind") or "message")
-            text = str(data.get("text") or data.get("content") or data.get("message") or line)
-            return JcodeEvent(kind=kind, text=text, raw=data)
-    except Exception:
-        pass
-    return JcodeEvent(kind="text", text=line)
+def parse_event(line: str) -> PanelEvent:
+    return parse_panel_event(line)
