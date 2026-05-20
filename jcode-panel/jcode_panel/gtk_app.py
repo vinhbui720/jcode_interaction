@@ -6,6 +6,7 @@ import os
 os.environ.setdefault("GDK_BACKEND", "x11")
 
 import threading
+import time
 
 import gi
 gi.require_version("Gtk", "3.0")
@@ -269,6 +270,7 @@ class PanelApp:
         self.client = JcodeClient(self.controller.active_session)
         self.conversation = ConversationBuffer(self.config.ui.dropdown_max_messages)
         self.active_context = capture_active_context()
+        self.last_prompt_toggle_at = 0.0
         self.indicator = AppIndicator3.Indicator.new("jcode-panel", "jcode-panel", AppIndicator3.IndicatorCategory.APPLICATION_STATUS)
         self.indicator.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
         self.indicator.set_label("jcode", "")
@@ -336,6 +338,13 @@ class PanelApp:
             self._add_system(str(exc))
 
     def show_prompt(self):
+        now = time.monotonic()
+        # On X11/XWayland, F8 can arrive twice: once from GNOME custom
+        # shortcut (`jcp`) and once from the internal pynput listener. Without
+        # debouncing the popup opens then immediately closes.
+        if now - self.last_prompt_toggle_at < 0.45:
+            return
+        self.last_prompt_toggle_at = now
         if self.floating.get_visible():
             self.floating.hide()
         else:
