@@ -52,6 +52,12 @@ class FloatingInput(Gtk.Window):
         self.typed_once = False
         self.set_border_width(0)
         self.set_opacity(app.config.ui.floating_opacity)
+        self.set_app_paintable(True)
+        screen = self.get_screen()
+        visual = screen.get_rgba_visual() if screen else None
+        if visual:
+            self.set_visual(visual)
+        self.connect("draw", self._draw_transparent)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         add_class(box, "floating-root")
         self.entry = Gtk.Entry()
@@ -65,6 +71,13 @@ class FloatingInput(Gtk.Window):
         self.add(box)
         self.set_default_size(520, 52)
         self.target_window_id = ""
+
+    def _draw_transparent(self, _widget, cr):
+        cr.set_source_rgba(0, 0, 0, 0)
+        cr.set_operator(0)  # cairo.OPERATOR_CLEAR without importing cairo
+        cr.paint()
+        cr.set_operator(2)  # cairo.OPERATOR_OVER
+        return False
 
     def show_at_pointer(self):
         x, y, window_id = xdotool_mouse_position_full()
