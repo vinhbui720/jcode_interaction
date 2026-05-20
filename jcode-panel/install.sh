@@ -17,7 +17,8 @@ need_cmd jcode
 need_cmd xdotool
 need_cmd xprop
 
-python3 - <<'PY'
+python_missing=0
+python3 - <<'PY' || python_missing=1
 missing = []
 for mod in ["requests", "pynput"]:
     try:
@@ -35,14 +36,10 @@ if missing:
 print("OK: Python dependencies")
 PY
 
-if [[ "$missing" -ne 0 ]]; then
-  cat >&2 <<'EOF'
-Install suggested Ubuntu dependencies:
-  sudo apt install python3-gi gir1.2-appindicator3-0.1 gir1.2-gtk-3.0 xdotool x11-utils
-  python3 -m pip install --user pynput requests
-EOF
-  exit 1
+if [[ "$python_missing" -ne 0 ]]; then
+  missing=1
 fi
+deps_missing="$missing"
 
 mkdir -p "$HOME/.config/autostart" "$HOME/.local/bin" "$HOME/.local/share/icons/hicolor/scalable/apps"
 cat > "$HOME/.config/autostart/jcode-panel.desktop" <<EOF
@@ -66,3 +63,14 @@ echo "Aliases installed:"
 echo "  jcode-panel        # open app"
 echo "  jcp                # open prompt"
 echo "Desktop launchers installed with jcode-panel icon."
+
+if [[ "$deps_missing" -ne 0 ]]; then
+  cat >&2 <<'EOF'
+
+Launchers were installed, but runtime dependencies are missing.
+Install suggested Ubuntu dependencies:
+  sudo apt install python3-gi gir1.2-appindicator3-0.1 gir1.2-gtk-3.0 xdotool x11-utils
+  python3 -m pip install --user pynput requests
+EOF
+  exit 1
+fi
