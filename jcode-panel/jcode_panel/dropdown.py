@@ -16,12 +16,28 @@ class ConversationBuffer:
 
     def add_event(self, event: PanelEvent) -> None:
         text = event.text.strip("\n")
+        raw_type = str((event.raw or {}).get("type") or (event.raw or {}).get("kind") or "").lower()
+        if "transcription" in raw_type or text.lower().startswith("[transcription]"):
+            self._streaming_index = None
+            cleaned = text
+            if cleaned.lower().startswith("[transcription]"):
+                cleaned = cleaned[len("[transcription]") :].strip()
+            if cleaned:
+                self._append("You", cleaned)
+            return
         if event.kind == PanelEventKind.SESSION:
             return
         if event.kind == PanelEventKind.STATUS:
             preview = event_preview(event).strip("\n")
             # Keep noisy protocol/status events out of chat unless useful.
-            if preview and preview not in {"message_end"} and not preview.startswith("websocket/"):
+            noisy_prefixes = (
+                "sending prompt",
+                "persistent jcode client running",
+                "jcode-panel ready",
+                "jcode response complete",
+                "sent to jcode",
+            )
+            if preview and preview not in {"message_end"} and not preview.startswith("websocket/") and not preview.lower().startswith(noisy_prefixes):
                 self._append_or_replace_status(preview)
             if event.raw and event.raw.get("type") == "message_end":
                 self._streaming_index = None

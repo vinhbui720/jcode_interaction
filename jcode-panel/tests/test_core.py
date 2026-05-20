@@ -208,6 +208,22 @@ def test_conversation_status_uses_current_preview_when_text_empty():
     assert buf.messages == [("status", "pytest -q")]
 
 
+def test_conversation_transcription_becomes_user_turn():
+    buf = ConversationBuffer(max_messages=10)
+    buf.add_user("first")
+    buf.add_event(parse_panel_event('{"type":"status","text":"[transcription] HI"}'))
+
+    assert buf.messages == [("You", "first"), ("You", "HI")]
+
+
+def test_conversation_ignores_noisy_sending_status():
+    buf = ConversationBuffer(max_messages=10)
+    buf.add_user("hello")
+    buf.add_event(parse_panel_event('{"type":"status","text":"Sending prompt to persistent jcode client..."}'))
+
+    assert buf.messages == [("You", "hello")]
+
+
 def test_protocol_backend_chat_status_extracts_feedback_text():
     event = parse_panel_event(
         '{"type":"backend/chat/status","current":{"command":"pytest -q","state":"running","active":true},"feedback":"Running regression tests"}'
