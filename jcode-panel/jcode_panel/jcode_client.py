@@ -16,17 +16,22 @@ class JcodeUnavailable(RuntimeError):
 
 
 class JcodeClient:
-    """Thin jcode client wrapper.
+    """Panel-owned jcode client wrapper.
 
-    It prefers jcode's future formal APIs when commands exist, while keeping a
-    subprocess streaming fallback usable today.
+    For saved sessions this keeps one `jcode repl --resume <session>` process
+    alive and writes prompts to stdin. That preserves the real CLI client's
+    history/tools/command execution until the panel quits or the user switches
+    sections. For brand-new sections, the first prompt still uses
+    `jcode run --ndjson` once so we can discover and persist the new session id;
+    subsequent prompts switch to the long-lived REPL client.
     """
 
     def __init__(self, session_id: str = ""):
-        self.session_id = session_id
+        self.session_id = session_id.strip()
         self.process: subprocess.Popen | None = None
         self.events: "queue.Queue[PanelEvent]" = queue.Queue()
         self._reader: threading.Thread | None = None
+        self._send_lock = threading.Lock()
         self.state = ConnectionState.DISCONNECTED
         self.last_error = ""
 
@@ -41,33 +46,133 @@ class JcodeClient:
 
     def connect(self) -> None:
         self.ensure_available()
-        # `jcode connect` is a TUI client and can exit/break pipes when driven
-        # without a PTY. The panel quick-prompt path uses `jcode run` per
-        # prompt until a formal stable panel API exists.
+        if self.session_id:
+            self._ensure_repl()
+        else:
+            self.state = ConnectionState.CONNECTED
+            self.events.put(PanelEvent(kind=PanelEventKind.STATUS, text="jcode-panel ready; first prompt will create a session"))
+
+    def _repl_args(self) -> list[str]:
+        args = ["jcode", "repl"]
+        if self.session_id:
+            args += ["--resume", self.session_id]
+        return args
+
+    def _ensure_repl(self) -> None:
+        self.ensure_available()
+        if self.process and self.process.poll() is None:
+            return
+        self.state = ConnectionState.CONNECTING
+        self.process = subprocess.Popen(
+            self._repl_args(),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
         self.state = ConnectionState.CONNECTED
-        self.events.put(PanelEvent(kind=PanelEventKind.STATUS, text="jcode-panel ready"))
+        self._reader = threading.Thread(target=self._read_stdout, daemon=True)
+        self._reader.start()
+        name = self.session_id or "new"
+        self.events.put(PanelEvent(kind=PanelEventKind.STATUS, text=f"Persistent jcode client running: {name}"))
 
     def _read_stdout(self) -> None:
-        assert self.process and self.process.stdout
+        proc = self.process
+        if not proc or not proc.stdout:
+            return
         try:
-            for line in self.process.stdout:
-                self.events.put(parse_event(line.rstrip("\n")))
+            for line in proc.stdout:
+                line = line.rstrip("\n")
+                if not line or line.strip() == ">":
+                    continue
+                # Hide REPL chrome from chat, keep useful activity lines.
+                if line.startswith("J-Code -") or line.startswith("Type your message") or line.startswith("Available skills:"):
+                    continue
+                self.events.put(parse_event(line))
         except Exception as exc:
             self.last_error = str(exc)
             self.state = ConnectionState.ERROR
             self.events.put(PanelEvent(kind=PanelEventKind.ERROR, text=f"jcode stream error: {exc}"))
         finally:
-            if self.state == ConnectionState.CONNECTED:
+            if self.process is proc and self.state == ConnectionState.CONNECTED:
                 self.state = ConnectionState.DISCONNECTED
-                self.events.put(PanelEvent(kind=PanelEventKind.STATUS, text="Disconnected from jcode"))
+                self.events.put(PanelEvent(kind=PanelEventKind.STATUS, text="Persistent jcode client stopped"))
 
     def send(self, prompt: str, context: dict | None = None) -> None:
         self.ensure_available()
-        if not prompt.strip():
+        prompt = prompt.strip()
+        if not prompt:
             return
-        threading.Thread(target=self._run_prompt, args=(prompt,), daemon=True).start()
+        threading.Thread(target=self._send_prompt, args=(prompt,), daemon=True).start()
+
+    def _send_prompt(self, prompt: str) -> None:
+        with self._send_lock:
+            if self.session_id:
+                self._send_to_repl(prompt)
+            else:
+                self._run_first_prompt(prompt)
+
+    def _send_to_repl(self, prompt: str) -> None:
+        self._ensure_repl()
+        if not self.process or not self.process.stdin or self.process.poll() is not None:
+            raise JcodeUnavailable("persistent jcode client is not writable")
+        self.events.put(PanelEvent(kind=PanelEventKind.STATUS, text="Sending prompt to persistent jcode client..."))
+        try:
+            self.process.stdin.write(prompt.replace("\r", "") + "\n")
+            self.process.stdin.flush()
+        except Exception as exc:
+            self.last_error = str(exc)
+            self.events.put(PanelEvent(kind=PanelEventKind.ERROR, text=f"jcode repl send failed: {exc}"))
+            self.disconnect()
+
+    def _run_first_prompt(self, prompt: str) -> None:
+        """Bootstrap a new real Jcode session, then keep it alive via REPL."""
+        args = ["jcode", "run", "--ndjson", prompt]
+        self.events.put(PanelEvent(kind=PanelEventKind.STATUS, text="Creating new jcode session..."))
+        discovered_session = ""
+        try:
+            proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+            assert proc.stdout
+            for line in proc.stdout:
+                line = line.rstrip("\n")
+                if not line:
+                    continue
+                event = parse_event(line)
+                if event.kind == PanelEventKind.SESSION and event.session_id:
+                    discovered_session = event.session_id
+                self.events.put(event)
+            code = proc.wait()
+            if code == 0:
+                self.events.put(PanelEvent(kind=PanelEventKind.STATUS, text="jcode response complete"))
+                if discovered_session:
+                    self.set_session(discovered_session)
+                    self._ensure_repl()
+            else:
+                self.events.put(PanelEvent(kind=PanelEventKind.ERROR, text=f"jcode run exited with code {code}"))
+        except Exception as exc:
+            self.last_error = str(exc)
+            self.events.put(PanelEvent(kind=PanelEventKind.ERROR, text=f"jcode run failed: {exc}"))
 
     def set_session(self, session_id: str) -> None:
+        session_id = session_id.strip()
+        if session_id == self.session_id:
+            return
+        self.disconnect()
+        self.session_id = session_id
+        if self.session_id:
+            try:
+                self._ensure_repl()
+            except Exception as exc:
+                self.last_error = str(exc)
+                self.events.put(PanelEvent(kind=PanelEventKind.ERROR, text=f"jcode repl start failed: {exc}"))
+
+    def adopt_session(self, session_id: str) -> None:
+        """Remember a session id discovered from events without restarting IO.
+
+        Used while the one-shot bootstrap command is still streaming. Once it
+        exits cleanly, `_run_first_prompt` starts the persistent REPL.
+        """
         self.session_id = session_id.strip()
 
     def rename_session(self, session_id: str, name: str) -> None:
@@ -84,35 +189,25 @@ class JcodeClient:
         except Exception:
             pass
 
-    def _run_prompt(self, prompt: str) -> None:
-        args = ["jcode", "run", "--ndjson"]
-        if self.session_id:
-            args += ["--resume", self.session_id]
-        args.append(prompt)
-        self.events.put(PanelEvent(kind=PanelEventKind.STATUS, text="Sending prompt to jcode..."))
-        try:
-            proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-            assert proc.stdout
-            for line in proc.stdout:
-                line = line.rstrip("\n")
-                if line:
-                    self.events.put(parse_event(line))
-            code = proc.wait()
-            if code == 0:
-                self.events.put(PanelEvent(kind=PanelEventKind.STATUS, text="jcode response complete"))
-            else:
-                self.events.put(PanelEvent(kind=PanelEventKind.ERROR, text=f"jcode run exited with code {code}"))
-        except Exception as exc:
-            self.last_error = str(exc)
-            self.events.put(PanelEvent(kind=PanelEventKind.ERROR, text=f"jcode run failed: {exc}"))
-
     def stream(self, on_event: Callable[[PanelEvent], None]) -> None:
         while True:
             on_event(self.events.get())
 
     def disconnect(self) -> None:
-        if self.process and self.process.poll() is None:
-            self.process.terminate()
+        proc = self.process
+        self.process = None
+        if proc and proc.poll() is None:
+            try:
+                if proc.stdin:
+                    proc.stdin.write("quit\n")
+                    proc.stdin.flush()
+                proc.wait(timeout=2)
+            except Exception:
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=2)
+                except Exception:
+                    proc.kill()
         self.state = ConnectionState.DISCONNECTED
 
     def reconnect(self) -> None:

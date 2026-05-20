@@ -4,7 +4,7 @@ from jcode_panel.config import AppConfig
 from jcode_panel.context import ActiveContext, BrowserContext
 from jcode_panel.dropdown import ConversationBuffer
 from jcode_panel.floating import CompletionState
-from jcode_panel.jcode_client import parse_event
+from jcode_panel.jcode_client import JcodeClient, parse_event
 from jcode_panel.protocol import PanelEventKind, event_preview, parse_panel_event
 from jcode_panel.services import AppController, PromptBuilder, PromptRequest
 from jcode_panel.state import AppState
@@ -105,6 +105,13 @@ def test_protocol_parses_panel_events_and_preview():
     assert event.kind == PanelEventKind.PROGRESS
     assert event.progress == 0.42
     assert "42%" in event_preview(event)
+
+
+def test_jcode_client_repl_args_and_adopt_session():
+    client = JcodeClient("panel-session")
+    assert client._repl_args() == ["jcode", "repl", "--resume", "panel-session"]
+    client.adopt_session("new-session")
+    assert client.session_id == "new-session"
 
 
 def test_protocol_parses_completion_items_and_session():

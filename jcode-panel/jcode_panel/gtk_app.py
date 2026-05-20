@@ -555,7 +555,7 @@ class PanelApp:
         if event.kind == PanelEventKind.SESSION and event.session_id:
             old_session = self.controller.active_session
             self.controller.switch_session(event.session_id)
-            self.client.set_session(event.session_id)
+            self.client.adopt_session(event.session_id)
             if event.session_id != old_session:
                 self.client.rename_session(event.session_id, self.controller.active_session_name)
                 self._add_system(f"Saved panel section '{self.controller.active_session_name}' as {event.session_id}")
