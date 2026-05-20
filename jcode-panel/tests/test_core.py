@@ -5,7 +5,7 @@ from jcode_panel.context import ActiveContext, BrowserContext
 from jcode_panel.dropdown import ConversationBuffer
 from jcode_panel.floating import CompletionState
 from jcode_panel.jcode_client import JcodeClient, parse_event
-from jcode_panel.protocol import PanelEventKind, event_preview, parse_panel_event
+from jcode_panel.protocol import PanelEventKind, activity_is_terminal, activity_label, activity_state, event_preview, parse_panel_event
 from jcode_panel.services import AppController, PromptBuilder, PromptRequest
 from jcode_panel.state import AppState
 from jcode_panel.terminal import render_command
@@ -105,6 +105,31 @@ def test_protocol_parses_panel_events_and_preview():
     assert event.kind == PanelEventKind.PROGRESS
     assert event.progress == 0.42
     assert "42%" in event_preview(event)
+
+
+def test_protocol_activity_helpers_prefer_command_and_state():
+    event = parse_panel_event('{"type":"tool_start","tool_name":"bash","command":"pytest -q","state":"running"}')
+    assert event.kind == PanelEventKind.TOOL
+    assert activity_label(event.raw, event.text) == "pytest -q"
+    assert activity_state(event.raw, event.text) == "running"
+    assert not activity_is_terminal(event)
+
+
+def test_protocol_activity_helpers_detect_terminal_events():
+    event = parse_panel_event('{"type":"tool_end","tool_name":"read","status":"completed"}')
+    assert event.kind == PanelEventKind.TOOL
+    assert activity_label(event.raw, event.text) == "read"
+    assert activity_is_terminal(event)
+
+
+def test_protocol_activity_helpers_keep_streaming_message_active():
+    delta = parse_panel_event('{"type":"text_delta","text":"a"}')
+    assert delta.kind == PanelEventKind.MESSAGE
+    assert not activity_is_terminal(delta)
+    done = parse_panel_event('{"type":"done","text":"abc"}')
+    assert activity_is_terminal(done)
+    end = parse_panel_event('{"type":"message_end"}')
+    assert activity_is_terminal(end)
 
 
 def test_jcode_client_repl_args_and_adopt_session():

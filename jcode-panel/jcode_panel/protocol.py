@@ -100,6 +100,15 @@ def parse_panel_event(line: str) -> PanelEvent:
         "completion": PanelEventKind.COMPLETIONS,
         "ui_hint": PanelEventKind.UI_HINT,
         "tool": PanelEventKind.TOOL,
+        "tool_call": PanelEventKind.TOOL,
+        "tool_start": PanelEventKind.TOOL,
+        "tool_delta": PanelEventKind.TOOL,
+        "tool_end": PanelEventKind.TOOL,
+        "command": PanelEventKind.TOOL,
+        "command_start": PanelEventKind.TOOL,
+        "command_end": PanelEventKind.TOOL,
+        "bash": PanelEventKind.TOOL,
+        "exec": PanelEventKind.TOOL,
     }
     kind = aliases.get(typ, PanelEventKind.RAW)
     completions = [CompletionItem.from_any(x) for x in data.get("items", [])] if kind == PanelEventKind.COMPLETIONS else []
@@ -164,3 +173,56 @@ def event_preview(event: PanelEvent, debug: bool = False) -> str:
     if event.kind == PanelEventKind.SESSION and event.session_id:
         return f"Session: {event.session_id}"
     return (event.text or event.kind.value)[:160]
+
+
+def activity_label(raw: dict[str, Any] | None, fallback: str = "") -> str:
+    """Best-effort short label for currently executing tool/command events."""
+    if not raw:
+        return fallback.strip()
+    for key in (
+        "command",
+        "cmd",
+        "tool_input",
+        "tool_name",
+        "name",
+        "title",
+        "label",
+        "text",
+        "message",
+        "phase",
+        "detail",
+    ):
+        value = raw.get(key)
+        if isinstance(value, str) and value.strip():
+            return _compact_activity(value)
+    tool = raw.get("tool")
+    if isinstance(tool, dict):
+        return activity_label(tool, fallback)
+    if isinstance(tool, str) and tool.strip():
+        return _compact_activity(tool)
+    return fallback.strip()
+
+
+def activity_state(raw: dict[str, Any] | None, fallback: str = "") -> str:
+    if raw:
+        for key in ("state", "status", "phase", "event", "action"):
+            value = raw.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip().lower().replace("_", " ")
+    return fallback.strip().lower().replace("_", " ")
+
+
+def activity_is_terminal(event: PanelEvent) -> bool:
+    if event.kind == PanelEventKind.ERROR:
+        return True
+    typ = str((event.raw or {}).get("type") or (event.raw or {}).get("kind") or "").lower()
+    state = activity_state(event.raw, event.text)
+    terminal_terms = ("done", "end", "complete", "completed", "finished", "success", "failed", "error", "cancel")
+    return any(term in typ for term in terminal_terms) or any(term in state for term in terminal_terms)
+
+
+def _compact_activity(value: str) -> str:
+    value = " ".join(value.strip().split())
+    if value.startswith("{") and len(value) > 80:
+        return "tool"
+    return value

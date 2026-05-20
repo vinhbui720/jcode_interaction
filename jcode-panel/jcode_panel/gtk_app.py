@@ -8,6 +8,7 @@ os.environ.setdefault("GDK_BACKEND", "x11")
 import threading
 import time
 import subprocess
+from dataclasses import dataclass
 
 import gi
 gi.require_version("Gtk", "3.0")
@@ -22,12 +23,25 @@ from .dropdown import ConversationBuffer
 from .floating import CompletionState
 from .diagnostics import append_log
 from .jcode_client import JcodeClient, JcodeUnavailable
-from .protocol import PanelEvent, PanelEventKind
+from .protocol import PanelEvent, PanelEventKind, activity_is_terminal, activity_label, activity_state
 from .notify import notify
 from .terminal import launch
 from .style import add_class, load_css
 from .positioning import xdotool_mouse_position_full
 from .updater import self_update
+
+
+@dataclass
+class LiveActivity:
+    label: str = "idle"
+    state: str = "idle"
+    started_at: float = 0.0
+    active: bool = False
+
+    def elapsed(self, now: float | None = None) -> int:
+        if not self.active or not self.started_at:
+            return 0
+        return max(0, int((now or time.monotonic()) - self.started_at))
 
 
 class FloatingInput(Gtk.Window):
@@ -471,6 +485,8 @@ class PanelApp:
         self.conversation = ConversationBuffer(self.config.ui.dropdown_max_messages)
         self.active_context = capture_active_context()
         self.process_status = "idle"
+        self.live_activity = LiveActivity()
+        self.activity_tick_id = 0
         self.feedback_text = ""
         self.last_prompt_toggle_at = 0.0
         self._ambient_shift = False
@@ -562,14 +578,16 @@ class PanelApp:
         self.conversation.add_event(event)
         self.dropdown.refresh()
         if event.kind in {PanelEventKind.STATUS, PanelEventKind.PROGRESS, PanelEventKind.TOOL}:
-            self.process_status = event.text or event.kind.value
+            self._record_activity_event(event)
             self._update_header_status()
         elif event.kind == PanelEventKind.ERROR:
+            self._finish_activity("error")
             self.process_status = "error"
             self.feedback_text = event.text or "Error"
             self._update_header_status()
             self.toast.update_feedback(self.feedback_text)
         elif event.kind == PanelEventKind.MESSAGE and event.text:
+            terminal_message = activity_is_terminal(event)
             if event.raw and event.raw.get("type") == "done":
                 # `done` repeats the full answer after text_delta chunks. Use it
                 # only if no deltas were rendered.
@@ -578,20 +596,69 @@ class PanelApp:
             else:
                 self.feedback_text += event.text
             self.process_status = "answering"
+            if terminal_message:
+                self._finish_activity("answering")
+            else:
+                self.live_activity = LiveActivity(label="jcode", state="answering", started_at=self.live_activity.started_at or time.monotonic(), active=True)
+                self._ensure_activity_tick()
             self._update_header_status()
             self.toast.update_feedback(self.feedback_text)
         return False
 
+    def _record_activity_event(self, event: PanelEvent):
+        label = activity_label(event.raw, event.text or event.kind.value) or event.kind.value
+        state = activity_state(event.raw, event.text or event.kind.value) or event.kind.value
+        now = time.monotonic()
+        if activity_is_terminal(event):
+            self._finish_activity(state or label)
+            return
+        if not self.live_activity.active or label != self.live_activity.label:
+            self.live_activity = LiveActivity(label=label, state=state, started_at=now, active=True)
+        else:
+            self.live_activity.state = state
+        self.process_status = state or label
+        self._ensure_activity_tick()
+
+    def _finish_activity(self, status: str = "idle"):
+        self.live_activity.active = False
+        self.live_activity.state = status or self.live_activity.state
+        if self.activity_tick_id:
+            GLib.source_remove(self.activity_tick_id)
+            self.activity_tick_id = 0
+
+    def _ensure_activity_tick(self):
+        if not self.activity_tick_id:
+            self.activity_tick_id = GLib.timeout_add_seconds(1, self._activity_tick)
+
+    def _activity_tick(self) -> bool:
+        if not self.live_activity.active:
+            self.activity_tick_id = 0
+            return False
+        self._update_header_status()
+        return True
+
     def _update_header_status(self):
-        label = self.process_status.strip() or "idle"
-        if len(label) > 48:
-            label = label[:45] + "..."
+        if self.live_activity.active:
+            elapsed = self._format_elapsed(self.live_activity.elapsed())
+            label = f"{self.live_activity.state}: {self.live_activity.label} · {elapsed}"
+        else:
+            label = self.process_status.strip() or "idle"
+        if len(label) > 62:
+            label = label[:59] + "..."
         self.indicator.set_label(label, "")
+
+    def _format_elapsed(self, seconds: int) -> str:
+        minutes, secs = divmod(seconds, 60)
+        if minutes:
+            return f"{minutes}m{secs:02d}s"
+        return f"{secs}s"
 
     def send_prompt(self, text: str, include_context: bool):
         payload, metadata = self.controller.build_prompt(text, self.active_context, include_context)
         self.feedback_text = ""
         self.process_status = "sending"
+        self.live_activity = LiveActivity(label="jcode", state="sending", started_at=time.monotonic(), active=True)
+        self._ensure_activity_tick()
         self._update_header_status()
         self.conversation.add_user(text)
         self.dropdown.refresh()
