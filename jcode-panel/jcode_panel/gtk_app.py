@@ -351,7 +351,7 @@ class AnswerToast(Gtk.Window):
         self.set_skip_pager_hint(True)
         self.set_accept_focus(False)
         self.set_type_hint(Gdk.WindowTypeHint.NOTIFICATION)
-        self.set_opacity(0.88)
+        self.set_opacity(1.0)
         self.set_app_paintable(True)
         screen = self.get_screen()
         visual = screen.get_rgba_visual() if screen else None
@@ -384,6 +384,8 @@ class AnswerToast(Gtk.Window):
         self.add(root)
         self.set_default_size(380, 150)
         self.hide_source_id = 0
+        self.refresh_source_id = 0
+        self.pending_feedback = ""
 
     def _draw_transparent(self, _widget, cr):
         cr.set_source_rgba(0, 0, 0, 0)
@@ -405,15 +407,27 @@ class AnswerToast(Gtk.Window):
         text = text.strip()
         if not text:
             return
-        self.label.set_text(text[-900:])
+        self.pending_feedback = text[-900:]
+        if not self.refresh_source_id:
+            self.refresh_source_id = GLib.timeout_add(80, self._flush_feedback)
         self.show_all()
         self._move_to_corner()
         self._reset_idle_hide_timer()
+
+    def _flush_feedback(self) -> bool:
+        self.refresh_source_id = 0
+        self.label.set_text(self.pending_feedback)
+        self.show_all()
+        self._move_to_corner()
+        return False
 
     def hide(self):
         if self.hide_source_id:
             GLib.source_remove(self.hide_source_id)
             self.hide_source_id = 0
+        if self.refresh_source_id:
+            GLib.source_remove(self.refresh_source_id)
+            self.refresh_source_id = 0
         super().hide()
 
     def _reset_idle_hide_timer(self):
@@ -488,6 +502,7 @@ class PanelApp:
         self.live_activity = LiveActivity()
         self.activity_tick_id = 0
         self.feedback_text = ""
+        self.dropdown_refresh_id = 0
         self.last_prompt_toggle_at = 0.0
         self._ambient_shift = False
         self._ambient_ctrl = False
@@ -561,7 +576,7 @@ class PanelApp:
     def _add_system(self, text: str):
         append_log(text)
         self.conversation._append("system", text)
-        self.dropdown.refresh()
+        self._schedule_dropdown_refresh(immediate=True)
         return False
 
     def on_event(self, event: PanelEvent):
@@ -576,7 +591,7 @@ class PanelApp:
                 self.client.rename_session(event.session_id, self.controller.active_session_name)
                 self._add_system(f"Saved panel section '{self.controller.active_session_name}' as {event.session_id}")
         self.conversation.add_event(event)
-        self.dropdown.refresh()
+        self._schedule_dropdown_refresh()
         if event.kind in {PanelEventKind.STATUS, PanelEventKind.PROGRESS, PanelEventKind.TOOL}:
             self._record_activity_event(event)
             self._update_header_status()
@@ -661,7 +676,7 @@ class PanelApp:
         self._ensure_activity_tick()
         self._update_header_status()
         self.conversation.add_user(text)
-        self.dropdown.refresh()
+        self._schedule_dropdown_refresh(immediate=True)
         try:
             self.client.send(payload, metadata)
             self.controller.record_sent_prompt(text)
@@ -745,8 +760,30 @@ class PanelApp:
         return ControlResponse(False, f"Unknown command: {command}")
 
     def show_dropdown(self):
+        self._schedule_dropdown_refresh(immediate=True)
         self.dropdown.show_all()
         self.dropdown.present()
+
+    def _schedule_dropdown_refresh(self, immediate: bool = False):
+        if immediate:
+            if self.dropdown_refresh_id:
+                GLib.source_remove(self.dropdown_refresh_id)
+                self.dropdown_refresh_id = 0
+            self.dropdown.refresh()
+            return False
+        if self.dropdown_refresh_id:
+            return False
+        # Avoid repainting the whole chat for every streamed token. If hidden,
+        # defer work until the user opens the panel.
+        delay = 80 if self.dropdown.get_visible() else 220
+        self.dropdown_refresh_id = GLib.timeout_add(delay, self._flush_dropdown_refresh)
+        return False
+
+    def _flush_dropdown_refresh(self):
+        self.dropdown_refresh_id = 0
+        if self.dropdown.get_visible():
+            self.dropdown.refresh()
+        return False
 
     def toggle_dropdown(self):
         if self.dropdown.get_visible():

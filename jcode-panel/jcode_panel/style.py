@@ -9,13 +9,14 @@ def load_css(Gtk, Gdk) -> None:
     }
     window, dialog {
       background: transparent;
-      color: #cdd6f4;
+      color: #1f2937;
     }
     .panel-root {
-      background: #1e1e2e;
-      border: 1px solid #45475a;
-      border-radius: 14px;
+      background: rgba(250, 252, 255, 0.80);
+      border: 1px solid rgba(148, 163, 184, 0.42);
+      border-radius: 18px;
       padding: 12px;
+      box-shadow: 0 18px 46px rgba(15, 23, 42, 0.16);
     }
     .floating-root {
       background: transparent;
@@ -25,54 +26,54 @@ def load_css(Gtk, Gdk) -> None:
       box-shadow: none;
     }
     .context-strip {
-      color: #89b4fa;
-      background: #181825;
+      color: #2563eb;
+      background: rgba(239, 246, 255, 0.80);
       border-radius: 9px;
       padding: 6px 8px;
       margin-bottom: 6px;
     }
     entry {
-      color: #cdd6f4;
-      background: rgba(24, 24, 37, 0.96);
-      border: 1.5px solid rgba(203, 166, 247, 0.72);
+      color: #111827;
+      background: rgba(255, 255, 255, 0.80);
+      border: 1.5px solid rgba(96, 165, 250, 0.64);
       border-radius: 999px;
       padding: 12px 20px;
       min-height: 24px;
-      caret-color: #cba6f7;
+      caret-color: #2563eb;
       box-shadow: none;
     }
     entry:focus {
-      border-color: #cba6f7;
-      background: rgba(30, 30, 46, 0.98);
+      border-color: #2563eb;
+      background: rgba(255, 255, 255, 0.92);
       box-shadow: none;
     }
     textview, textview text {
-      color: #cdd6f4;
-      background: #181825;
+      color: #1f2937;
+      background: rgba(255, 255, 255, 0.62);
       font-family: JetBrains Mono, Fira Code, monospace;
       font-size: 12px;
     }
     scrolledwindow {
-      border: 1px solid #45475a;
+      border: 1px solid rgba(148, 163, 184, 0.34);
       border-radius: 12px;
-      background: #181825;
+      background: rgba(255, 255, 255, 0.56);
       padding: 8px;
     }
 
     .toast-root {
-      background: rgba(24, 24, 37, 0.34);
-      border: 1px solid rgba(203, 166, 247, 0.28);
+      background: rgba(250, 252, 255, 0.80);
+      border: 1px solid rgba(148, 163, 184, 0.38);
       border-radius: 16px;
       padding: 12px;
-      box-shadow: 0 18px 50px rgba(0,0,0,0.22);
+      box-shadow: 0 18px 48px rgba(15, 23, 42, 0.16);
     }
     .toast-title {
-      color: #cba6f7;
+      color: #2563eb;
       font-weight: 700;
       font-size: 12px;
     }
     .toast-text {
-      color: #cdd6f4;
+      color: #1f2937;
       background: transparent;
       font-size: 12px;
     }
@@ -80,40 +81,40 @@ def load_css(Gtk, Gdk) -> None:
       min-width: 28px;
       min-height: 28px;
       padding: 5px;
-      color: #cdd6f4;
-      background: rgba(49, 50, 68, 0.34);
-      border: 1px solid rgba(203, 166, 247, 0.20);
+      color: #1f2937;
+      background: rgba(255, 255, 255, 0.56);
+      border: 1px solid rgba(96, 165, 250, 0.24);
       border-radius: 999px;
     }
     .toast-icon-button:hover {
-      background: rgba(203, 166, 247, 0.22);
-      border-color: rgba(203, 166, 247, 0.48);
+      background: rgba(219, 234, 254, 0.86);
+      border-color: rgba(37, 99, 235, 0.42);
     }
     .toast-icon-button:active {
-      background: rgba(203, 166, 247, 0.44);
-      color: #181825;
+      background: rgba(147, 197, 253, 0.86);
+      color: #0f172a;
     }
 
     button {
-      color: #cdd6f4;
-      background: #313244;
-      border: 1px solid #45475a;
-      border-radius: 10px;
+      color: #1f2937;
+      background: rgba(255, 255, 255, 0.62);
+      border: 1px solid rgba(148, 163, 184, 0.38);
+      border-radius: 999px;
       padding: 7px 10px;
     }
     button:hover {
-      background: #45475a;
-      border-color: #cba6f7;
+      background: rgba(219, 234, 254, 0.88);
+      border-color: rgba(37, 99, 235, 0.42);
     }
     button:active {
-      background: #cba6f7;
-      color: #181825;
+      background: rgba(147, 197, 253, 0.92);
+      color: #0f172a;
     }
     label {
-      color: #cdd6f4;
+      color: #1f2937;
     }
     checkbutton {
-      color: #cdd6f4;
+      color: #1f2937;
     }
     '''
     provider = Gtk.CssProvider()
