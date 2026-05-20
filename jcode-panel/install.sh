@@ -2,19 +2,47 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-if ! command -v jcode >/dev/null 2>&1; then
-  echo "ERROR: jcode is not on PATH. Install/login to jcode first." >&2
-  exit 1
-fi
+missing=0
+need_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "MISSING: $1" >&2
+    missing=1
+  else
+    echo "OK: $1 -> $(command -v "$1")"
+  fi
+}
+
+need_cmd python3
+need_cmd jcode
+need_cmd xdotool
+need_cmd xprop
 
 python3 - <<'PY'
+missing = []
+for mod in ["requests", "pynput"]:
+    try:
+        __import__(mod)
+    except Exception:
+        missing.append(mod)
 try:
     import gi
     gi.require_version('Gtk', '3.0')
     gi.require_version('AppIndicator3', '0.1')
 except Exception as exc:
-    raise SystemExit(f"Missing GTK/AppIndicator deps: {exc}")
+    missing.append(f"GTK/AppIndicator ({exc})")
+if missing:
+    raise SystemExit("Missing Python/system modules: " + ", ".join(missing))
+print("OK: Python dependencies")
 PY
+
+if [[ "$missing" -ne 0 ]]; then
+  cat >&2 <<'EOF'
+Install suggested Ubuntu dependencies:
+  sudo apt install python3-gi gir1.2-appindicator3-0.1 gir1.2-gtk-3.0 xdotool x11-utils
+  python3 -m pip install --user pynput requests
+EOF
+  exit 1
+fi
 
 mkdir -p "$HOME/.config/autostart" "$HOME/.local/bin"
 cat > "$HOME/.config/autostart/jcode-panel.desktop" <<EOF
@@ -25,4 +53,7 @@ Exec=python3 -m jcode_panel.main
 X-GNOME-Autostart-enabled=true
 EOF
 
+PYTHONPATH="$PWD" python3 -m jcode_panel.main --diagnose || true
+
 echo "Installed autostart entry. Browser extension is in ./extension and is optional."
+echo "Run manually with: PYTHONPATH=$PWD python3 -m jcode_panel.main"

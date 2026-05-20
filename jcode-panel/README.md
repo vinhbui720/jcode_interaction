@@ -38,3 +38,25 @@ Preferred jcode output is JSON Lines such as:
 ```
 
 Plain text output still renders as a fallback.
+
+## Launch readiness
+
+Run diagnostics before launching:
+
+```bash
+PYTHONPATH=. python3 -m jcode_panel.main --diagnose
+```
+
+Logs are written to:
+
+```text
+~/.local/state/jcode-panel/jcode-panel.log
+```
+
+Install/autostart:
+
+```bash
+./install.sh
+```
+
+The installer does not install or configure jcode automatically. If diagnostics report jcode missing or not logged in, open a terminal and complete the normal jcode setup flow.

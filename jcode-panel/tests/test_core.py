@@ -99,3 +99,13 @@ def test_protocol_parses_completion_items_and_session():
     assert event.completions[0].value == "/grill-me"
     session = parse_panel_event('{"type":"panel.session","session_id":"fox"}')
     assert session.session_id == "fox"
+
+from jcode_panel.diagnostics import CheckResult, DiagnosticsReport
+
+
+def test_diagnostics_report_text_and_status():
+    report = DiagnosticsReport([CheckResult("a", True, "ok"), CheckResult("b", False, "bad", "fix it")])
+    text = report.as_text()
+    assert not report.ok
+    assert "[OK] a" in text
+    assert "fix: fix it" in text

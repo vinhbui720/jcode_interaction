@@ -13,6 +13,7 @@ from .services import AppController
 from .context import BrowserBridge, capture_active_context
 from .dropdown import ConversationBuffer
 from .floating import CompletionState
+from .diagnostics import append_log
 from .jcode_client import JcodeClient, JcodeUnavailable
 from .protocol import PanelEvent, PanelEventKind
 from .terminal import launch
@@ -206,10 +207,12 @@ class PanelApp:
                 self.client.connect()
                 threading.Thread(target=self.client.stream, args=(self.on_event,), daemon=True).start()
             except JcodeUnavailable as exc:
+                append_log(f"jcode unavailable: {exc}")
                 GLib.idle_add(self._add_system, f"jcode unavailable: {exc}. Open terminal to run setup/login.")
         threading.Thread(target=worker, daemon=True).start()
 
     def _add_system(self, text: str):
+        append_log(text)
         self.conversation._append("system", text)
         self.dropdown.refresh()
         return False

@@ -9,6 +9,7 @@ from .config import AppConfig
 from .context import BrowserBridge, capture_active_context
 from .services import AppController
 from .dropdown import ConversationBuffer
+from .diagnostics import append_log, run_diagnostics
 from .jcode_client import JcodeClient, JcodeUnavailable
 from .terminal import launch
 
@@ -30,6 +31,7 @@ def run_headless_once(prompt: str) -> int:
     ctx = capture_active_context()
     client = JcodeClient(controller.active_session)
     try:
+        append_log("Sending one-shot prompt")
         client.start_server()
         client.connect()
         payload, metadata = controller.build_prompt(prompt, ctx, cfg.session.send_context_default)
@@ -37,6 +39,7 @@ def run_headless_once(prompt: str) -> int:
         controller.record_sent_prompt(prompt)
         return 0
     except JcodeUnavailable as exc:
+        append_log(f"jcode unavailable: {exc}")
         print(f"jcode unavailable: {exc}", file=sys.stderr)
         return 2
 
@@ -45,11 +48,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--smoke", action="store_true", help="run non-GUI smoke validation")
     parser.add_argument("--send", metavar="PROMPT", help="send one prompt without opening GUI")
+    parser.add_argument("--diagnose", action="store_true", help="print launch diagnostics")
     parser.add_argument("--open-terminal", metavar="SESSION", help="open a session in configured terminal")
     args = parser.parse_args(argv)
 
     if args.smoke:
         return smoke()
+    if args.diagnose:
+        report = run_diagnostics()
+        print(report.as_text())
+        return 0 if report.ok else 1
     if args.send:
         return run_headless_once(args.send)
     if args.open_terminal:
