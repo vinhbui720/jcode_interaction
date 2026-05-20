@@ -366,3 +366,22 @@ def test_capture_active_context_reads_selection_and_clipboard(monkeypatch):
     assert ctx.window_title == "Doc.pdf"
     assert ctx.selected_text == "highlighted text"
     assert ctx.clipboard_text == "copied text"
+
+
+def test_capture_active_context_filters_gjs_shell_artifact_and_dm_clipboard(monkeypatch):
+    responses = {
+        ("xdotool", "getwindowname", "123"): "@!0,0;BDHF",
+        ("xprop", "-id", "123", "WM_CLASS"): 'WM_CLASS(STRING) = "gjs", "Gjs"',
+        ("xclip", "-o", "-selection", "clipboard"): "✉ DM from squid",
+    }
+
+    def fake_run(args):
+        return responses.get(tuple(args), "")
+
+    monkeypatch.setattr("jcode_panel.context._run", fake_run)
+
+    ctx = capture_active_context("123")
+
+    assert ctx.app == ""
+    assert ctx.window_title == ""
+    assert ctx.clipboard_text == ""

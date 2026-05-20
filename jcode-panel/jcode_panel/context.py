@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import re
 import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -56,6 +57,29 @@ class ActiveContext:
         return "\n".join(lines)
 
 
+_GNOME_INTERNAL_TITLE_RE = re.compile(r"^@![0-9,]+;[A-Za-z0-9_-]+$")
+
+
+def _is_internal_shell_window(app: str, title: str) -> bool:
+    """Return true for GNOME/GJS implementation windows, not user context.
+
+    When the floating prompt is invoked from the GNOME Shell/AppIndicator layer,
+    xdotool can report a synthetic GJS window with titles like `@!0,0;BDHF`.
+    Sending that to jcode is worse than no context because it hides the real
+    user task behind panel implementation details.
+    """
+    normalized_app = app.strip().lower()
+    if normalized_app in {"gjs", "gnome-shell", "gnome-shell-extension-prefs"}:
+        return not title.strip() or bool(_GNOME_INTERNAL_TITLE_RE.match(title.strip()))
+    return False
+
+
+def _is_notification_clipboard(text: str) -> bool:
+    """Filter transient desktop notification snippets from prompt context."""
+    stripped = text.strip()
+    return stripped.startswith("✉ DM from ") or stripped.startswith("DM from ")
+
+
 _latest_browser = BrowserContext()
 
 
@@ -103,9 +127,14 @@ def capture_active_context(window_id: str = "") -> ActiveContext:
         if wm_class:
             parts = [p.strip().strip('"') for p in wm_class.split("=")[-1].split(",")]
             app = parts[-1] if parts else ""
+    if _is_internal_shell_window(app, title):
+        app = ""
+        title = ""
     browser = _latest_browser if (_latest_browser.title or _latest_browser.url or _latest_browser.selected_text) else None
     selected_text = capture_selected_text()
     clipboard_text = capture_clipboard_text()
+    if _is_notification_clipboard(clipboard_text):
+        clipboard_text = ""
     return ActiveContext(app=app, window_title=title, browser=browser, selected_text=selected_text, clipboard_text=clipboard_text)
 
 
