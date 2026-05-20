@@ -54,8 +54,10 @@ class FloatingInput(Gtk.Window):
         self.set_keep_above(True)
         self.set_skip_taskbar_hint(True)
         self.set_skip_pager_hint(True)
-        self.set_accept_focus(False)
-        self.set_focus_on_map(False)
+        # While the popup is open, keyboard input must belong to the panel, not
+        # the app underneath. Accept focus and then explicitly grab the keyboard.
+        self.set_accept_focus(True)
+        self.set_focus_on_map(True)
         self.set_type_hint(Gdk.WindowTypeHint.UTILITY)
         self.follow_mouse = False
         self.follow_source_id = 0
@@ -87,6 +89,7 @@ class FloatingInput(Gtk.Window):
         self.set_default_size(520, 52)
         self.target_window_id = ""
         self.keyboard_grabbed = False
+        self.gtk_grabbed = False
 
     def _draw_transparent(self, _widget, cr):
         cr.set_source_rgba(0, 0, 0, 0)
@@ -108,6 +111,8 @@ class FloatingInput(Gtk.Window):
 
         self.show_all()
         self.realize()
+        Gtk.grab_add(self)
+        self.gtk_grabbed = True
         self._follow_mouse_tick(initial=(x, y))
         if self.follow_source_id:
             GLib.source_remove(self.follow_source_id)
@@ -120,6 +125,8 @@ class FloatingInput(Gtk.Window):
         GLib.timeout_add(75, self._focus_entry)
         GLib.timeout_add(160, self._focus_entry)
         GLib.timeout_add(40, self._grab_keyboard)
+        GLib.timeout_add(120, self._grab_keyboard)
+        GLib.timeout_add(260, self._grab_keyboard)
 
     def _follow_mouse_tick(self, initial: tuple[int | None, int | None] | None = None) -> bool:
         if not self.follow_mouse or not self.get_visible():
@@ -177,6 +184,8 @@ class FloatingInput(Gtk.Window):
                     None,
                 )
                 self.keyboard_grabbed = result == Gdk.GrabStatus.SUCCESS
+                if not self.keyboard_grabbed:
+                    append_log(f"Keyboard grab did not succeed: {result}")
         except Exception as exc:
             append_log(f"Keyboard grab failed: {exc}")
         self._focus_entry()
@@ -190,7 +199,13 @@ class FloatingInput(Gtk.Window):
                 seat.ungrab()
         except Exception:
             pass
+        if self.gtk_grabbed:
+            try:
+                Gtk.grab_remove(self)
+            except Exception:
+                pass
         self.keyboard_grabbed = False
+        self.gtk_grabbed = False
 
     def _on_focus_out(self, *_args):
         # Keep keyboard focus biased to the input, but do not capture mouse.
@@ -501,6 +516,8 @@ class PanelApp:
         self.process_status = "idle"
         self.live_activity = LiveActivity()
         self.activity_tick_id = 0
+        self.send_watchdog_id = 0
+        self.send_sequence = 0
         self.feedback_text = ""
         self.dropdown_refresh_id = 0
         self.last_prompt_toggle_at = 0.0
@@ -593,7 +610,8 @@ class PanelApp:
         self.conversation.add_event(event)
         self._schedule_dropdown_refresh()
         if event.kind in {PanelEventKind.STATUS, PanelEventKind.PROGRESS, PanelEventKind.TOOL}:
-            self._record_activity_event(event)
+            if not self._handle_transient_status(event):
+                self._record_activity_event(event)
             self._update_header_status()
             feedback = self._event_feedback_text(event)
             if feedback:
@@ -622,6 +640,19 @@ class PanelApp:
                 self._ensure_activity_tick()
             self._update_header_status()
             self.toast.update_feedback(self.feedback_text)
+        return False
+
+    def _handle_transient_status(self, event: PanelEvent) -> bool:
+        text = (event.text or "").strip().lower()
+        if text.startswith("sending prompt"):
+            self.process_status = "sent to jcode"
+            if self.live_activity.state == "sending":
+                self._finish_activity("sent")
+            return True
+        if text in {"jcode response complete", "message_end", "message end"}:
+            self._finish_activity("complete")
+            self.process_status = "complete"
+            return True
         return False
 
     def _record_activity_event(self, event: PanelEvent):
@@ -694,11 +725,14 @@ class PanelApp:
 
     def send_prompt(self, text: str, include_context: bool):
         self._sync_client_session()
+        self.send_sequence += 1
+        send_sequence = self.send_sequence
         payload, metadata = self.controller.build_prompt(text, self.active_context, include_context)
         self.feedback_text = ""
         self.process_status = "sending"
         self.live_activity = LiveActivity(label="jcode", state="sending", started_at=time.monotonic(), active=True)
         self._ensure_activity_tick()
+        self._schedule_send_watchdog(send_sequence)
         self._update_header_status()
         self.conversation.add_user(text)
         self._schedule_dropdown_refresh(immediate=True)
@@ -707,6 +741,22 @@ class PanelApp:
             self.controller.record_sent_prompt(text)
         except Exception as exc:
             self._add_system(str(exc))
+
+
+    def _schedule_send_watchdog(self, send_sequence: int) -> None:
+        if self.send_watchdog_id:
+            GLib.source_remove(self.send_watchdog_id)
+        self.send_watchdog_id = GLib.timeout_add_seconds(8, self._send_watchdog, send_sequence)
+
+    def _send_watchdog(self, send_sequence: int) -> bool:
+        self.send_watchdog_id = 0
+        if send_sequence != self.send_sequence:
+            return False
+        if self.live_activity.active and self.live_activity.state == "sending":
+            self._finish_activity("waiting")
+            self.process_status = "waiting for jcode"
+            self._update_header_status()
+        return False
 
 
     def _sync_client_session(self) -> None:

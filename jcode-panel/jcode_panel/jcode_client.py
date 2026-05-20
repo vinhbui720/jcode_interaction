@@ -154,7 +154,7 @@ class JcodeClient:
 
     def set_session(self, session_id: str) -> None:
         session_id = session_id.strip()
-        if session_id == self.session_id:
+        if session_id == self.session_id and (not session_id or (self.process and self.process.poll() is None)):
             return
         self.disconnect()
         self.session_id = session_id

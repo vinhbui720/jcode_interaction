@@ -261,6 +261,29 @@ def test_jcode_client_send_bootstraps_new_section(monkeypatch):
     assert calls == ["hello"]
 
 
+def test_jcode_client_set_session_restarts_dead_same_session(monkeypatch):
+    client = JcodeClient("saved")
+    calls = []
+
+    class DeadProcess:
+        def poll(self):
+            return 1
+
+    def fake_disconnect(_self):
+        calls.append("disconnect")
+
+    def fake_ensure_repl(_self):
+        calls.append("ensure")
+
+    client.process = DeadProcess()  # type: ignore[assignment]
+    monkeypatch.setattr("jcode_panel.jcode_client.JcodeClient.disconnect", fake_disconnect)
+    monkeypatch.setattr("jcode_panel.jcode_client.JcodeClient._ensure_repl", fake_ensure_repl)
+
+    client.set_session("saved")
+
+    assert calls == ["disconnect", "ensure"]
+
+
 def test_protocol_parses_completion_items_and_session():
     event = parse_panel_event('{"type":"panel.completions","items":[{"value":"/grill-me","detail":"ask"}]}')
     assert event.kind == PanelEventKind.COMPLETIONS
