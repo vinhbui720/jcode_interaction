@@ -44,6 +44,11 @@ class FloatingInput(Gtk.Window):
         self.set_type_hint(Gdk.WindowTypeHint.UTILITY)
         self.follow_mouse = False
         self.follow_source_id = 0
+        self.current_x: float | None = None
+        self.current_y: float | None = None
+        self.target_x: float | None = None
+        self.target_y: float | None = None
+        self.typed_once = False
         self.set_border_width(10)
         self.set_opacity(app.config.ui.floating_opacity)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
@@ -55,6 +60,7 @@ class FloatingInput(Gtk.Window):
         self.entry.set_can_focus(True)
         self.entry.connect("activate", self._on_enter)
         self.entry.connect("key-press-event", self._on_key)
+        self.entry.connect("changed", self._on_changed)
         box.pack_start(self.context_label, False, False, 0)
         box.pack_start(self.entry, False, False, 0)
         self.add(box)
@@ -65,10 +71,15 @@ class FloatingInput(Gtk.Window):
         self.context_enabled = self.app.config.session.send_context_default
         self.context_label.set_text("📎 " + self.app.active_context.summary())
         self.entry.set_text("")
+        self.typed_once = False
 
         # GTK/Wayland often ignores move() before a window is mapped. Capture
         # the pointer first, show/realize the popup, then move it repeatedly on
         # idle so X11/XWayland has a chance to honor the coordinates.
+        self.current_x = None
+        self.current_y = None
+        self.target_x = None
+        self.target_y = None
         self.follow_mouse = True
         self.show_all()
         self.realize()
@@ -87,9 +98,30 @@ class FloatingInput(Gtk.Window):
             self.follow_source_id = 0
             return False
         x, y = self._mouse_position()
-        if x is not None and y is not None:
-            self.move(max(0, x + 16), max(0, y + 18))
+        if x is None or y is None:
+            return True
+        self.target_x = float(max(0, x + 20))
+        self.target_y = float(max(0, y + 24))
+        if self.current_x is None or self.current_y is None:
+            self.current_x, self.current_y = self.target_x, self.target_y
+        else:
+            # Smooth easing avoids jitter but still tracks interaction.
+            alpha = 0.28
+            self.current_x += (self.target_x - self.current_x) * alpha
+            self.current_y += (self.target_y - self.current_y) * alpha
+            if abs(self.target_x - self.current_x) < 1:
+                self.current_x = self.target_x
+            if abs(self.target_y - self.current_y) < 1:
+                self.current_y = self.target_y
+        self.move(int(self.current_x), int(self.current_y))
         return True
+
+    def _on_changed(self, _entry):
+        # Once the user starts typing, stop following so the UI does not fight
+        # text selection/cursor interaction. Empty prompt keeps following.
+        if self.entry.get_text():
+            self.typed_once = True
+            self.follow_mouse = False
 
     def _focus_entry(self) -> bool:
         if self.get_visible():
@@ -99,6 +131,7 @@ class FloatingInput(Gtk.Window):
 
     def hide(self):
         self.follow_mouse = False
+        self.typed_once = False
         if self.follow_source_id:
             GLib.source_remove(self.follow_source_id)
             self.follow_source_id = 0
@@ -125,6 +158,10 @@ class FloatingInput(Gtk.Window):
     def _on_key(self, _widget, event):
         key = Gdk.keyval_name(event.keyval)
         alt = bool(event.state & Gdk.ModifierType.MOD1_MASK)
+        # Any non-modifier key means the user is interacting with text; stop
+        # mouse tracking so the window becomes stable and easy to type in.
+        if key not in {"Shift_L", "Shift_R", "Control_L", "Control_R", "Alt_L", "Alt_R", "Super_L", "Super_R"}:
+            self.follow_mouse = False
         if key == "Escape":
             self.hide()
             return True
@@ -299,12 +336,15 @@ class PanelApp:
             self._add_system(str(exc))
 
     def show_prompt(self):
-        self.floating.show_at_pointer()
+        if self.floating.get_visible():
+            self.floating.hide()
+        else:
+            self.floating.show_at_pointer()
 
     def _handle_control(self, command: str) -> ControlResponse:
         if command == "prompt":
             GLib.idle_add(self.show_prompt)
-            return ControlResponse(True, "Opened jcode-panel prompt")
+            return ControlResponse(True, "Toggled jcode-panel prompt")
         if command in {"show", "open"}:
             GLib.idle_add(self.show_dropdown)
             return ControlResponse(True, "Opened jcode-panel")
