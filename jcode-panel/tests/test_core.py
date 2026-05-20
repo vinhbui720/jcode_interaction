@@ -179,3 +179,10 @@ from jcode_panel.positioning import parse_xdotool_mouselocation_full
 
 def test_parse_xdotool_mouselocation_full_window():
     assert parse_xdotool_mouselocation_full('x:2657 y:50 screen:0 window:8388629') == (2657, 50, '8388629')
+
+
+def test_context_prompt_block_includes_selection_and_clipboard():
+    ctx = ActiveContext(app="Files", window_title="Pictures", selected_text="marked", clipboard_text="file:///tmp/a.png")
+    block = ctx.as_prompt_block()
+    assert "Selected text: marked" in block
+    assert "Clipboard: file:///tmp/a.png" in block

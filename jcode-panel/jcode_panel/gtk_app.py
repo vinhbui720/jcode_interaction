@@ -7,6 +7,7 @@ os.environ.setdefault("GDK_BACKEND", "x11")
 
 import threading
 import time
+import subprocess
 
 import gi
 gi.require_version("Gtk", "3.0")
@@ -54,9 +55,6 @@ class FloatingInput(Gtk.Window):
         self.set_opacity(app.config.ui.floating_opacity)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         add_class(box, "floating-root")
-        self.context_label = Gtk.Label(label="")
-        add_class(self.context_label, "context-strip")
-        self.context_label.set_xalign(0)
         self.entry = Gtk.Entry()
         self.entry.set_can_focus(True)
         self.entry.connect("activate", self._on_enter)
@@ -64,40 +62,35 @@ class FloatingInput(Gtk.Window):
         self.entry.connect("changed", self._on_changed)
         self.connect("key-press-event", self._on_key)
         self.connect("button-press-event", self._on_pointer_interaction)
-        box.pack_start(self.context_label, False, False, 0)
-        box.pack_start(self.entry, False, False, 0)
+        box.pack_start(self.entry, True, True, 0)
         self.add(box)
-        self.set_default_size(420, 72)
+        self.set_default_size(460, 58)
+        self.target_window_id = ""
 
     def show_at_pointer(self):
         x, y, window_id = xdotool_mouse_position_full()
-        self.app.active_context = capture_active_context(window_id)
+        self.target_window_id = window_id
         self.context_enabled = self.app.config.session.send_context_default
-        self.context_label.set_text("📎 " + self.app.active_context.summary())
         self.entry.set_text("")
+        self.entry.set_placeholder_text("Ask jcode...")
         self.typed_once = False
+        self.follow_mouse = False
 
-        # Capture context from the window under the mouse once, then use fast
-        # GDK pointer reads for live movement. Avoid spawning xdotool in the
-        # animation loop because subprocess polling causes visible jerk.
-        self.current_x = None
-        self.current_y = None
-        self.target_x = None
-        self.target_y = None
-        self.follow_mouse = True
         self.show_all()
         self.realize()
-        self._follow_mouse_tick(initial=(x, y))
-        if self.follow_source_id:
-            GLib.source_remove(self.follow_source_id)
-        self.follow_source_id = GLib.timeout_add(16, self._follow_mouse_tick)
-        self.present()
+        if x is not None and y is not None:
+            self.move(max(0, x + 20), max(0, y + 24))
+        self.present_with_time(Gtk.get_current_event_time())
+        self._activate_self()
         self.set_focus(self.entry)
         self.grab_focus()
         self.entry.grab_focus()
+        Gtk.grab_add(self)
         GLib.idle_add(self._focus_entry)
-        GLib.timeout_add(40, self._focus_entry)
-        GLib.timeout_add(120, self._focus_entry)
+        GLib.timeout_add(20, self._focus_entry)
+        GLib.timeout_add(60, self._focus_entry)
+        GLib.timeout_add(140, self._focus_entry)
+        GLib.timeout_add(260, self._focus_entry)
 
     def _follow_mouse_tick(self, initial: tuple[int | None, int | None] | None = None) -> bool:
         if not self.follow_mouse or not self.get_visible():
@@ -123,16 +116,26 @@ class FloatingInput(Gtk.Window):
         return True
 
     def _on_pointer_interaction(self, *_args):
-        # Keep tracking; user explicitly asked realtime follow while popup is on.
         return False
 
     def _on_changed(self, _entry):
         if self.entry.get_text():
             self.typed_once = True
 
+    def _activate_self(self) -> None:
+        try:
+            window = self.get_window()
+            xid = window.get_xid() if window and hasattr(window, "get_xid") else None
+            if xid:
+                subprocess.Popen(["xdotool", "windowactivate", "--sync", str(xid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+
     def _focus_entry(self) -> bool:
         if self.get_visible():
-            self.present()
+            self.present_with_time(Gtk.get_current_event_time())
+            self._activate_self()
+            self.set_focus(self.entry)
             self.entry.grab_focus()
         return False
 
@@ -142,6 +145,10 @@ class FloatingInput(Gtk.Window):
         if self.follow_source_id:
             GLib.source_remove(self.follow_source_id)
             self.follow_source_id = 0
+        try:
+            Gtk.grab_remove(self)
+        except Exception:
+            pass
         super().hide()
 
     def _fast_mouse_position(self) -> tuple[int | None, int | None]:
@@ -155,24 +162,42 @@ class FloatingInput(Gtk.Window):
 
     def _on_enter(self, _entry):
         text = self.entry.get_text().strip()
+        self.app.active_context = self._capture_context_on_submit()
         self.hide()
         if text:
             self.app.send_prompt(text, self.context_enabled)
 
+    def _capture_context_on_submit(self):
+        ctx = capture_active_context(self.target_window_id)
+        primary = self._clipboard_text(Gdk.SELECTION_PRIMARY)
+        clipboard = self._clipboard_text(Gdk.SELECTION_CLIPBOARD)
+        uris = self._clipboard_uris(Gdk.SELECTION_CLIPBOARD)
+        ctx.selected_text = primary
+        ctx.clipboard_text = "\n".join([x for x in [clipboard, uris] if x])
+        return ctx
+
+    def _clipboard_text(self, selection) -> str:
+        try:
+            text = Gtk.Clipboard.get(selection).wait_for_text()
+            return (text or "").strip()[:4000]
+        except Exception:
+            return ""
+
+    def _clipboard_uris(self, selection) -> str:
+        try:
+            uris = Gtk.Clipboard.get(selection).wait_for_uris() or []
+            return "\n".join(str(u) for u in uris)[:4000]
+        except Exception:
+            return ""
+
     def _on_key(self, _widget, event):
         key = Gdk.keyval_name(event.keyval)
         alt = bool(event.state & Gdk.ModifierType.MOD1_MASK)
-        # Any non-modifier key means the user is interacting with text; stop
-        # mouse tracking so the window becomes stable and easy to type in.
-        if key not in {"Shift_L", "Shift_R", "Control_L", "Control_R", "Alt_L", "Alt_R", "Super_L", "Super_R"}:
-            self.follow_mouse = False
         if key == "Escape":
             self.hide()
             return True
         if alt and key and key.lower() == "c":
             self.context_enabled = not self.context_enabled
-            prefix = "📎" if self.context_enabled else "🚫"
-            self.context_label.set_text(prefix + " " + self.app.active_context.summary())
             return True
         if key == "Tab":
             text = self.entry.get_text()

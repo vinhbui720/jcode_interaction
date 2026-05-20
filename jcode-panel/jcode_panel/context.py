@@ -20,6 +20,8 @@ class ActiveContext:
     app: str = ""
     window_title: str = ""
     browser: BrowserContext | None = None
+    selected_text: str = ""
+    clipboard_text: str = ""
 
     def summary(self) -> str:
         if self.browser and (self.browser.title or self.browser.url):
@@ -28,7 +30,10 @@ class ActiveContext:
             if self.browser.selected_text:
                 bits.append("selected text")
             return " · ".join(b for b in bits if b)
-        return " · ".join(b for b in [self.app, self.window_title] if b) or "No context"
+        bits = [self.app, self.window_title]
+        if self.selected_text:
+            bits.append("selected text")
+        return " · ".join(b for b in bits if b) or "No context"
 
     def as_prompt_block(self) -> str:
         lines = ["[Context]"]
@@ -43,6 +48,10 @@ class ActiveContext:
                 lines.append(f"Tab title: {self.browser.title}")
             if self.browser.selected_text:
                 lines.append(f"Selected text: {self.browser.selected_text}")
+        if self.selected_text:
+            lines.append(f"Selected text: {self.selected_text}")
+        if self.clipboard_text and self.clipboard_text != self.selected_text:
+            lines.append(f"Clipboard: {self.clipboard_text}")
         lines.append("[/Context]")
         return "\n".join(lines)
 
