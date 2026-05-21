@@ -1335,6 +1335,17 @@ class PanelApp:
         if self.floating.get_visible():
             self.floating.hide()
         threading.Thread(target=self._capture_screenshot_for_prompt_worker, args=(existing_text,), daemon=True).start()
+        GLib.timeout_add_seconds(10, self._capture_watchdog_restore, existing_text)
+        return False
+
+    def _capture_watchdog_restore(self, existing_text: str) -> bool:
+        if self.capture_in_progress:
+            append_log("Screenshot capture watchdog restored input popup")
+            self.capture_cancelled = True
+            self.capture_in_progress = False
+            self.capture_portal_done = True
+            self.capture_portal_cancelled = True
+            self._restore_prompt_after_cancelled_capture(existing_text)
         return False
 
     def _capture_screenshot_for_prompt_worker(self, existing_text: str) -> None:
@@ -1352,12 +1363,12 @@ class PanelApp:
                 # Hotkey flow is clipboard-driven. Do not run legacy fallback
                 # tools here, because they can open a second capture UI after
                 # the clipboard watcher already restored the input popup.
-                self._capture_portal_screenshot(path, interactive=True, timeout_seconds=60, stop_when_capture_done=True)
+                self._capture_portal_screenshot(path, interactive=True, timeout_seconds=8, stop_when_capture_done=True)
             finally:
                 trigger_done.set()
 
         threading.Thread(target=trigger_capture_ui, daemon=True).start()
-        captured = self._wait_for_clipboard_screenshot(path, old_clipboard, timeout_seconds=60)
+        captured = self._wait_for_clipboard_screenshot(path, old_clipboard, timeout_seconds=8)
         if not captured and path.exists() and path.stat().st_size > 0:
             captured = True
         append_log(f"Screenshot hotkey capture result: captured={captured} path={path} exists={path.exists()} size={path.stat().st_size if path.exists() else 0}")
