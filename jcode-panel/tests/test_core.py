@@ -665,11 +665,17 @@ def test_config_save_is_reloadable_after_multiple_writes(tmp_path: Path):
 
 
 def test_interaction_tag_normalization_and_sources():
-    from jcode_panel.interaction_context import interaction_sources, normalize_interaction_tags
+    from jcode_panel.interaction_context import interaction_sources, normalize_interaction_tags, normalize_interaction_tags_with_cursor
 
     text = normalize_interaction_tags("compare @vscode with /obsidian")
     assert text == "compare {{@vscode}} with {{/obsidian}}"
     assert interaction_sources(text) == ["vscode", "obsidian"]
+    text, cursor = normalize_interaction_tags_with_cursor("fix @vscode", -1)
+    assert text == "fix {{@vscode}}"
+    assert cursor == len(text)
+    text, cursor = normalize_interaction_tags_with_cursor("before @vscode after", len("before @vscode"))
+    assert text == "before {{@vscode}} after"
+    assert cursor == len("before {{@vscode}}")
 
 
 def test_interaction_context_expands_each_chip(tmp_path: Path, monkeypatch):

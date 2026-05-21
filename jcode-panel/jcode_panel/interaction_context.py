@@ -44,6 +44,31 @@ def normalize_interaction_tags(text: str) -> str:
     return INTERACTION_TAG_RE.sub(lambda m: chip_for_source(m.group(2), m.group(1)), text)
 
 
+def normalize_interaction_tags_with_cursor(text: str, cursor: int | None = None) -> tuple[str, int]:
+    """Normalize complete interaction tags while preserving cursor position.
+
+    Gtk.Entry sometimes reports cursor -1 during changed events. Treat that as
+    end-of-text and compute the new cursor by summing replacements before it,
+    rather than using a whole-string length delta that can place the cursor in
+    the middle of a chip.
+    """
+    if cursor is None or cursor < 0:
+        cursor = len(text)
+    output: list[str] = []
+    new_cursor = cursor
+    last = 0
+    for match in INTERACTION_TAG_RE.finditer(text):
+        chip = chip_for_source(match.group(2), match.group(1))
+        output.append(text[last:match.start()])
+        output.append(chip)
+        if match.end() <= cursor:
+            new_cursor += len(chip) - (match.end() - match.start())
+        last = match.end()
+    output.append(text[last:])
+    normalized = "".join(output)
+    return normalized, max(0, min(len(normalized), new_cursor))
+
+
 def complete_interaction_token(text: str, cursor: int | None = None) -> tuple[str, int, bool]:
     """Complete/convert the @ or / token immediately before cursor.
 
