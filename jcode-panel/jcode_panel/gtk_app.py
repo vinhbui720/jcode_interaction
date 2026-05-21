@@ -1329,7 +1329,9 @@ class PanelApp:
         screenshot_dir.mkdir(parents=True, exist_ok=True)
         path = screenshot_dir / f"screenshot-area-{int(time.time())}.png"
         GLib.idle_add(self._set_capture_status, "screenshot area")
-        if self._capture_gnome_shell_area(path) or self._capture_portal_screenshot(path, interactive=True) or self._capture_with_commands(path, "area"):
+        captured = self._capture_gnome_shell_area(path) or self._capture_portal_screenshot(path, interactive=True) or self._capture_with_commands(path, "area")
+        append_log(f"Screenshot hotkey capture result: captured={captured} path={path} exists={path.exists()} size={path.stat().st_size if path.exists() else 0}")
+        if captured:
             if self.capture_cancelled:
                 GLib.idle_add(self.cancel_input_mode)
             else:
@@ -1349,7 +1351,19 @@ class PanelApp:
         base = existing_text.rstrip()
         new_text = ((base + " ") if base else "") + tag
         self.show_prompt(new_text)
+        GLib.timeout_add(80, self._ensure_prompt_visible_with_text, new_text)
+        GLib.timeout_add(220, self._ensure_prompt_visible_with_text, new_text)
         self.floating.entry.set_placeholder_text("Add text or more screenshots. Enter sends, Esc cancels request.")
+        return False
+
+    def _ensure_prompt_visible_with_text(self, text: str) -> bool:
+        if not self.floating.get_visible():
+            self.floating.show_at_pointer(text)
+        elif not self.floating.entry.get_text().strip():
+            self.floating.entry.set_text(text)
+            self.floating.entry.set_position(-1)
+        self.floating.present_with_time(Gtk.get_current_event_time())
+        self.floating.entry.grab_focus()
         return False
 
     def _restore_prompt_after_cancelled_capture(self, existing_text: str) -> bool:
