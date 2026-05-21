@@ -574,13 +574,24 @@ def test_ambient_escape_dismisses_feedback_toast():
 def test_markdown_to_pango_renders_safe_colored_subset():
     from jcode_panel.gtk_app import markdown_to_pango
 
-    markup = markdown_to_pango("# Title\n- **done** with `cmd` and <unsafe>")
+    markup = markdown_to_pango("# Title\n- **done** with `cmd`, $x^2$, and <unsafe>\n> quote")
 
     assert "Title" in markup
     assert "foreground" in markup
     assert "weight=\"bold\"" in markup
     assert "font_family=\"monospace\"" in markup
+    assert "font_family=\"serif\"" in markup
+    assert "▏" in markup
     assert "&lt;unsafe&gt;" in markup
+
+
+def test_split_token_stats_removes_inline_telemetry():
+    from jcode_panel.gtk_app import split_token_stats
+
+    cleaned, stats = split_token_stats("Done. [Tokens] upload: 14434 download: 321 cache_read: 3840 cache_write: 0")
+
+    assert cleaned == "Done."
+    assert stats == "tokens · upload 14434 · download 321 · cache read 3840 · cache write 0"
 
 
 def test_format_stream_lines_keeps_recent_lines_and_wraps_long_stream():
@@ -597,6 +608,7 @@ def test_token_notice_from_raw_supports_common_usage_shapes():
 
     assert token_notice_from_raw({"usage": {"input_tokens": 12, "output_tokens": 34}}) == "tokens: in 12, out 34"
     assert token_notice_from_raw({"total_tokens": 46}) == "tokens: total 46"
+    assert token_notice_from_raw({"tokens": {"upload": 1, "download": 2, "cache_read": 3, "cache_write": 4}}) == "tokens: upload 1, download 2, cache read 3, cache write 4"
 
 
 def test_event_notice_text_separates_context_and_tokens():

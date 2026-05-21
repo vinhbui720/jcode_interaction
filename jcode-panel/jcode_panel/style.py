@@ -125,14 +125,24 @@ def load_css(Gtk, Gdk, config=None) -> None:
     }}
     .toast-text {{
       color: {text_color};
-      background: transparent;
+      background: rgba(250, 252, 255, 0.84);
       font-size: 12px;
     }}
     .toast-scroll {{
-      background: rgba(255, 255, 255, 0.40);
-      border: 1px solid rgba(148, 163, 184, 0.22);
+      background: rgba(250, 252, 255, 0.84);
+      border: 1px solid rgba(148, 163, 184, 0.18);
       border-radius: 8px;
       padding: 6px;
+    }}
+    .toast-stats {{
+      color: #0f172a;
+      background: rgba(219, 234, 254, 0.72);
+      border: 1px solid rgba(59, 130, 246, 0.24);
+      border-radius: 8px;
+      padding: 5px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      font-style: normal;
     }}
     .toast-notice {{
       color: #64748b;

@@ -46,19 +46,27 @@ def markdown_to_pango(text: str) -> str:
     """Render a small, safe markdown subset as Pango markup for GTK labels."""
     lines: list[str] = []
     in_fence = False
+    fence_lang = ""
     for raw_line in (text or "").strip().splitlines():
         line = raw_line.rstrip()
         if line.strip().startswith("```"):
+            fence_lang = line.strip().removeprefix("```").strip()
+            if not in_fence and fence_lang:
+                lines.append(f'<span foreground="#64748b" font_family="monospace">{html.escape(fence_lang)}</span>')
             in_fence = not in_fence
             continue
         escaped = html.escape(line)
         if in_fence:
-            lines.append(f'<span foreground="#0f766e" font_family="monospace">{escaped}</span>')
+            lines.append(f'<span foreground="#0f766e" background="#ecfeff" font_family="monospace">{escaped}</span>')
             continue
         stripped = line.strip()
         if stripped.startswith("#"):
             title = html.escape(stripped.lstrip("#").strip())
             lines.append(f'<span foreground="#7c3aed" weight="bold" size="larger">{title}</span>')
+            continue
+        quote = re.match(r"^>\s+(.*)$", line)
+        if quote:
+            lines.append(f'<span foreground="#475569">▏ {_inline_markdown_to_pango(quote.group(1))}</span>')
             continue
         bullet = re.match(r"^(\s*)([-*•]|\d+\.)\s+(.*)$", line)
         if bullet:
@@ -75,9 +83,32 @@ def markdown_to_pango(text: str) -> str:
 def _inline_markdown_to_pango(text: str) -> str:
     escaped = html.escape(text)
     escaped = re.sub(r"`([^`]+)`", r'<span foreground="#0f766e" font_family="monospace">\1</span>', escaped)
+    escaped = re.sub(r"\$\$([^$]+)\$\$", r'<span foreground="#7c3aed" font_family="serif">\1</span>', escaped)
+    escaped = re.sub(r"\$([^$\n]+)\$", r'<span foreground="#7c3aed" font_family="serif">\1</span>', escaped)
     escaped = re.sub(r"\*\*([^*]+)\*\*", r'<span foreground="#2563eb" weight="bold">\1</span>', escaped)
     escaped = re.sub(r"\*([^*]+)\*", r'<span foreground="#9333ea" style="italic">\1</span>', escaped)
+    escaped = re.sub(r"(?<!\*)\b([A-Z][A-Za-z0-9_/-]+:)\s", r'<span foreground="#0369a1" weight="bold">\1</span> ', escaped)
     return escaped
+
+
+TOKEN_STATS_RE = re.compile(
+    r"\[Tokens\]\s*upload:\s*(\d+)\s+download:\s*(\d+)\s+cache_read:\s*(\d+)\s+cache_write:\s*(\d+)",
+    re.IGNORECASE,
+)
+
+
+def split_token_stats(text: str) -> tuple[str, str]:
+    """Remove inline token telemetry from feedback text and return a compact stats line."""
+    matches = list(TOKEN_STATS_RE.finditer(text or ""))
+    if not matches:
+        return text, ""
+    last = matches[-1]
+    upload, download, cache_read, cache_write = last.groups()
+    stats = f"tokens · upload {upload} · download {download} · cache read {cache_read} · cache write {cache_write}"
+    cleaned = TOKEN_STATS_RE.sub("", text or "")
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+    return cleaned, stats
 
 
 def format_stream_lines(text: str, max_lines: int = 9) -> str:
@@ -102,7 +133,17 @@ def token_notice_from_raw(raw: dict | None) -> str:
             candidates.append(value)
     for data in candidates:
         parts = []
-        for key, label in (("input_tokens", "in"), ("prompt_tokens", "in"), ("output_tokens", "out"), ("completion_tokens", "out"), ("total_tokens", "total")):
+        for key, label in (
+            ("upload", "upload"),
+            ("download", "download"),
+            ("cache_read", "cache read"),
+            ("cache_write", "cache write"),
+            ("input_tokens", "in"),
+            ("prompt_tokens", "in"),
+            ("output_tokens", "out"),
+            ("completion_tokens", "out"),
+            ("total_tokens", "total"),
+        ):
             value = data.get(key)
             if isinstance(value, (int, float)):
                 parts.append(f"{label} {int(value)}")
@@ -690,6 +731,12 @@ class AnswerToast(Gtk.Window):
         title = Gtk.Label(label="jcode feedback")
         title.set_xalign(0)
         add_class(title, "toast-title")
+        self.stats = Gtk.Label(label="")
+        self.stats.set_use_markup(True)
+        self.stats.set_xalign(0)
+        self.stats.set_line_wrap(True)
+        add_class(self.stats, "toast-stats")
+        self.stats.hide()
         self.label = Gtk.Label(label="")
         self.label.set_use_markup(True)
         self.label.set_xalign(0)
@@ -727,6 +774,7 @@ class AnswerToast(Gtk.Window):
         actions.pack_start(self.jump_btn, False, False, 0)
         actions.pack_end(close_btn, False, False, 0)
         root.pack_start(title, False, False, 0)
+        root.pack_start(self.stats, False, False, 0)
         root.pack_start(self.scroller, True, True, 0)
         root.pack_start(self.notice, False, False, 0)
         root.pack_start(actions, False, False, 0)
@@ -736,6 +784,7 @@ class AnswerToast(Gtk.Window):
         self.refresh_source_id = 0
         self.pending_feedback = ""
         self.pending_notice = ""
+        self.pending_stats = ""
         self.pending_scroll_value: float | None = None
         self.pending_was_at_bottom = True
         self.scrollbar_hover = False
@@ -760,6 +809,9 @@ class AnswerToast(Gtk.Window):
         text = (text or "").strip()
         if not text:
             return
+        text, stats = split_token_stats(text)
+        if stats:
+            self.pending_stats = stats
         self.pending_was_at_bottom = self._is_at_bottom()
         self.pending_scroll_value = self._scroll_value()
         self.pending_feedback = self._limit_feedback_text(text)
@@ -784,6 +836,11 @@ class AnswerToast(Gtk.Window):
     def _flush_feedback(self) -> bool:
         self.refresh_source_id = 0
         self.label.set_markup(markdown_to_pango(self.pending_feedback))
+        if self.pending_stats:
+            self.stats.set_markup(f'<span foreground="#0f172a">{html.escape(self.pending_stats)}</span>')
+            self.stats.show()
+        else:
+            self.stats.hide()
         if self.pending_notice:
             self.notice.set_markup(f'<span foreground="#64748b">{html.escape(self.pending_notice)}</span>')
             self.notice.show()
