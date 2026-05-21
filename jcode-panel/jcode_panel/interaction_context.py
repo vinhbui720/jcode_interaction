@@ -11,15 +11,15 @@ OBSIDIAN_CONTEXT_PATH = CONTEXT_DIR / "obsidian.json"
 
 INTERACTION_SOURCES = {"vscode", "obsidian"}
 CHIP_LABELS = {
-    "vscode": "🔵 vscode",
-    "obsidian": "🟣 obsidian",
+    "vscode": "vscode",
+    "obsidian": "obsidian",
 }
 # @vscode, /vscode, @obsidian, /obsidian anywhere in the prompt.
 INTERACTION_TAG_RE = re.compile(r"(?<![\w\[])([@/])(vscode|obsidian)\b", re.IGNORECASE)
 # Accept new visual chips and legacy chips for backward compatibility.
-INTERACTION_CHIP_RE = re.compile(r"(?:⟦\s*(?:🔵|🟣)?\s*(vscode|obsidian)\s*⟧|\[(vscode|obsidian)\])", re.IGNORECASE)
-INTERACTION_CHIP_DELETE_RE = re.compile(r"(?:⟦\s*(?:🔵|🟣)?\s*(?:vscode|obsidian)\s*⟧|\[(?:vscode|obsidian)\])\s*$", re.IGNORECASE)
-INTERACTION_PARTIAL_RE = re.compile(r"(?<![\w\[])([@/])([a-zA-Z_][\w-]*)$")
+INTERACTION_CHIP_RE = re.compile(r"(?:⟦\s*[@/]\s*(vscode|obsidian)\s*⟧|\[(vscode|obsidian)\])", re.IGNORECASE)
+INTERACTION_CHIP_DELETE_RE = re.compile(r"(?:⟦\s*[@/]\s*(?:vscode|obsidian)\s*⟧|\[(?:vscode|obsidian)\])\s*$", re.IGNORECASE)
+INTERACTION_PARTIAL_RE = re.compile(r"(?<![\w\[])([@/])([a-zA-Z_][\w-]*)?$")
 
 
 @dataclass
@@ -33,14 +33,15 @@ class InteractionContextError(RuntimeError):
     pass
 
 
-def chip_for_source(source: str) -> str:
+def chip_for_source(source: str, marker: str = "@") -> str:
     source = source.lower().strip()
-    return f"⟦{CHIP_LABELS.get(source, source)}⟧"
+    marker = "/" if marker == "/" else "@"
+    return f"⟦{marker}{CHIP_LABELS.get(source, source)}⟧"
 
 
 def normalize_interaction_tags(text: str) -> str:
     """Turn @source or /source mentions into lightweight editable chips."""
-    return INTERACTION_TAG_RE.sub(lambda m: chip_for_source(m.group(2)), text)
+    return INTERACTION_TAG_RE.sub(lambda m: chip_for_source(m.group(2), m.group(1)), text)
 
 
 def complete_interaction_token(text: str, cursor: int | None = None) -> tuple[str, int, bool]:
@@ -56,11 +57,11 @@ def complete_interaction_token(text: str, cursor: int | None = None) -> tuple[st
     match = INTERACTION_PARTIAL_RE.search(prefix)
     if not match:
         return text, cursor, False
-    raw = match.group(2).lower()
+    raw = (match.group(2) or "").lower()
     matches = [source for source in sorted(INTERACTION_SOURCES) if source.startswith(raw)]
     if len(matches) != 1:
         return text, cursor, False
-    chip = chip_for_source(matches[0])
+    chip = chip_for_source(matches[0], match.group(1))
     new_text = text[:match.start()] + chip + text[cursor:]
     return new_text, match.start() + len(chip), True
 
@@ -72,7 +73,7 @@ def interaction_token_hints(text: str, cursor: int | None = None) -> list[str]:
     if not match:
         return []
     marker = match.group(1)
-    raw = match.group(2).lower()
+    raw = (match.group(2) or "").lower()
     return [marker + source for source in sorted(INTERACTION_SOURCES) if source.startswith(raw)]
 
 

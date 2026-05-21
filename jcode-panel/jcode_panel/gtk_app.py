@@ -299,8 +299,15 @@ class FloatingInput(Gtk.Window):
         if not hasattr(self, "slash_hint"):
             return
         interaction_hints = interaction_token_hints(self.entry.get_text(), self.entry.get_position())
-        if interaction_hints:
-            self.slash_hint.set_text("Tab/Space/Enter chip · " + "   ".join(interaction_hints))
+        known = ["/model", "/usage", "/ustage", "/screen-shot", "/help", "/resume", "/clear", "/compact", "/skill", "/memory"]
+        slash_matches = [item for item in known if text.startswith("/") and item.startswith(text)] if text.startswith("/") else []
+        if interaction_hints or slash_matches:
+            parts = []
+            if interaction_hints:
+                parts.append("Chip: " + "   ".join(interaction_hints[:4]))
+            if slash_matches:
+                parts.append("Cmd: " + "   ".join(slash_matches[:6]))
+            self.slash_hint.set_text("Tab/Space/Enter · " + "  |  ".join(parts))
             self.slash_hint.show()
             self._resize_for_suggestions(True)
             return
@@ -309,7 +316,6 @@ class FloatingInput(Gtk.Window):
             self.slash_hint.hide()
             self._resize_for_suggestions(False)
             return
-        known = ["/model", "/usage", "/ustage", "/screen-shot", "/help", "/resume", "/clear", "/compact", "/skill", "/memory"]
         matches = [item for item in known if item.startswith(text)] or known[:6]
         self.slash_hint.set_text("Tab complete · Enter run · " + "   ".join(matches[:6]))
         self.slash_hint.show()
