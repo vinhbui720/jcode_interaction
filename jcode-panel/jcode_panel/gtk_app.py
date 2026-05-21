@@ -16,6 +16,7 @@ import shutil
 from urllib.parse import unquote, urlparse
 from dataclasses import dataclass
 from pathlib import Path
+from hashlib import sha256
 
 import gi
 gi.require_version("Gtk", "3.0")
@@ -1320,7 +1321,6 @@ class PanelApp:
         # restore the input with the same content plus [pic#].
         if self.floating.get_visible():
             self.floating.hide()
-        self.toast.update_feedback("Drag to select area. Esc cancels capture.")
         threading.Thread(target=self._capture_screenshot_for_prompt_worker, args=(existing_text,), daemon=True).start()
         return False
 
@@ -1328,8 +1328,20 @@ class PanelApp:
         screenshot_dir = Path(tempfile.gettempdir()) / "jcode-panel-screenshots"
         screenshot_dir.mkdir(parents=True, exist_ok=True)
         path = screenshot_dir / f"screenshot-area-{int(time.time())}.png"
+        old_clipboard = self._clipboard_image_fingerprint(timeout=1.0)
         GLib.idle_add(self._set_capture_status, "screenshot area")
-        captured = self._capture_portal_screenshot(path, interactive=True, timeout_seconds=20) or self._capture_gnome_shell_area(path) or self._capture_with_commands(path, "area")
+        trigger_done = threading.Event()
+
+        def trigger_capture_ui():
+            try:
+                self._capture_portal_screenshot(path, interactive=True, timeout_seconds=20) or self._capture_gnome_shell_area(path) or self._capture_with_commands(path, "area")
+            finally:
+                trigger_done.set()
+
+        threading.Thread(target=trigger_capture_ui, daemon=True).start()
+        captured = self._wait_for_clipboard_screenshot(path, old_clipboard, timeout_seconds=22)
+        if not captured and path.exists() and path.stat().st_size > 0:
+            captured = True
         append_log(f"Screenshot hotkey capture result: captured={captured} path={path} exists={path.exists()} size={path.stat().st_size if path.exists() else 0}")
         if captured:
             if self.capture_cancelled:
@@ -1380,6 +1392,57 @@ class PanelApp:
         if not self.floating.get_visible():
             self.show_prompt()
         self.floating.entry.set_placeholder_text(text)
+        return False
+
+    def _clipboard_image_fingerprint(self, timeout: float = 2.0) -> str:
+        done = threading.Event()
+        result = {"fingerprint": ""}
+
+        def read_clipboard():
+            try:
+                image = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).wait_for_image()
+                if image:
+                    payload = image.get_pixels()
+                    result["fingerprint"] = sha256(bytes(payload)).hexdigest()
+            except Exception as exc:
+                append_log(f"Clipboard image fingerprint failed: {exc}")
+            finally:
+                done.set()
+            return False
+
+        GLib.idle_add(read_clipboard)
+        done.wait(timeout)
+        return result["fingerprint"]
+
+    def _save_clipboard_image(self, path: Path, timeout: float = 2.0) -> bool:
+        done = threading.Event()
+        result = {"ok": False}
+
+        def save_clipboard():
+            try:
+                image = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).wait_for_image()
+                if image:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    result["ok"] = bool(image.savev(str(path), "png", [], []))
+            except Exception as exc:
+                append_log(f"Clipboard image save failed: {exc}")
+            finally:
+                done.set()
+            return False
+
+        GLib.idle_add(save_clipboard)
+        done.wait(timeout)
+        return result["ok"] and path.exists() and path.stat().st_size > 0
+
+    def _wait_for_clipboard_screenshot(self, path: Path, old_fingerprint: str, timeout_seconds: int = 30) -> bool:
+        deadline = time.monotonic() + timeout_seconds
+        while not self.capture_cancelled and time.monotonic() < deadline:
+            current = self._clipboard_image_fingerprint(timeout=1.0)
+            if current and current != old_fingerprint and self._save_clipboard_image(path, timeout=2.0):
+                append_log(f"Screenshot captured from clipboard: {path}")
+                return True
+            time.sleep(0.2)
+        append_log(f"Clipboard screenshot wait timed out after {timeout_seconds}s")
         return False
 
     def handle_slash_command(self, text: str) -> bool:
