@@ -587,3 +587,28 @@ def test_hotkey_normalization_and_parts():
     mods, key = hotkey_parts("ctrl+alt+j")
     assert mods == {"ctrl", "alt"}
     assert key == "j"
+
+
+def test_parse_screenshot_command_modes_and_prompt():
+    from jcode_panel.gtk_app import parse_screenshot_command
+
+    assert parse_screenshot_command("") == ("ask", "Analyze this screenshot.")
+    assert parse_screenshot_command("full what changed?") == ("full", "what changed?")
+    assert parse_screenshot_command("area explain this") == ("area", "explain this")
+    assert parse_screenshot_command("region") == ("area", "Analyze this screenshot.")
+    assert parse_screenshot_command("what is on screen?") == ("ask", "what is on screen?")
+
+
+def test_screenshot_command_lists_distinguish_area_and_full():
+    from pathlib import Path
+    from types import SimpleNamespace
+    from jcode_panel.gtk_app import PanelApp
+
+    app = SimpleNamespace()
+    area = PanelApp._screenshot_commands(app, Path("/tmp/a.png"), "area")
+    full = PanelApp._screenshot_commands(app, Path("/tmp/f.png"), "full")
+
+    assert ["gnome-screenshot", "-a", "-f", "/tmp/a.png"] in area
+    assert ["gnome-screenshot", "-f", "/tmp/f.png"] in full
+    assert any(cmd[:2] == ["grim", "-g"] for cmd in area)
+    assert ["grim", "/tmp/f.png"] in full

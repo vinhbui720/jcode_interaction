@@ -12,13 +12,15 @@ import time
 import subprocess
 import json
 import tempfile
+import shutil
+from urllib.parse import unquote, urlparse
 from dataclasses import dataclass
 from pathlib import Path
 
 import gi
 gi.require_version("Gtk", "3.0")
 gi.require_version("AppIndicator3", "0.1")
-from gi.repository import AppIndicator3, GLib, Gtk, Gdk  # type: ignore
+from gi.repository import AppIndicator3, GLib, Gtk, Gdk, Gio  # type: ignore
 
 from .config import AppConfig
 from .control import ControlResponse, ControlServer
@@ -104,6 +106,32 @@ def token_notice_from_raw(raw: dict | None) -> str:
         if parts:
             return "tokens: " + ", ".join(dict.fromkeys(parts))
     return ""
+
+
+def parse_screenshot_command(arg: str) -> tuple[str, str]:
+    """Return (mode, prompt) for /screenshot args.
+
+    Supported modes: ask, area, full. Default is ask so users can choose.
+    """
+    arg = (arg or "").strip()
+    if not arg:
+        return "ask", "Analyze this screenshot."
+    parts = arg.split(maxsplit=1)
+    first = parts[0].lower()
+    aliases = {
+        "area": "area",
+        "region": "area",
+        "select": "area",
+        "drag": "area",
+        "full": "full",
+        "screen": "full",
+        "whole": "full",
+        "all": "full",
+    }
+    if first in aliases:
+        prompt = parts[1].strip() if len(parts) > 1 else "Analyze this screenshot."
+        return aliases[first], prompt
+    return "ask", arg
 
 
 @dataclass
@@ -1226,8 +1254,11 @@ class PanelApp:
             self.show_usage_dialog()
             return True
         if command in {"/screen-shot", "/screenshot"}:
-            prompt = arg or "Analyze this screenshot."
-            GLib.timeout_add(250, self.capture_screenshot_and_send, prompt)
+            mode, prompt = parse_screenshot_command(arg)
+            if mode == "ask":
+                GLib.timeout_add(120, self.show_screenshot_mode_dialog, prompt)
+            else:
+                GLib.timeout_add(250, self.capture_screenshot_and_send, prompt, mode)
             return True
         if command in {"/help", "/?"}:
             self._show_text_dialog(
@@ -1236,38 +1267,77 @@ class PanelApp:
                 "  /model            choose a model from a table\n"
                 "  /model <name>     switch directly to a model\n"
                 "  /usage, /ustage   show provider usage limits\n"
-                "  /screen-shot      grab a screenshot and send it to jcode\n"
-                "  /screen-shot <q>  send screenshot with a question\n"
+                "  /screen-shot            choose full screen or dragged area\n"
+                "  /screen-shot full <q>   capture whole screen\n"
+                "  /screen-shot area <q>   drag-select an area\n"
                 "  /help             show this help\n\n"
                 "Other slash commands are sent to jcode as normal prompts.",
             )
             return True
         return False
 
-    def capture_screenshot_and_send(self, prompt: str = "Analyze this screenshot.") -> bool:
-        threading.Thread(target=self._capture_screenshot_worker, args=(prompt,), daemon=True).start()
+    def show_screenshot_mode_dialog(self, prompt: str = "Analyze this screenshot.") -> bool:
+        dlg = Gtk.Dialog(title="Share screenshot", transient_for=self.dropdown, flags=0)
+        add_class(dlg, "modern-dialog")
+        dlg.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        area_btn = dlg.add_button("Drag area", 101)
+        full_btn = dlg.add_button("Whole screen", 102)
+        add_class(area_btn, "toast-icon-button")
+        add_class(full_btn, "toast-icon-button")
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin=14)
+        add_class(box, "modern-card")
+        title = Gtk.Label(label="What should jcode see?")
+        title.set_xalign(0)
+        add_class(title, "modern-title")
+        subtitle = Gtk.Label(label="Choose a full-screen capture, or drag a rectangle on the screen. The image path is sent with your prompt.")
+        subtitle.set_xalign(0)
+        subtitle.set_line_wrap(True)
+        add_class(subtitle, "modern-subtitle")
+        prompt_label = Gtk.Label(label=f"Prompt: {prompt}")
+        prompt_label.set_xalign(0)
+        prompt_label.set_line_wrap(True)
+        add_class(prompt_label, "toast-notice")
+        box.pack_start(title, False, False, 0)
+        box.pack_start(subtitle, False, False, 0)
+        box.pack_start(prompt_label, False, False, 0)
+        dlg.get_content_area().add(box)
+        dlg.show_all()
+        response = dlg.run()
+        dlg.destroy()
+        if response == 101:
+            self.capture_screenshot_and_send(prompt, "area")
+        elif response == 102:
+            self.capture_screenshot_and_send(prompt, "full")
         return False
 
-    def _capture_screenshot_worker(self, prompt: str) -> None:
+    def capture_screenshot_and_send(self, prompt: str = "Analyze this screenshot.", mode: str = "area") -> bool:
+        mode = "full" if mode == "full" else "area"
+        threading.Thread(target=self._capture_screenshot_worker, args=(prompt, mode), daemon=True).start()
+        return False
+
+    def _capture_screenshot_worker(self, prompt: str, mode: str) -> None:
         screenshot_dir = Path(tempfile.gettempdir()) / "jcode-panel-screenshots"
         screenshot_dir.mkdir(parents=True, exist_ok=True)
-        path = screenshot_dir / f"screenshot-{int(time.time())}.png"
-        GLib.idle_add(self.toast.update_feedback, "Select a screenshot area...")
-        GLib.idle_add(self._set_capture_status, "screenshot grab")
-        if self._capture_gnome_shell_area(path):
+        path = screenshot_dir / f"screenshot-{mode}-{int(time.time())}.png"
+        action = "Drag to select a screenshot area..." if mode == "area" else "Capturing whole screen..."
+        GLib.idle_add(self.toast.update_feedback, action)
+        GLib.idle_add(self._set_capture_status, f"screenshot {mode}")
+        if mode == "area" and self._capture_gnome_shell_area(path):
             GLib.idle_add(self._send_screenshot_prompt, prompt, str(path))
             return
-        commands = [
-            ["gnome-screenshot", "-a", "-f", str(path)],
-            ["gnome-screenshot", "-f", str(path)],
-            ["grim", str(path)],
-            ["scrot", str(path)],
-            ["import", "-window", "root", str(path)],
-        ]
+        if mode == "full" and self._capture_gnome_shell_full(path):
+            GLib.idle_add(self._send_screenshot_prompt, prompt, str(path))
+            return
+        # Wayland/GNOME often denies direct full-screen screenshots to apps. The
+        # desktop portal is the user-approved fallback and may show its own UI.
+        if self._capture_portal_screenshot(path, interactive=True):
+            GLib.idle_add(self._send_screenshot_prompt, prompt, str(path))
+            return
+        commands = self._screenshot_commands(path, mode)
         error = ""
         for command in commands:
             try:
-                result = subprocess.run(command, cwd=str(Path.home()), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=60)
+                result = self._run_screenshot_command(command)
                 if result.returncode == 0 and path.exists() and path.stat().st_size > 0:
                     GLib.idle_add(self._send_screenshot_prompt, prompt, str(path))
                     return
@@ -1277,6 +1347,86 @@ class PanelApp:
             except Exception as exc:
                 error = str(exc)
         GLib.idle_add(self._screenshot_failed, error or "No screenshot tool found")
+
+    def _screenshot_commands(self, path: Path, mode: str) -> list[list[str]]:
+        if mode == "area":
+            return [
+                ["gnome-screenshot", "-a", "-f", str(path)],
+                ["grim", "-g", "$(slurp)", str(path)],
+                ["scrot", "-s", str(path)],
+                ["import", str(path)],
+            ]
+        return [
+            ["gnome-screenshot", "-f", str(path)],
+            ["grim", str(path)],
+            ["scrot", str(path)],
+            ["import", "-window", "root", str(path)],
+        ]
+
+    def _run_screenshot_command(self, command: list[str]) -> subprocess.CompletedProcess:
+        # grim area selection uses slurp. It needs a shell for command substitution.
+        if command[:2] == ["grim", "-g"] and "$(slurp)" in command:
+            shell_cmd = f"grim -g \"$(slurp)\" {subprocess.list2cmdline([command[-1]])}"
+            return subprocess.run(shell_cmd, shell=True, cwd=str(Path.home()), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=60)
+        return subprocess.run(command, cwd=str(Path.home()), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=60)
+
+    def _capture_portal_screenshot(self, path: Path, interactive: bool = True) -> bool:
+        """Capture via xdg-desktop-portal Screenshot and copy returned URI."""
+        try:
+            bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+            done = threading.Event()
+            result_uri = ""
+
+            def on_response(_conn, _sender, _object_path, _iface, _signal, params):
+                nonlocal result_uri
+                try:
+                    response, results = params.unpack()
+                    if int(response) == 0:
+                        uri = results.get("uri")
+                        if uri:
+                            result_uri = str(uri)
+                finally:
+                    done.set()
+
+            handle = bus.call_sync(
+                "org.freedesktop.portal.Desktop",
+                "/org/freedesktop/portal/desktop",
+                "org.freedesktop.portal.Screenshot",
+                "Screenshot",
+                GLib.Variant("(sa{sv})", ("", {"interactive": GLib.Variant("b", bool(interactive))})),
+                GLib.VariantType.new("(o)"),
+                Gio.DBusCallFlags.NONE,
+                120000,
+                None,
+            ).unpack()[0]
+            sub_id = bus.signal_subscribe(
+                "org.freedesktop.portal.Desktop",
+                "org.freedesktop.portal.Request",
+                "Response",
+                handle,
+                None,
+                Gio.DBusSignalFlags.NONE,
+                on_response,
+                None,
+            )
+            try:
+                if not done.wait(120):
+                    return False
+            finally:
+                bus.signal_unsubscribe(sub_id)
+            if not result_uri:
+                return False
+            parsed = urlparse(result_uri)
+            if parsed.scheme != "file":
+                return False
+            source = Path(unquote(parsed.path))
+            if not source.exists() or source.stat().st_size <= 0:
+                return False
+            shutil.copyfile(source, path)
+            return path.exists() and path.stat().st_size > 0
+        except Exception as exc:
+            append_log(f"Portal screenshot failed: {exc}")
+            return False
 
     def _capture_gnome_shell_area(self, path: Path) -> bool:
         """Capture a user-selected area via GNOME Shell DBus.
@@ -1335,6 +1485,34 @@ class PanelApp:
             return "true" in result.lower() and path.exists() and path.stat().st_size > 0
         except Exception as exc:
             append_log(f"GNOME Shell screenshot failed: {exc}")
+            return False
+
+    def _capture_gnome_shell_full(self, path: Path) -> bool:
+        """Capture the whole screen via GNOME Shell DBus."""
+        try:
+            result = subprocess.check_output(
+                [
+                    "gdbus",
+                    "call",
+                    "--session",
+                    "--dest",
+                    "org.gnome.Shell",
+                    "--object-path",
+                    "/org/gnome/Shell/Screenshot",
+                    "--method",
+                    "org.gnome.Shell.Screenshot.Screenshot",
+                    "true",   # include cursor
+                    "true",   # flash area
+                    str(path),
+                ],
+                text=True,
+                stderr=subprocess.STDOUT,
+                timeout=15,
+                cwd=str(Path.home()),
+            )
+            return "true" in result.lower() and path.exists() and path.stat().st_size > 0
+        except Exception as exc:
+            append_log(f"GNOME Shell full screenshot failed: {exc}")
             return False
 
     def _set_capture_status(self, label: str) -> bool:
