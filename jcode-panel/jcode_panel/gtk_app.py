@@ -894,6 +894,7 @@ class PanelApp:
         self.capture_in_progress = False
         self.capture_portal_done = False
         self.capture_portal_cancelled = False
+        self.capture_existing_text = ""
         self.dropdown_refresh_id = 0
         self.last_prompt_toggle_at = 0.0
         self._ambient_shift = False
@@ -951,6 +952,9 @@ class PanelApp:
 
         def on_press(key):
             normalized = key_name_from_pynput(key)
+            if self.capture_in_progress and normalized == "escape":
+                GLib.idle_add(self.cancel_capture_restore_prompt)
+                return
             if normalized in MODIFIERS:
                 self._hotkey_pressed_mods.add(normalized)
             elif combo_matches(normalized, screenshot_key, screenshot_mods):
@@ -1312,6 +1316,7 @@ class PanelApp:
         self.capture_in_progress = False
         self.capture_portal_done = True
         self.capture_portal_cancelled = True
+        self.capture_existing_text = ""
         self.pending_screenshots.clear()
         self._finish_activity("cancelled")
         self.process_status = "cancelled"
@@ -1320,11 +1325,27 @@ class PanelApp:
             self.floating.hide()
         return False
 
+    def cancel_capture_restore_prompt(self) -> bool:
+        if not self.capture_in_progress:
+            return False
+        existing_text = self.capture_existing_text
+        self.capture_cancelled = True
+        self.capture_in_progress = False
+        self.capture_portal_done = True
+        self.capture_portal_cancelled = True
+        self._finish_activity("cancelled")
+        self.process_status = "screenshot cancelled"
+        self._update_header_status()
+        self.show_prompt(existing_text)
+        self.floating.entry.set_placeholder_text("Screenshot cancelled. Add text or try screenshot hotkey again.")
+        return False
+
     def capture_screenshot_for_prompt(self) -> bool:
         """Hotkey flow: crop now, save image, then let user edit/send prompt."""
         if self.capture_in_progress:
             return False
         existing_text = self.floating.entry.get_text() if self.floating.get_visible() else ""
+        self.capture_existing_text = existing_text
         self.capture_cancelled = False
         self.capture_in_progress = True
         self.capture_portal_done = False
