@@ -486,6 +486,14 @@ class FloatingInput(Gtk.Window):
         self.entry.set_text(updated)
         self.entry.set_position(pos + len(text))
 
+    def paste_clipboard(self) -> None:
+        text = self._clipboard_text(Gdk.SELECTION_CLIPBOARD)
+        if not text:
+            return
+        # Gtk.Entry is single-line. Keep pasted snippets readable instead of
+        # inserting literal line breaks that can make cursor behavior confusing.
+        self.append_text(re.sub(r"\s*\r?\n\s*", " ", text).strip())
+
     def backspace(self) -> None:
         current = self.entry.get_text()
         pos = self.entry.get_position()
@@ -572,9 +580,13 @@ class FloatingInput(Gtk.Window):
 
     def _on_key(self, _widget, event):
         key = Gdk.keyval_name(event.keyval)
+        ctrl = bool(event.state & Gdk.ModifierType.CONTROL_MASK)
         alt = bool(event.state & Gdk.ModifierType.MOD1_MASK)
         if key == "Escape":
             self.app.cancel_input_mode()
+            return True
+        if ctrl and key and key.lower() == "v":
+            self.paste_clipboard()
             return True
         if alt and key and key.lower() == "c":
             self.context_enabled = not self.context_enabled
@@ -1422,6 +1434,9 @@ class PanelApp:
         # If GTK successfully focused the entry, let normal GTK text handling
         # happen. Ambient routing is only the fallback when another app has focus.
         if self.floating.entry.has_focus():
+            return False
+        if self._ambient_ctrl and char and char.lower() == "v":
+            self.floating.paste_clipboard()
             return False
         if lowered in {"enter", "return"}:
             self.floating.submit()
