@@ -113,10 +113,9 @@ The floating prompt supports event-driven app context tags:
 ```text
 @vscode fix this bug
 compare @vscode with @obsidian
-compare /vscode with /obsidian
 ```
 
-When typed, known tags become lightweight editable chips like `{{@vscode}}` and `{{/obsidian}}`. Partial tokens such as `@vsc` or `/obs` show hints and can be converted with Tab, Space, or Enter. The marker is preserved so `@...` and `/...` are visually distinct in the current `Gtk.Entry` input. On submit, each chip occurrence is expanded into an on-demand context block and sent to jcode with the remaining prompt text. If an app has no active context, the prompt is not sent and the panel asks you to re-input. Backspace at the end of a chip removes the whole chip.
+When typed, known tags can become lightweight editable chips like `{{@vscode}}` and `{{@obsidian}}`. Partial tokens such as `@vsc` or `@obs` show hints and can be converted with Tab, Space, or Enter. Slash `/...` remains reserved for jcode commands such as `/screen-shot`. On submit, each chip occurrence is expanded into an on-demand context block and sent to jcode with the remaining prompt text. If an app has no active context, the prompt is not sent and the panel asks you to re-input. Backspace at the end of a chip removes the whole chip.
 
 - `@vscode`: active file, cursor line, selection if any, surrounding code, workspace root, and nearby symbol/import hints. The VS Code extension writes only on editor/cursor/selection changes.
 - `@obsidian`: active note path/title, cursor line, selection if any, or nearby note excerpt. The Obsidian plugin writes only on workspace/editor changes.

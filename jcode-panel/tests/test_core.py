@@ -667,8 +667,8 @@ def test_config_save_is_reloadable_after_multiple_writes(tmp_path: Path):
 def test_interaction_tag_normalization_and_sources():
     from jcode_panel.interaction_context import interaction_sources, normalize_interaction_tags, normalize_interaction_tags_with_cursor
 
-    text = normalize_interaction_tags("compare @vscode with /obsidian")
-    assert text == "compare {{@vscode}} with {{/obsidian}}"
+    text = normalize_interaction_tags("compare @vscode with @obsidian")
+    assert text == "compare {{@vscode}} with {{@obsidian}}"
     assert interaction_sources(text) == ["vscode", "obsidian"]
     text, cursor = normalize_interaction_tags_with_cursor("fix @vscode", -1)
     assert text == "fix {{@vscode}}"
@@ -712,13 +712,13 @@ def test_interaction_partial_completion():
     from jcode_panel.interaction_context import complete_interaction_token, interaction_token_hints
 
     assert interaction_token_hints("ask @") == ["@obsidian", "@vscode"]
-    assert interaction_token_hints("ask /") == ["/obsidian", "/vscode"]
+    assert interaction_token_hints("ask /") == []
     assert interaction_token_hints("fix @vsc") == ["@vscode"]
     text, pos, changed = complete_interaction_token("fix @vsc", len("fix @vsc"))
     assert changed is True
     assert text == "fix {{@vscode}}"
     assert pos == len(text)
 
-    text, pos, changed = complete_interaction_token("compare /obs with text", len("compare /obs"))
+    text, pos, changed = complete_interaction_token("compare @obs with text", len("compare @obs"))
     assert changed is True
-    assert text == "compare {{/obsidian}} with text"
+    assert text == "compare {{@obsidian}} with text"

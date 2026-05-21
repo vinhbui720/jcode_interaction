@@ -38,7 +38,7 @@ from .terminal import launch
 from .style import add_class, load_css
 from .positioning import xdotool_mouse_position_full
 from .updater import self_update
-from .interaction_context import InteractionContextError, INTERACTION_CHIP_DELETE_RE, complete_interaction_token, expand_interaction_chips, interaction_token_hints, normalize_interaction_tags_with_cursor
+from .interaction_context import InteractionContextError, INTERACTION_CHIP_DELETE_RE, complete_interaction_token, expand_interaction_chips, interaction_token_hints
 
 
 def markdown_to_pango(text: str) -> str:
@@ -285,12 +285,6 @@ class FloatingInput(Gtk.Window):
         text = old_text.strip()
         if text:
             self.typed_once = True
-        normalized, new_position = normalize_interaction_tags_with_cursor(old_text, self.entry.get_position())
-        if normalized != old_text:
-            self.entry.handler_block_by_func(self._on_changed)
-            self.entry.set_text(normalized)
-            self.entry.set_position(new_position)
-            self.entry.handler_unblock_by_func(self._on_changed)
         self.completions.update([])
         self._update_slash_hint(self.entry.get_text().strip())
 
