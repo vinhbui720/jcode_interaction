@@ -620,3 +620,14 @@ def test_default_config_has_screenshot_hotkey():
 
     cfg = AppConfig()
     assert normalize_hotkey(cfg.general.screenshot_hotkey) == "ctrl+shift+s"
+
+
+def test_screenshot_tag_format_and_delete_regex():
+    from jcode_panel.gtk_app import SCREENSHOT_TAG_RE, screenshot_tag
+
+    tag = screenshot_tag("/tmp/jcode-panel-screenshots/a.png")
+    assert tag == "[screenshot:/tmp/jcode-panel-screenshots/a.png]"
+    text = "hello " + tag + " "
+    match = SCREENSHOT_TAG_RE.search(text)
+    assert match
+    assert text[:match.start()] == "hello "

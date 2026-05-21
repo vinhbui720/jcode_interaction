@@ -134,6 +134,13 @@ def parse_screenshot_command(arg: str) -> tuple[str, str]:
     return "ask", arg
 
 
+SCREENSHOT_TAG_RE = re.compile(r"\[screenshot:[^\]]+\]\s*$")
+
+
+def screenshot_tag(path: str) -> str:
+    return f"[screenshot:{path}]"
+
+
 @dataclass
 class LiveActivity:
     label: str = "idle"
@@ -419,6 +426,12 @@ class FloatingInput(Gtk.Window):
         pos = self.entry.get_position()
         if pos < 0:
             pos = len(current)
+        prefix = current[:pos]
+        match = SCREENSHOT_TAG_RE.search(prefix)
+        if match:
+            self.entry.set_text(current[:match.start()] + current[pos:])
+            self.entry.set_position(match.start())
+            return
         if pos > 0:
             self.entry.set_text(current[:pos - 1] + current[pos:])
             self.entry.set_position(pos - 1)
@@ -1269,8 +1282,6 @@ class PanelApp:
 
     def capture_screenshot_for_prompt(self) -> bool:
         """Hotkey flow: crop now, save image, then let user edit/send prompt."""
-        if self.floating.get_visible():
-            self.floating.hide()
         threading.Thread(target=self._capture_screenshot_for_prompt_worker, daemon=True).start()
         return False
 
@@ -1289,9 +1300,12 @@ class PanelApp:
         self._finish_activity("captured")
         self.process_status = "screenshot ready"
         self._update_header_status()
-        initial = f"Screenshot file: {path} "
-        self.toast.update_feedback("Screenshot saved. Add text, then press Enter to send. Esc keeps the saved file and cancels sending.")
-        self.show_prompt(initial)
+        tag = screenshot_tag(path) + " "
+        self.toast.update_feedback("Screenshot saved. Add text, press the screenshot hotkey again for more images, or Enter to send. Esc cancels the request but keeps saved files.")
+        if self.floating.get_visible():
+            self.floating.append_text(tag)
+        else:
+            self.show_prompt(tag)
         return False
 
     def handle_slash_command(self, text: str) -> bool:
@@ -1470,8 +1484,14 @@ class PanelApp:
                 on_response,
                 None,
             )
+            deadline = time.monotonic() + 120
+            context = GLib.MainContext.default()
             try:
-                if not done.wait(120):
+                while not done.is_set() and time.monotonic() < deadline:
+                    while context.pending():
+                        context.iteration(False)
+                    done.wait(0.05)
+                if not done.is_set():
                     return False
             finally:
                 bus.signal_unsubscribe(sub_id)
