@@ -460,3 +460,65 @@ def test_capture_active_context_filters_gjs_shell_artifact_and_dm_clipboard(monk
     assert ctx.app == ""
     assert ctx.window_title == ""
     assert ctx.clipboard_text == ""
+
+
+def test_ambient_key_ignored_when_entry_has_focus():
+    from types import SimpleNamespace
+    from jcode_panel.gtk_app import PanelApp
+
+    appended = []
+
+    class Entry:
+        def has_focus(self):
+            return True
+
+    app = SimpleNamespace(
+        _ambient_shift=False,
+        _ambient_ctrl=False,
+        _ambient_alt=False,
+        floating=SimpleNamespace(
+            get_visible=lambda: True,
+            suppress_listener=object(),
+            entry=Entry(),
+            append_text=appended.append,
+            submit=lambda: appended.append("<submit>"),
+            hide=lambda: appended.append("<hide>"),
+            backspace=lambda: appended.append("<backspace>"),
+        ),
+    )
+
+    key = SimpleNamespace(name="", char="a")
+    PanelApp._route_ambient_key(app, key, True, force=True)
+
+    assert appended == []
+
+
+def test_ambient_key_routes_when_entry_not_focused():
+    from types import SimpleNamespace
+    from jcode_panel.gtk_app import PanelApp
+
+    appended = []
+
+    class Entry:
+        def has_focus(self):
+            return False
+
+    app = SimpleNamespace(
+        _ambient_shift=False,
+        _ambient_ctrl=False,
+        _ambient_alt=False,
+        floating=SimpleNamespace(
+            get_visible=lambda: True,
+            suppress_listener=object(),
+            entry=Entry(),
+            append_text=appended.append,
+            submit=lambda: appended.append("<submit>"),
+            hide=lambda: appended.append("<hide>"),
+            backspace=lambda: appended.append("<backspace>"),
+        ),
+    )
+
+    key = SimpleNamespace(name="", char="a")
+    PanelApp._route_ambient_key(app, key, True, force=True)
+
+    assert appended == ["a"]

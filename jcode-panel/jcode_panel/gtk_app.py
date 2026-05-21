@@ -98,6 +98,7 @@ class FloatingInput(Gtk.Window):
         self.target_window_id = ""
         self.keyboard_grabbed = False
         self.suppress_listener = None
+        self.submitting = False
 
     def _draw_transparent(self, _widget, cr):
         cr.set_source_rgba(0, 0, 0, 0)
@@ -114,6 +115,7 @@ class FloatingInput(Gtk.Window):
         self.entry.set_placeholder_text("Ask jcode...")
         self._update_slash_hint("")
         self.typed_once = False
+        self.submitting = False
         self.follow_mouse = True
         self.current_x = None
         self.current_y = None
@@ -323,6 +325,9 @@ class FloatingInput(Gtk.Window):
         self._on_enter(self.entry)
 
     def _on_enter(self, _entry):
+        if self.submitting:
+            return
+        self.submitting = True
         text = self.entry.get_text().strip()
         if text.startswith("/") and self.app.handle_slash_command(text):
             self.hide()
@@ -944,7 +949,7 @@ class PanelApp:
             return False
         # If GTK successfully focused the entry, let normal GTK text handling
         # happen. Ambient routing is only the fallback when another app has focus.
-        if self.floating.entry.has_focus() and not force:
+        if self.floating.entry.has_focus():
             return False
         if lowered in {"enter", "return"}:
             self.floating.submit()
