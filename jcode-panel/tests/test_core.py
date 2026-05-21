@@ -631,3 +631,17 @@ def test_screenshot_tag_format_and_delete_regex():
     match = SCREENSHOT_TAG_RE.search(text)
     assert match
     assert text[:match.start()] == "hello "
+
+
+def test_pic_tag_expands_to_screenshot_paths():
+    from types import SimpleNamespace
+    from jcode_panel.gtk_app import PanelApp, pic_tag
+
+    app = SimpleNamespace(pending_screenshots=["/tmp/a.png", "/tmp/b.png"])
+    text = f"compare {pic_tag(1)} and {pic_tag(2)}"
+
+    expanded = PanelApp._expand_screenshot_chips(app, text)
+
+    assert "Screenshot file: /tmp/a.png" in expanded
+    assert "Screenshot file: /tmp/b.png" in expanded
+    assert "[pic" not in expanded

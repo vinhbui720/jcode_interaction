@@ -134,11 +134,16 @@ def parse_screenshot_command(arg: str) -> tuple[str, str]:
     return "ask", arg
 
 
-SCREENSHOT_TAG_RE = re.compile(r"\[screenshot:[^\]]+\]\s*$")
+SCREENSHOT_TAG_RE = re.compile(r"\[(?:screenshot:[^\]]+|pic\d+)\]\s*$")
+PIC_TAG_RE = re.compile(r"\[pic(\d+)\]")
 
 
 def screenshot_tag(path: str) -> str:
     return f"[screenshot:{path}]"
+
+
+def pic_tag(index: int) -> str:
+    return f"[pic{index}]"
 
 
 @dataclass
@@ -480,6 +485,7 @@ class FloatingInput(Gtk.Window):
         key = Gdk.keyval_name(event.keyval)
         alt = bool(event.state & Gdk.ModifierType.MOD1_MASK)
         if key == "Escape":
+            self.app.pending_screenshots.clear()
             self.hide()
             return True
         if alt and key and key.lower() == "c":
@@ -876,6 +882,7 @@ class PanelApp:
         self.answer_sequence = 0
         self.feedback_text = ""
         self.feedback_notice = ""
+        self.pending_screenshots: list[str] = []
         self.dropdown_refresh_id = 0
         self.last_prompt_toggle_at = 0.0
         self._ambient_shift = False
@@ -1175,9 +1182,10 @@ class PanelApp:
         if self.answer_timeout_id:
             GLib.source_remove(self.answer_timeout_id)
             self.answer_timeout_id = 0
-        # Panel prompt should go to jcode exactly as typed. Context is captured
-        # for UI display/state, but not prepended or sent as extra metadata.
-        payload, metadata = text.strip(), None
+        # Panel prompt should go to jcode mostly as typed. Screenshot chips shown
+        # as [pic1] in the input are expanded to file paths only at send time.
+        payload, metadata = self._expand_screenshot_chips(text.strip()), None
+        self.pending_screenshots.clear()
         self.feedback_text = ""
         context_summary = self.active_context.summary() if include_context and self.active_context else ""
         self.feedback_notice = f"context: {context_summary}" if context_summary else ""
@@ -1193,6 +1201,14 @@ class PanelApp:
             self.controller.record_sent_prompt(text)
         except Exception as exc:
             self._add_system(str(exc))
+
+    def _expand_screenshot_chips(self, text: str) -> str:
+        def replace(match):
+            index = int(match.group(1)) - 1
+            if 0 <= index < len(self.pending_screenshots):
+                return f"Screenshot file: {self.pending_screenshots[index]}"
+            return match.group(0)
+        return PIC_TAG_RE.sub(replace, text)
 
 
     def _schedule_send_watchdog(self, send_sequence: int) -> None:
@@ -1282,6 +1298,9 @@ class PanelApp:
 
     def capture_screenshot_for_prompt(self) -> bool:
         """Hotkey flow: crop now, save image, then let user edit/send prompt."""
+        if not self.floating.get_visible():
+            self.show_prompt()
+        self.floating.entry.set_placeholder_text("Cropping screenshot... input stays here; Enter sends, Esc cancels")
         threading.Thread(target=self._capture_screenshot_for_prompt_worker, daemon=True).start()
         return False
 
@@ -1289,7 +1308,7 @@ class PanelApp:
         screenshot_dir = Path(tempfile.gettempdir()) / "jcode-panel-screenshots"
         screenshot_dir.mkdir(parents=True, exist_ok=True)
         path = screenshot_dir / f"screenshot-area-{int(time.time())}.png"
-        GLib.idle_add(self.toast.update_feedback, "Drag to select a screenshot area...")
+        GLib.idle_add(self._show_capture_in_input_status, "Drag to select area...")
         GLib.idle_add(self._set_capture_status, "screenshot area")
         if self._capture_gnome_shell_area(path) or self._capture_portal_screenshot(path, interactive=True) or self._capture_with_commands(path, "area"):
             GLib.idle_add(self._open_prompt_with_screenshot, str(path))
@@ -1300,12 +1319,19 @@ class PanelApp:
         self._finish_activity("captured")
         self.process_status = "screenshot ready"
         self._update_header_status()
-        tag = screenshot_tag(path) + " "
-        self.toast.update_feedback("Screenshot saved. Add text, press the screenshot hotkey again for more images, or Enter to send. Esc cancels the request but keeps saved files.")
+        self.pending_screenshots.append(path)
+        tag = pic_tag(len(self.pending_screenshots)) + " "
         if self.floating.get_visible():
             self.floating.append_text(tag)
         else:
             self.show_prompt(tag)
+        self.floating.entry.set_placeholder_text("Add text or more screenshots. Enter sends, Esc cancels request.")
+        return False
+
+    def _show_capture_in_input_status(self, text: str) -> bool:
+        if not self.floating.get_visible():
+            self.show_prompt()
+        self.floating.entry.set_placeholder_text(text)
         return False
 
     def handle_slash_command(self, text: str) -> bool:
@@ -1451,9 +1477,15 @@ class PanelApp:
             bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
             done = threading.Event()
             result_uri = ""
+            handle = ""
+            token = f"jcode_panel_{int(time.time() * 1000)}"
 
             def on_response(_conn, _sender, _object_path, _iface, _signal, params):
                 nonlocal result_uri
+                if handle and _object_path != handle:
+                    return
+                if not handle and token not in str(_object_path):
+                    return
                 try:
                     response, results = params.unpack()
                     if int(response) == 0:
@@ -1463,27 +1495,27 @@ class PanelApp:
                 finally:
                     done.set()
 
-            handle = bus.call_sync(
-                "org.freedesktop.portal.Desktop",
-                "/org/freedesktop/portal/desktop",
-                "org.freedesktop.portal.Screenshot",
-                "Screenshot",
-                GLib.Variant("(sa{sv})", ("", {"interactive": GLib.Variant("b", bool(interactive))})),
-                GLib.VariantType.new("(o)"),
-                Gio.DBusCallFlags.NONE,
-                120000,
-                None,
-            ).unpack()[0]
             sub_id = bus.signal_subscribe(
                 "org.freedesktop.portal.Desktop",
                 "org.freedesktop.portal.Request",
                 "Response",
-                handle,
+                None,
                 None,
                 Gio.DBusSignalFlags.NONE,
                 on_response,
                 None,
             )
+            handle = bus.call_sync(
+                "org.freedesktop.portal.Desktop",
+                "/org/freedesktop/portal/desktop",
+                "org.freedesktop.portal.Screenshot",
+                "Screenshot",
+                GLib.Variant("(sa{sv})", ("", {"interactive": GLib.Variant("b", bool(interactive)), "handle_token": GLib.Variant("s", token)})),
+                GLib.VariantType.new("(o)"),
+                Gio.DBusCallFlags.NONE,
+                120000,
+                None,
+            ).unpack()[0]
             deadline = time.monotonic() + 120
             context = GLib.MainContext.default()
             try:
