@@ -1336,20 +1336,15 @@ class PanelApp:
             try:
                 if not self.capture_in_progress or self.capture_cancelled:
                     return
-                if self._capture_portal_screenshot(path, interactive=True, timeout_seconds=20):
-                    return
-                if not self.capture_in_progress or self.capture_cancelled:
-                    return
-                if self._capture_gnome_shell_area(path):
-                    return
-                if not self.capture_in_progress or self.capture_cancelled:
-                    return
-                self._capture_with_commands(path, "area")
+                # Hotkey flow is clipboard-driven. Do not run legacy fallback
+                # tools here, because they can open a second capture UI after
+                # the clipboard watcher already restored the input popup.
+                self._capture_portal_screenshot(path, interactive=True, timeout_seconds=60)
             finally:
                 trigger_done.set()
 
         threading.Thread(target=trigger_capture_ui, daemon=True).start()
-        captured = self._wait_for_clipboard_screenshot(path, old_clipboard, timeout_seconds=22)
+        captured = self._wait_for_clipboard_screenshot(path, old_clipboard, timeout_seconds=60)
         if not captured and path.exists() and path.stat().st_size > 0:
             captured = True
         append_log(f"Screenshot hotkey capture result: captured={captured} path={path} exists={path.exists()} size={path.stat().st_size if path.exists() else 0}")
