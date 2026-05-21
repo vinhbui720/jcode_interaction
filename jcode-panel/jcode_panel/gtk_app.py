@@ -273,13 +273,9 @@ class FloatingInput(Gtk.Window):
         try:
             ctx = capture_active_context(self.target_window_id)
             primary = self._clipboard_text(Gdk.SELECTION_PRIMARY)
-            clipboard = self._clipboard_text(Gdk.SELECTION_CLIPBOARD)
-            uris = self._clipboard_uris(Gdk.SELECTION_CLIPBOARD)
             integration_selection, file_path, line = self.app._best_integration_context_hint(ctx.app, ctx.window_title)
             chips = build_popup_context_chips(
                 selected_text=integration_selection or primary or ctx.selected_text,
-                clipboard_text=clipboard or ctx.clipboard_text,
-                clipboard_uris=uris,
                 app=ctx.app,
                 window_title=ctx.window_title,
                 file_path=file_path,

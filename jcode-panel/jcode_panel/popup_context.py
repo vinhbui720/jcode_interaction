@@ -21,8 +21,7 @@ class PopupContextChip:
 def build_popup_context_chips(
     *,
     selected_text: str = "",
-    clipboard_text: str = "",
-    clipboard_uris: str = "",
+    file_paths: list[str] | None = None,
     app: str = "",
     window_title: str = "",
     file_path: str = "",
@@ -44,18 +43,9 @@ def build_popup_context_chips(
         else:
             chips.append(_text_chip(selection, app=app, window_title=window_title, file_path=file_path, line=line))
 
-    # Clipboard URL is a useful no-poll fallback for link hover/copy workflows.
-    clip_url = _first_url(clipboard_text)
-    if clip_url and clip_url not in seen:
-        _append_unique(chips, seen, _link_chip(clip_url))
-
-    files = _file_paths_from_uris(clipboard_uris) or _file_paths_from_uris(clipboard_text)
+    files = [str(Path(p).expanduser()) for p in (file_paths or []) if p]
     if files:
         chips.append(_files_chip(files))
-    elif file_path and not selection:
-        # App integrations expose the current file. Only use as fallback so a real
-        # selection does not get polluted by the active editor path.
-        chips.append(_files_chip([file_path], current_file=True))
 
     return chips
 

@@ -818,10 +818,10 @@ def test_popup_context_chips_selected_text_expand():
     assert payload.endswith("User prompt:\nfix this")
 
 
-def test_popup_context_chips_url_and_multiple_files():
+def test_popup_context_chips_selected_url_and_multiple_files():
     chips = build_popup_context_chips(
-        clipboard_text="see https://example.com/docs now",
-        clipboard_uris="file:///tmp/a.txt\nfile:///tmp/b.txt",
+        selected_text="see https://example.com/docs now",
+        file_paths=["/tmp/a.txt", "/tmp/b.txt"],
     )
     assert [chip.tag for chip in chips] == ["[link:example.com]", "[2 files]"]
     payload = expand_popup_context_chips("[link:example.com] [2 files] summarize", chips)
@@ -829,6 +829,11 @@ def test_popup_context_chips_url_and_multiple_files():
     assert "- /tmp/a.txt" in payload
     assert "- /tmp/b.txt" in payload
     assert payload.endswith("User prompt:\nsummarize")
+
+
+def test_popup_context_chips_ignore_clipboard_arguments():
+    chips = build_popup_context_chips()
+    assert chips == []
 
 
 def test_popup_context_chips_limit_selected_text():
