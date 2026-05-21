@@ -42,7 +42,7 @@ class ObsidianIntegration(Integration):
             installed=installed,
             enabled=installed,
             message="Installed in configured vault" if installed else "Vault not configured or plugin not installed",
-            install_hint="Auto-detects the latest/open Obsidian vault from ~/.config/obsidian/obsidian.json. Enable the community plugin in Obsidian after install.",
+            install_hint="Auto-detects the latest/open Obsidian vault from ~/.config/obsidian/obsidian.json and enables the community plugin. Reload Obsidian if it was already open.",
         )
 
     def install(self) -> IntegrationStatus:
@@ -53,7 +53,20 @@ class ObsidianIntegration(Integration):
         if target.exists():
             shutil.rmtree(target)
         shutil.copytree(self.source_dir, target)
+        self._enable_plugin(target.parent.parent)
         return self.status()
+
+    def _enable_plugin(self, obsidian_dir: Path) -> None:
+        plugins_path = obsidian_dir / "community-plugins.json"
+        try:
+            plugins = json.loads(plugins_path.read_text()) if plugins_path.exists() else []
+            if not isinstance(plugins, list):
+                plugins = []
+            if "jcode-panel" not in plugins:
+                plugins.append("jcode-panel")
+                plugins_path.write_text(json.dumps(plugins, indent=2) + "\n")
+        except Exception:
+            return
 
     def uninstall(self) -> IntegrationStatus:
         target = self._target_dir()
