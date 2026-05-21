@@ -19,11 +19,10 @@ need_cmd xprop
 
 python_missing=0
 PYTHONPATH="$PWD:$PWD/.python-deps" python3 - <<'PY' || python_missing=1
+import importlib.util
 missing = []
 for mod in ["requests", "pynput"]:
-    try:
-        __import__(mod)
-    except Exception:
+    if importlib.util.find_spec(mod) is None:
         missing.append(mod)
 try:
     import gi

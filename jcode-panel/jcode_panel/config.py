@@ -131,7 +131,7 @@ def _load_simple_toml(text: str) -> dict:
     data: dict[str, dict] = {}
     current: dict | None = None
     for raw in text.splitlines():
-        line = raw.split("#", 1)[0].strip()
+        line = _strip_toml_comment(raw).strip()
         if not line:
             continue
         if line.startswith("[") and line.endswith("]"):
@@ -154,3 +154,25 @@ def _load_simple_toml(text: str) -> dict:
                     parsed = value
         current[key] = parsed
     return data
+
+
+def _strip_toml_comment(line: str) -> str:
+    """Remove comments without treating # inside quoted strings as a comment."""
+    quote: str | None = None
+    escaped = False
+    for idx, char in enumerate(line):
+        if escaped:
+            escaped = False
+            continue
+        if quote == '"' and char == "\\":
+            escaped = True
+            continue
+        if char in {'"', "'"}:
+            if quote is None:
+                quote = char
+            elif quote == char:
+                quote = None
+            continue
+        if char == "#" and quote is None:
+            return line[:idx]
+    return line
