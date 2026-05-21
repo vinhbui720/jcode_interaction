@@ -645,3 +645,20 @@ def test_pic_tag_expands_to_screenshot_paths():
     assert "Screenshot file: /tmp/a.png" in expanded
     assert "Screenshot file: /tmp/b.png" in expanded
     assert "[pic" not in expanded
+
+
+def test_config_save_is_reloadable_after_multiple_writes(tmp_path: Path):
+    from jcode_panel.config import AppConfig
+
+    path = tmp_path / "config.toml"
+    cfg = AppConfig.load(path)
+    cfg.general.hotkey = "ctrl+shift+q"
+    cfg.general.screenshot_hotkey = "ctrl+shift+e"
+    cfg.ui.base_color = "#123456"
+    cfg.save(path)
+
+    loaded = AppConfig.load(path)
+    assert loaded.general.hotkey == "ctrl+shift+q"
+    assert loaded.general.screenshot_hotkey == "ctrl+shift+e"
+    assert loaded.ui.base_color == "#123456"
+    assert not list(tmp_path.glob("*.tmp"))

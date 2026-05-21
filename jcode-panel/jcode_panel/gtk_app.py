@@ -23,7 +23,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("AppIndicator3", "0.1")
 from gi.repository import AppIndicator3, GLib, Gtk, Gdk, Gio  # type: ignore
 
-from .config import AppConfig
+from .config import AppConfig, CONFIG_PATH
 from .control import ControlResponse, ControlServer
 from .services import AppController
 from .context import BrowserBridge, capture_active_context
@@ -858,6 +858,13 @@ class SettingsDialog(Gtk.Dialog):
         cfg.ui.font_bold = self.bold.get_active()
         cfg.ui.font_italic = self.italic.get_active()
         cfg.save()
+        reloaded = AppConfig.load()
+        self.app.config = reloaded
+        append_log(
+            "Settings saved: "
+            f"path={CONFIG_PATH} prompt={reloaded.general.hotkey} screenshot={reloaded.general.screenshot_hotkey} "
+            f"base={reloaded.ui.base_color} text={reloaded.ui.text_color}"
+        )
         if normalize_hotkey(old_hotkey) != cfg.general.hotkey or normalize_hotkey(old_screenshot_hotkey) != cfg.general.screenshot_hotkey:
             self.app.restart_hotkey_listener()
 

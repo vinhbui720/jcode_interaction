@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 import os
+import tempfile
 try:
     import tomllib  # Python 3.11+
 except Exception:  # pragma: no cover - Python 3.10 fallback
@@ -89,10 +90,24 @@ class AppConfig:
     def save(self, path: Path = CONFIG_PATH) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         data = self.to_dict()
+        text: str
         if tomli_w:
-            path.write_text(tomli_w.dumps(data))
+            text = tomli_w.dumps(data)
         else:
-            path.write_text(_dump_simple_toml(data))
+            text = _dump_simple_toml(data)
+        fd, tmp_name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
+        try:
+            with os.fdopen(fd, "w") as tmp:
+                tmp.write(text)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+            os.replace(tmp_name, path)
+        finally:
+            try:
+                if os.path.exists(tmp_name):
+                    os.unlink(tmp_name)
+            except Exception:
+                pass
 
 
 def _dump_simple_toml(data: dict) -> str:
