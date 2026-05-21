@@ -195,6 +195,7 @@ class FloatingInput(Gtk.Window):
         add_class(box, "floating-root")
         self.entry = Gtk.Entry()
         self.entry.set_can_focus(True)
+        self.entry.set_property("cursor-visible", True)
         self.entry.connect("activate", self._on_enter)
         self.entry.connect("key-press-event", self._on_key)
         self.entry.connect("changed", self._on_changed)
@@ -229,6 +230,7 @@ class FloatingInput(Gtk.Window):
         if initial_text:
             self.entry.set_position(-1)
         self.entry.set_placeholder_text("Ask jcode...")
+        self.entry.set_property("cursor-visible", True)
         self._update_slash_hint("")
         self.typed_once = False
         self.submitting = False
@@ -402,6 +404,7 @@ class FloatingInput(Gtk.Window):
 
     def _focus_entry(self) -> bool:
         if self.get_visible():
+            self.entry.set_property("cursor-visible", True)
             self.present_with_time(Gtk.get_current_event_time())
             self._activate_self()
             self.set_focus(self.entry)
