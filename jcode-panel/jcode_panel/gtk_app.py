@@ -1334,7 +1334,17 @@ class PanelApp:
 
         def trigger_capture_ui():
             try:
-                self._capture_portal_screenshot(path, interactive=True, timeout_seconds=20) or self._capture_gnome_shell_area(path) or self._capture_with_commands(path, "area")
+                if not self.capture_in_progress or self.capture_cancelled:
+                    return
+                if self._capture_portal_screenshot(path, interactive=True, timeout_seconds=20):
+                    return
+                if not self.capture_in_progress or self.capture_cancelled:
+                    return
+                if self._capture_gnome_shell_area(path):
+                    return
+                if not self.capture_in_progress or self.capture_cancelled:
+                    return
+                self._capture_with_commands(path, "area")
             finally:
                 trigger_done.set()
 
@@ -1459,11 +1469,10 @@ class PanelApp:
             self.show_usage_dialog()
             return True
         if command in {"/screen-shot", "/screenshot"}:
-            mode, prompt = parse_screenshot_command(arg)
-            if mode == "ask":
-                GLib.timeout_add(120, self.show_screenshot_mode_dialog, prompt)
-            else:
-                GLib.timeout_add(250, self.capture_screenshot_and_send, prompt, mode)
+            # Keep one screenshot flow: capture first, then show [pic#] in the
+            # input popup. Avoid the older direct-send screenshot worker because
+            # it can leave a second capture UI running after Enter sends.
+            GLib.timeout_add(120, self.capture_screenshot_for_prompt)
             return True
         if command in {"/help", "/?"}:
             self._show_text_dialog(
