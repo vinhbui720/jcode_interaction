@@ -1346,7 +1346,7 @@ class PanelApp:
                 # Hotkey flow is clipboard-driven. Do not run legacy fallback
                 # tools here, because they can open a second capture UI after
                 # the clipboard watcher already restored the input popup.
-                self._capture_portal_screenshot(path, interactive=True, timeout_seconds=60)
+                self._capture_portal_screenshot(path, interactive=True, timeout_seconds=60, stop_when_capture_done=True)
             finally:
                 trigger_done.set()
 
@@ -1593,7 +1593,7 @@ class PanelApp:
             return subprocess.run(shell_cmd, shell=True, cwd=str(Path.home()), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=60)
         return subprocess.run(command, cwd=str(Path.home()), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=60)
 
-    def _capture_portal_screenshot(self, path: Path, interactive: bool = True, timeout_seconds: int = 30) -> bool:
+    def _capture_portal_screenshot(self, path: Path, interactive: bool = True, timeout_seconds: int = 30, stop_when_capture_done: bool = False) -> bool:
         """Capture via xdg-desktop-portal Screenshot and copy returned URI."""
         try:
             bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
@@ -1642,6 +1642,8 @@ class PanelApp:
             context = GLib.MainContext.default()
             try:
                 while not done.is_set() and time.monotonic() < deadline:
+                    if stop_when_capture_done and not self.capture_in_progress:
+                        return path.exists() and path.stat().st_size > 0
                     while context.pending():
                         context.iteration(False)
                     done.wait(0.05)
