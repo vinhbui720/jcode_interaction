@@ -5,6 +5,7 @@ from jcode_panel.context import ActiveContext, BrowserContext, capture_active_co
 from jcode_panel.dropdown import ConversationBuffer
 from jcode_panel.floating import CompletionState
 from jcode_panel.jcode_client import JcodeClient, parse_event
+from jcode_panel.popup_context import build_popup_context_chips, expand_popup_context_chips
 from jcode_panel.protocol import PanelEventKind, activity_is_terminal, activity_label, activity_state, event_preview, parse_panel_event
 from jcode_panel.services import AppController, PromptBuilder, PromptRequest
 from jcode_panel.state import AppState
@@ -798,3 +799,40 @@ def test_interaction_partial_completion():
     text, pos, changed = complete_interaction_token("compare @obs with text", len("compare @obs"))
     assert changed is True
     assert text == "compare [@obsidian] with text"
+
+
+def test_popup_context_chips_selected_text_expand():
+    chips = build_popup_context_chips(
+        selected_text="hello world",
+        app="Code",
+        window_title="demo.py",
+        file_path="/tmp/demo.py",
+        line=12,
+    )
+    assert chips[0].tag == "[text:demo.py:12]"
+    payload = expand_popup_context_chips(f"{chips[0].tag} fix this", chips)
+    assert "Context: selected text" in payload
+    assert "file: /tmp/demo.py" in payload
+    assert "line: 12" in payload
+    assert "hello world" in payload
+    assert payload.endswith("User prompt:\nfix this")
+
+
+def test_popup_context_chips_url_and_multiple_files():
+    chips = build_popup_context_chips(
+        clipboard_text="see https://example.com/docs now",
+        clipboard_uris="file:///tmp/a.txt\nfile:///tmp/b.txt",
+    )
+    assert [chip.tag for chip in chips] == ["[link:example.com]", "[2 files]"]
+    payload = expand_popup_context_chips("[link:example.com] [2 files] summarize", chips)
+    assert "url: https://example.com/docs" in payload
+    assert "- /tmp/a.txt" in payload
+    assert "- /tmp/b.txt" in payload
+    assert payload.endswith("User prompt:\nsummarize")
+
+
+def test_popup_context_chips_limit_selected_text():
+    chips = build_popup_context_chips(selected_text="x" * 5000)
+    payload = expand_popup_context_chips(f"{chips[0].tag} go", chips)
+    assert "truncated to 4000 characters" in payload
+    assert len(payload) < 4600

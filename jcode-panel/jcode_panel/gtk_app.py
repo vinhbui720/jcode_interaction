@@ -38,7 +38,8 @@ from .terminal import launch
 from .style import add_class, load_css
 from .positioning import xdotool_mouse_position_full
 from .updater import self_update
-from .interaction_context import InteractionContextError, INTERACTION_CHIP_DELETE_RE, complete_interaction_token, expand_interaction_chips, interaction_token_hints
+from .interaction_context import InteractionContextError, INTERACTION_CHIP_DELETE_RE, VSCODE_CONTEXT_PATH, OBSIDIAN_CONTEXT_PATH, complete_interaction_token, expand_interaction_chips, interaction_token_hints
+from .popup_context import PopupContextChip, POPUP_CONTEXT_CHIP_DELETE_RE, build_popup_context_chips, expand_popup_context_chips
 
 
 def markdown_to_pango(text: str) -> str:
@@ -225,6 +226,7 @@ class FloatingInput(Gtk.Window):
         x, y, window_id = xdotool_mouse_position_full()
         self.target_window_id = window_id
         self.context_enabled = self.app.config.session.send_context_default
+        initial_text = self._with_launch_context_chips(initial_text)
         self.entry.set_text(initial_text)
         if initial_text:
             self.entry.set_position(-1)
@@ -253,6 +255,33 @@ class FloatingInput(Gtk.Window):
         GLib.timeout_add(40, self._grab_keyboard)
         GLib.timeout_add(120, self._grab_keyboard)
         GLib.timeout_add(260, self._grab_keyboard)
+
+    def _with_launch_context_chips(self, initial_text: str) -> str:
+        # Do not add ambient context chips when the caller is restoring/editing a
+        # prompt that already contains explicit context, such as screenshot chips.
+        if (initial_text or "").strip():
+            return initial_text
+        try:
+            ctx = capture_active_context(self.target_window_id)
+            primary = self._clipboard_text(Gdk.SELECTION_PRIMARY)
+            clipboard = self._clipboard_text(Gdk.SELECTION_CLIPBOARD)
+            uris = self._clipboard_uris(Gdk.SELECTION_CLIPBOARD)
+            file_path, line = self.app._best_active_file_hint(ctx.app, ctx.window_title)
+            chips = build_popup_context_chips(
+                selected_text=primary or ctx.selected_text,
+                clipboard_text=clipboard or ctx.clipboard_text,
+                clipboard_uris=uris,
+                app=ctx.app,
+                window_title=ctx.window_title,
+                file_path=file_path,
+                line=line,
+            )
+            self.app.pending_popup_contexts = chips
+            return (" ".join(chip.tag for chip in chips) + " ") if chips else ""
+        except Exception as exc:
+            append_log(f"Launch context chips unavailable: {exc}")
+            self.app.pending_popup_contexts = []
+            return initial_text
 
     def _follow_mouse_tick(self, initial: tuple[int | None, int | None] | None = None) -> bool:
         if not self.follow_mouse or not self.get_visible():
@@ -451,6 +480,11 @@ class FloatingInput(Gtk.Window):
         if match:
             self.entry.set_text(current[:match.start()] + current[pos:])
             self.entry.set_position(match.start())
+            return
+        context_match = POPUP_CONTEXT_CHIP_DELETE_RE.search(prefix)
+        if context_match:
+            self.entry.set_text(current[:context_match.start()] + current[pos:])
+            self.entry.set_position(context_match.start())
             return
         tag_match = INTERACTION_CHIP_DELETE_RE.search(prefix)
         if tag_match:
@@ -953,6 +987,7 @@ class PanelApp:
         self.feedback_text = ""
         self.feedback_notice = ""
         self.pending_screenshots: list[str] = []
+        self.pending_popup_contexts: list[PopupContextChip] = []
         self.capture_cancelled = False
         self.capture_in_progress = False
         self.capture_portal_done = False
@@ -1263,7 +1298,7 @@ class PanelApp:
         # Panel prompt should go to jcode mostly as typed. Screenshot chips shown
         # as [pic1] in the input are expanded to file paths only at send time.
         try:
-            payload = expand_interaction_chips(self._expand_screenshot_chips(text.strip()))
+            payload = expand_interaction_chips(expand_popup_context_chips(self._expand_screenshot_chips(text.strip()), self.pending_popup_contexts))
         except InteractionContextError as exc:
             self._add_system(str(exc))
             self.process_status = "interaction unavailable"
@@ -1274,6 +1309,7 @@ class PanelApp:
             return
         metadata = None
         self.pending_screenshots.clear()
+        self.pending_popup_contexts.clear()
         self.feedback_text = ""
         context_summary = self.active_context.summary() if include_context and self.active_context else ""
         self.feedback_notice = f"context: {context_summary}" if context_summary else ""
@@ -1297,6 +1333,31 @@ class PanelApp:
                 return f"Screenshot file: {self.pending_screenshots[index]}"
             return match.group(0)
         return PIC_TAG_RE.sub(replace, text)
+
+    def _best_active_file_hint(self, app: str = "", window_title: str = "") -> tuple[str, int | None]:
+        """Return a matching editor-backed file hint, if the editor is active."""
+        haystack = f"{app} {window_title}".lower()
+        candidates = []
+        if any(token in haystack for token in ("code", "vscode", "visual studio code")):
+            candidates.append(VSCODE_CONTEXT_PATH)
+        if "obsidian" in haystack:
+            candidates.append(OBSIDIAN_CONTEXT_PATH)
+        for path in candidates:
+            try:
+                if not path.exists():
+                    continue
+                data = json.loads(path.read_text())
+                file_path = str(data.get("file") or data.get("absolute_path") or data.get("path") or "").strip()
+                vault_path = str(data.get("vaultPath") or "").strip()
+                if file_path and not Path(file_path).expanduser().is_absolute() and vault_path:
+                    file_path = str(Path(vault_path).expanduser() / file_path)
+                line_raw = data.get("line")
+                line = int(line_raw) if str(line_raw or "").isdigit() else None
+                if file_path:
+                    return file_path, line
+            except Exception:
+                continue
+        return "", None
 
 
     def _schedule_send_watchdog(self, send_sequence: int) -> None:
