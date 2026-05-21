@@ -99,11 +99,26 @@ The tray menu also has **Update app**. It never force-resets or deletes local wo
 Integrations are structured as installable app adapters. Browser exists now; Obsidian scaffold exists for later.
 
 ```bash
+jcode-panel --install-integration vscode
 jcode-panel --install-integration browser
 jcode-panel --install-integration obsidian
 ```
 
 Each integration owns its code under `integrations/<app>_plugin` or `extension/` and has a Python installer under `jcode_panel/integrations/`.
+
+## Interaction tags
+
+The floating prompt supports event-driven app context tags:
+
+```text
+@vscode fix this bug
+compare @vscode with @obsidian
+```
+
+When typed, known tags become lightweight editable chips like `[vscode]` and `[obsidian]`. On submit, each chip occurrence is expanded into an on-demand context block and sent to jcode with the remaining prompt text. If an app has no active context, the prompt is not sent and the panel asks you to re-input.
+
+- `@vscode`: active file, cursor line, selection if any, surrounding code, workspace root, and nearby symbol/import hints. The VS Code extension writes only on editor/cursor/selection changes.
+- `@obsidian`: active note path/title, cursor line, selection if any, or nearby note excerpt. The Obsidian plugin writes only on workspace/editor changes.
 
 ## Resident app behavior
 

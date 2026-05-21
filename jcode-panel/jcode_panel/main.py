@@ -60,7 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--quit", action="store_true", help="quit resident app")
     parser.add_argument("--background", action="store_true", help="start resident app quietly for autostart")
     parser.add_argument("--self-update", action="store_true", help="fast-forward update this source checkout")
-    parser.add_argument("--install-integration", choices=["browser", "obsidian"], help="install an app integration scaffold")
+    parser.add_argument("--install-integration", choices=["browser", "vscode", "obsidian"], help="install an app integration scaffold")
     parser.add_argument("--install-shortcut", action="store_true", help="install GNOME F8 shortcut to open jcode-panel prompt")
     args = parser.parse_args(argv)
 

@@ -17,5 +17,5 @@ test = ["pytest>=8"]
 jcode-panel = "jcode_panel.main:main"
 jcp = "jcode_panel.main:prompt_main"
 
-[tool.setuptools]
-packages = ["jcode_panel"]
+[tool.setuptools.packages.find]
+include = ["jcode_panel*"]

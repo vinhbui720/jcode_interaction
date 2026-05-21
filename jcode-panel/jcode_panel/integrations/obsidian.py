@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import shutil
 
 from .base import Integration, IntegrationStatus
@@ -12,7 +13,21 @@ class ObsidianIntegration(Integration):
 
     def __init__(self, project_root: Path, vault_path: Path | None = None):
         self.source_dir = project_root / "integrations" / "obsidian_plugin"
-        self.vault_path = vault_path
+        self.vault_path = vault_path or self._detect_vault_path()
+
+    def _detect_vault_path(self) -> Path | None:
+        config = Path.home() / ".config" / "obsidian" / "obsidian.json"
+        try:
+            data = json.loads(config.read_text())
+            vaults = data.get("vaults") or {}
+            ordered = sorted(vaults.values(), key=lambda item: (not bool(item.get("open")), -int(item.get("ts") or 0)))
+            for item in ordered:
+                path = Path(str(item.get("path") or "")).expanduser()
+                if path.exists():
+                    return path
+        except Exception:
+            return None
+        return None
 
     def _target_dir(self) -> Path | None:
         if not self.vault_path:
@@ -27,7 +42,7 @@ class ObsidianIntegration(Integration):
             installed=installed,
             enabled=installed,
             message="Installed in configured vault" if installed else "Vault not configured or plugin not installed",
-            install_hint="Set an Obsidian vault path, then install. This scaffold is ready for later richer context capture.",
+            install_hint="Auto-detects the latest/open Obsidian vault from ~/.config/obsidian/obsidian.json. Enable the community plugin in Obsidian after install.",
         )
 
     def install(self) -> IntegrationStatus:

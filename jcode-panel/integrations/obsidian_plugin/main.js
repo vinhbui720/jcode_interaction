@@ -1,24 +1,47 @@
-module.exports = class JcodePanelPlugin extends require('obsidian').Plugin {
+const { Plugin, MarkdownView } = require('obsidian');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+const contextPath = path.join(os.homedir(), '.local', 'state', 'jcode-panel', 'contexts', 'obsidian.json');
+
+module.exports = class JcodePanelPlugin extends Plugin {
   async onload() {
+    const writeActiveContext = () => this.writeActiveContext();
+    this.registerEvent(this.app.workspace.on('active-leaf-change', writeActiveContext));
+    this.registerEvent(this.app.workspace.on('editor-change', writeActiveContext));
+    this.registerEvent(this.app.workspace.on('file-open', writeActiveContext));
     this.addCommand({
-      id: 'send-active-note-context-to-jcode-panel',
-      name: 'Send active note context to jcode-panel bridge',
-      callback: async () => {
-        const file = this.app.workspace.getActiveFile();
-        const view = this.app.workspace.getActiveViewOfType(require('obsidian').MarkdownView);
-        const selectedText = view && view.editor ? view.editor.getSelection() : '';
-        try {
-          await fetch('http://127.0.0.1:8765/', {
-            method: 'POST',
-            headers: {'content-type': 'application/json'},
-            body: JSON.stringify({
-              title: file ? file.basename : 'Obsidian',
-              url: file ? 'obsidian://' + file.path : 'obsidian://',
-              selectedText
-            })
-          });
-        } catch (_) {}
-      }
+      id: 'write-active-note-context-for-jcode-panel',
+      name: 'Write active note context for jcode-panel',
+      callback: writeActiveContext
     });
+    writeActiveContext();
+  }
+
+  writeActiveContext() {
+    const file = this.app.workspace.getActiveFile();
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!file || !view || !view.editor) return;
+    const editor = view.editor;
+    const cursor = editor.getCursor();
+    const selection = editor.getSelection() || '';
+    const fullText = editor.getValue() || '';
+    const lines = fullText.split(/\r?\n/);
+    const start = Math.max(0, cursor.line - 80);
+    const end = Math.min(lines.length, cursor.line + 81);
+    const excerpt = lines.slice(start, end).map((line, idx) => `${start + idx + 1}: ${line}`).join('\n');
+    const payload = {
+      app: 'obsidian',
+      title: file.basename,
+      path: file.path,
+      line: cursor.line + 1,
+      column: cursor.ch + 1,
+      selection: selection.slice(0, 12000),
+      text: excerpt.slice(0, 12000),
+      timestamp: new Date().toISOString()
+    };
+    fs.mkdirSync(path.dirname(contextPath), { recursive: true });
+    fs.writeFileSync(contextPath, JSON.stringify(payload, null, 2));
   }
 };

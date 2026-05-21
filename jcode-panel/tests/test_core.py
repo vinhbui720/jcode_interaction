@@ -662,3 +662,41 @@ def test_config_save_is_reloadable_after_multiple_writes(tmp_path: Path):
     assert loaded.general.screenshot_hotkey == "ctrl+shift+e"
     assert loaded.ui.base_color == "#123456"
     assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_interaction_tag_normalization_and_sources():
+    from jcode_panel.interaction_context import interaction_sources, normalize_interaction_tags
+
+    text = normalize_interaction_tags("compare @vscode with @obsidian")
+    assert text == "compare [vscode] with [obsidian]"
+    assert interaction_sources(text) == ["vscode", "obsidian"]
+
+
+def test_interaction_context_expands_each_chip(tmp_path: Path, monkeypatch):
+    from jcode_panel import interaction_context as ic
+
+    code = tmp_path / "app.py"
+    code.write_text("\n".join(["import os", "", "def target():", "    return 1", "", "target()"]))
+    vscode_json = tmp_path / "vscode.json"
+    vscode_json.write_text('{"file":"%s","line":3,"selection":"","languageId":"python","workspaceRoot":"%s"}' % (code, tmp_path))
+    monkeypatch.setattr("jcode_panel.interaction_context.VSCODE_CONTEXT_PATH", vscode_json)
+
+    expanded = ic.expand_interaction_chips("check [vscode] and again [vscode]")
+
+    assert expanded.count("Context: vscode") == 2
+    assert f"file: {code}" in expanded
+    assert "3: def target():" in expanded
+    assert "User prompt:\ncheck and again" in expanded
+
+
+def test_interaction_context_missing_app_blocks_send(tmp_path: Path, monkeypatch):
+    from jcode_panel import interaction_context as ic
+
+    monkeypatch.setattr("jcode_panel.interaction_context.VSCODE_CONTEXT_PATH", tmp_path / "missing.json")
+
+    try:
+        ic.expand_interaction_chips("fix [vscode]")
+    except ic.InteractionContextError as exc:
+        assert "VS Code is not open" in str(exc)
+    else:
+        raise AssertionError("expected missing VS Code context to block send")

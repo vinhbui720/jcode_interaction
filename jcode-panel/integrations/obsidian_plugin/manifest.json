@@ -1,9 +1,9 @@
 {
   "id": "jcode-panel",
   "name": "jcode-panel Context Bridge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minAppVersion": "1.5.0",
-  "description": "Future jcode-panel context bridge for Obsidian notes.",
+  "description": "Event-driven active note context bridge for jcode-panel @obsidian prompts.",
   "author": "jcode-panel",
   "isDesktopOnly": true
 }

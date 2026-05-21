@@ -1,0 +1,19 @@
+{
+  "name": "jcode-panel-context",
+  "displayName": "jcode-panel Context Bridge",
+  "description": "Event-driven active editor context bridge for jcode-panel @vscode prompts.",
+  "version": "0.1.0",
+  "publisher": "jcode-panel",
+  "engines": {"vscode": "^1.80.0"},
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished", "onCommand:jcodePanel.writeContext"],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "jcodePanel.writeContext",
+        "title": "jcode-panel: Write Active Context"
+      }
+    ]
+  }
+}

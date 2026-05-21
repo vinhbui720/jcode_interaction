@@ -38,6 +38,7 @@ from .terminal import launch
 from .style import add_class, load_css
 from .positioning import xdotool_mouse_position_full
 from .updater import self_update
+from .interaction_context import InteractionContextError, expand_interaction_chips, normalize_interaction_tags
 
 
 def markdown_to_pango(text: str) -> str:
@@ -283,8 +284,16 @@ class FloatingInput(Gtk.Window):
         text = self.entry.get_text().strip()
         if text:
             self.typed_once = True
+        normalized = normalize_interaction_tags(self.entry.get_text())
+        if normalized != self.entry.get_text():
+            position = self.entry.get_position()
+            delta = len(normalized) - len(self.entry.get_text())
+            self.entry.handler_block_by_func(self._on_changed)
+            self.entry.set_text(normalized)
+            self.entry.set_position(max(0, min(len(normalized), position + delta)))
+            self.entry.handler_unblock_by_func(self._on_changed)
         self.completions.update([])
-        self._update_slash_hint(text)
+        self._update_slash_hint(self.entry.get_text().strip())
 
     def _update_slash_hint(self, text: str) -> None:
         if not hasattr(self, "slash_hint"):
@@ -437,6 +446,11 @@ class FloatingInput(Gtk.Window):
         if match:
             self.entry.set_text(current[:match.start()] + current[pos:])
             self.entry.set_position(match.start())
+            return
+        tag_match = re.search(r"\[(?:vscode|obsidian)\]\s*$", prefix, re.IGNORECASE)
+        if tag_match:
+            self.entry.set_text(current[:tag_match.start()] + current[pos:])
+            self.entry.set_position(tag_match.start())
             return
         if pos > 0:
             self.entry.set_text(current[:pos - 1] + current[pos:])
@@ -1199,7 +1213,17 @@ class PanelApp:
             self.answer_timeout_id = 0
         # Panel prompt should go to jcode mostly as typed. Screenshot chips shown
         # as [pic1] in the input are expanded to file paths only at send time.
-        payload, metadata = self._expand_screenshot_chips(text.strip()), None
+        try:
+            payload = expand_interaction_chips(self._expand_screenshot_chips(text.strip()))
+        except InteractionContextError as exc:
+            self._add_system(str(exc))
+            self.process_status = "interaction unavailable"
+            self.live_activity = LiveActivity(label="jcode", state="idle", started_at=time.monotonic(), active=False)
+            self._update_header_status()
+            self.show_prompt(text)
+            self.floating.entry.set_placeholder_text(str(exc))
+            return
+        metadata = None
         self.pending_screenshots.clear()
         self.feedback_text = ""
         context_summary = self.active_context.summary() if include_context and self.active_context else ""
