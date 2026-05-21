@@ -674,12 +674,17 @@ class AnswerToast(Gtk.Window):
         self.set_type_hint(Gdk.WindowTypeHint.NOTIFICATION)
         self.set_opacity(1.0)
         self.set_app_paintable(True)
+        self.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK | Gdk.EventMask.FOCUS_CHANGE_MASK)
         screen = self.get_screen()
         visual = screen.get_rgba_visual() if screen else None
         if visual:
             self.set_visual(visual)
         self.connect("draw", self._draw_transparent)
         self.connect("key-press-event", self._on_key)
+        self.connect("enter-notify-event", self._on_hover_in)
+        self.connect("leave-notify-event", self._on_hover_out)
+        self.connect("focus-in-event", self._on_hover_in)
+        self.connect("focus-out-event", self._on_hover_out)
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         add_class(root, "toast-root")
         title = Gtk.Label(label="jcode feedback")
@@ -693,6 +698,15 @@ class AnswerToast(Gtk.Window):
         self.label.set_selectable(True)
         self.label.set_max_width_chars(70)
         add_class(self.label, "toast-text")
+        self.scroller = Gtk.ScrolledWindow()
+        self.scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.NEVER)
+        self.scroller.set_shadow_type(Gtk.ShadowType.NONE)
+        self.scroller.set_size_request(500, 170)
+        add_class(self.scroller, "toast-scroll")
+        self.scroller.add(self.label)
+        vadj = self.scroller.get_vadjustment()
+        if vadj:
+            vadj.connect("value-changed", self._on_scroll_changed)
         self.notice = Gtk.Label(label="")
         self.notice.set_use_markup(True)
         self.notice.set_xalign(0)
@@ -703,21 +717,28 @@ class AnswerToast(Gtk.Window):
         open_btn.connect("clicked", lambda _b: self.app.show_dropdown())
         prompt_btn = self._icon_button("mail-reply-sender-symbolic", "Reply")
         prompt_btn.connect("clicked", lambda _b: self.app.show_prompt())
+        self.jump_btn = self._icon_button("go-down-symbolic", "Back to latest feedback")
+        self.jump_btn.connect("clicked", lambda _b: self._scroll_to_bottom())
+        self.jump_btn.hide()
         close_btn = self._icon_button("window-close-symbolic", "Dismiss")
         close_btn.connect("clicked", lambda _b: self.app.stop_answering("dismissed"))
         actions.pack_start(open_btn, False, False, 0)
         actions.pack_start(prompt_btn, False, False, 0)
+        actions.pack_start(self.jump_btn, False, False, 0)
         actions.pack_end(close_btn, False, False, 0)
         root.pack_start(title, False, False, 0)
-        root.pack_start(self.label, True, True, 0)
+        root.pack_start(self.scroller, True, True, 0)
         root.pack_start(self.notice, False, False, 0)
         root.pack_start(actions, False, False, 0)
         self.add(root)
-        self.set_default_size(520, 220)
+        self.set_default_size(540, 300)
         self.hide_source_id = 0
         self.refresh_source_id = 0
         self.pending_feedback = ""
         self.pending_notice = ""
+        self.pending_scroll_value: float | None = None
+        self.pending_was_at_bottom = True
+        self.scrollbar_hover = False
 
     def _draw_transparent(self, _widget, cr):
         cr.set_source_rgba(0, 0, 0, 0)
@@ -736,10 +757,12 @@ class AnswerToast(Gtk.Window):
         return button
 
     def update_feedback(self, text: str, notice: str = ""):
-        text = format_stream_lines(text.strip())
+        text = (text or "").strip()
         if not text:
             return
-        self.pending_feedback = text[-1600:]
+        self.pending_was_at_bottom = self._is_at_bottom()
+        self.pending_scroll_value = self._scroll_value()
+        self.pending_feedback = self._limit_feedback_text(text)
         if notice:
             self.pending_notice = notice
         if not self.refresh_source_id:
@@ -767,7 +790,68 @@ class AnswerToast(Gtk.Window):
         else:
             self.notice.hide()
         self.show_all()
+        self._set_scrollbar_visible(self.scrollbar_hover or self.has_toplevel_focus())
+        if self.pending_was_at_bottom:
+            GLib.idle_add(self._scroll_to_bottom)
+        elif self.pending_scroll_value is not None:
+            GLib.idle_add(self._restore_scroll_value, self.pending_scroll_value)
+        self._update_jump_button()
         self._move_to_corner()
+        return False
+
+    def _limit_feedback_text(self, text: str, limit: int = 20000) -> str:
+        if len(text) <= limit:
+            return text
+        return "... earlier feedback omitted ...\n" + text[-limit:]
+
+    def _scroll_value(self) -> float:
+        adj = self.scroller.get_vadjustment()
+        return float(adj.get_value()) if adj else 0.0
+
+    def _is_at_bottom(self) -> bool:
+        adj = self.scroller.get_vadjustment()
+        if not adj:
+            return True
+        return adj.get_value() + adj.get_page_size() >= adj.get_upper() - 4
+
+    def _restore_scroll_value(self, value: float) -> bool:
+        adj = self.scroller.get_vadjustment()
+        if adj:
+            max_value = max(0.0, adj.get_upper() - adj.get_page_size())
+            adj.set_value(max(0.0, min(value, max_value)))
+        self._update_jump_button()
+        return False
+
+    def _scroll_to_bottom(self) -> bool:
+        adj = self.scroller.get_vadjustment()
+        if adj:
+            adj.set_value(max(0.0, adj.get_upper() - adj.get_page_size()))
+        self._update_jump_button()
+        return False
+
+    def _on_scroll_changed(self, *_args):
+        self._update_jump_button()
+
+    def _update_jump_button(self) -> None:
+        if not hasattr(self, "jump_btn"):
+            return
+        if self._is_at_bottom():
+            self.jump_btn.hide()
+        else:
+            self.jump_btn.show()
+
+    def _set_scrollbar_visible(self, visible: bool) -> None:
+        policy = Gtk.PolicyType.AUTOMATIC if visible else Gtk.PolicyType.NEVER
+        self.scroller.set_policy(Gtk.PolicyType.NEVER, policy)
+
+    def _on_hover_in(self, *_args):
+        self.scrollbar_hover = True
+        self._set_scrollbar_visible(True)
+        return False
+
+    def _on_hover_out(self, *_args):
+        self.scrollbar_hover = False
+        self._set_scrollbar_visible(False)
         return False
 
     def hide(self):

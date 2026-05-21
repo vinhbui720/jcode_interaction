@@ -128,6 +128,12 @@ def load_css(Gtk, Gdk, config=None) -> None:
       background: transparent;
       font-size: 12px;
     }}
+    .toast-scroll {{
+      background: rgba(255, 255, 255, 0.40);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 8px;
+      padding: 6px;
+    }}
     .toast-notice {{
       color: #64748b;
       background: rgba(226, 232, 240, 0.55);
