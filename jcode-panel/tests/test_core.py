@@ -612,3 +612,11 @@ def test_screenshot_command_lists_distinguish_area_and_full():
     assert ["gnome-screenshot", "-f", "/tmp/f.png"] in full
     assert any(cmd[:2] == ["grim", "-g"] for cmd in area)
     assert ["grim", "/tmp/f.png"] in full
+
+
+def test_default_config_has_screenshot_hotkey():
+    from jcode_panel.config import AppConfig
+    from jcode_panel.hotkeys import normalize_hotkey
+
+    cfg = AppConfig()
+    assert normalize_hotkey(cfg.general.screenshot_hotkey) == "ctrl+shift+s"

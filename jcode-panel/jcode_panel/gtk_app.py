@@ -207,11 +207,13 @@ class FloatingInput(Gtk.Window):
         cr.set_operator(2)  # cairo.OPERATOR_OVER
         return False
 
-    def show_at_pointer(self):
+    def show_at_pointer(self, initial_text: str = ""):
         x, y, window_id = xdotool_mouse_position_full()
         self.target_window_id = window_id
         self.context_enabled = self.app.config.session.send_context_default
-        self.entry.set_text("")
+        self.entry.set_text(initial_text)
+        if initial_text:
+            self.entry.set_position(-1)
         self.entry.set_placeholder_text("Ask jcode...")
         self._update_slash_hint("")
         self.typed_once = False
@@ -735,6 +737,13 @@ class SettingsDialog(Gtk.Dialog):
         record_hotkey = Gtk.Button(label="Record…")
         record_hotkey.connect("clicked", self._record_hotkey)
         hotkey_box.pack_start(record_hotkey, False, False, 0)
+        self.screenshot_hotkey = Gtk.Entry(text=normalize_hotkey(app.config.general.screenshot_hotkey))
+        self.screenshot_hotkey.set_placeholder_text("ctrl+shift+s")
+        screenshot_hotkey_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        screenshot_hotkey_box.pack_start(self.screenshot_hotkey, True, True, 0)
+        record_screenshot_hotkey = Gtk.Button(label="Record…")
+        record_screenshot_hotkey.connect("clicked", self._record_screenshot_hotkey)
+        screenshot_hotkey_box.pack_start(record_screenshot_hotkey, False, False, 0)
         self.terminal = Gtk.Entry(text=app.config.general.terminal)
         self.template = Gtk.Entry(text=app.config.general.terminal_template)
         self.debug = Gtk.CheckButton(label="Debug raw preview")
@@ -743,15 +752,15 @@ class SettingsDialog(Gtk.Dialog):
         self.context.set_active(app.config.session.send_context_default)
         self.auto_update = Gtk.CheckButton(label="Auto-update app on start")
         self.auto_update.set_active(app.config.general.auto_update_on_start)
-        fields = [("Hotkey", hotkey_box), ("Terminal", self.terminal), ("Terminal template", self.template)]
+        fields = [("Prompt hotkey", hotkey_box), ("Screenshot hotkey", screenshot_hotkey_box), ("Terminal", self.terminal), ("Terminal template", self.template)]
         for row, (label, widget) in enumerate(fields):
             field_label = Gtk.Label(label=label)
             field_label.set_xalign(0)
             grid.attach(field_label, 0, row, 1, 1)
             grid.attach(widget, 1, row, 1, 1)
-        grid.attach(self.debug, 0, 3, 2, 1)
-        grid.attach(self.context, 0, 4, 2, 1)
-        grid.attach(self.auto_update, 0, 5, 2, 1)
+        grid.attach(self.debug, 0, 4, 2, 1)
+        grid.attach(self.context, 0, 5, 2, 1)
+        grid.attach(self.auto_update, 0, 6, 2, 1)
 
         appearance = Gtk.Grid(column_spacing=10, row_spacing=10, margin=14)
         add_class(appearance, "modern-card")
@@ -803,10 +812,19 @@ class SettingsDialog(Gtk.Dialog):
             self.hotkey.set_text(dialog.captured)
         dialog.destroy()
 
+    def _record_screenshot_hotkey(self, _button):
+        dialog = HotkeyCaptureDialog(self, self.screenshot_hotkey.get_text())
+        response = dialog.run()
+        if response == Gtk.ResponseType.OK:
+            self.screenshot_hotkey.set_text(dialog.captured)
+        dialog.destroy()
+
     def save(self):
         cfg = self.app.config
         old_hotkey = cfg.general.hotkey
+        old_screenshot_hotkey = cfg.general.screenshot_hotkey
         cfg.general.hotkey = normalize_hotkey(self.hotkey.get_text().strip() or "f8")
+        cfg.general.screenshot_hotkey = normalize_hotkey(self.screenshot_hotkey.get_text().strip() or "ctrl+shift+s")
         cfg.general.terminal = self.terminal.get_text().strip() or "auto"
         cfg.general.terminal_template = self.template.get_text().strip()
         cfg.general.debug = self.debug.get_active()
@@ -821,7 +839,7 @@ class SettingsDialog(Gtk.Dialog):
         cfg.ui.font_bold = self.bold.get_active()
         cfg.ui.font_italic = self.italic.get_active()
         cfg.save()
-        if normalize_hotkey(old_hotkey) != cfg.general.hotkey:
+        if normalize_hotkey(old_hotkey) != cfg.general.hotkey or normalize_hotkey(old_screenshot_hotkey) != cfg.general.screenshot_hotkey:
             self.app.restart_hotkey_listener()
 
 
@@ -892,13 +910,22 @@ class PanelApp:
 
         hotkey = normalize_hotkey(self.config.general.hotkey)
         hotkey_mods, hotkey_key = hotkey_parts(hotkey)
+        screenshot_hotkey = normalize_hotkey(self.config.general.screenshot_hotkey)
+        screenshot_mods, screenshot_key = hotkey_parts(screenshot_hotkey)
         self.config.general.hotkey = hotkey
+        self.config.general.screenshot_hotkey = screenshot_hotkey
+
+        def combo_matches(normalized: str, wanted_key: str, wanted_mods: set[str]) -> bool:
+            return bool(wanted_key) and normalized == wanted_key and wanted_mods.issubset(self._hotkey_pressed_mods)
 
         def on_press(key):
             normalized = key_name_from_pynput(key)
             if normalized in MODIFIERS:
                 self._hotkey_pressed_mods.add(normalized)
-            elif normalized == hotkey_key and hotkey_mods.issubset(self._hotkey_pressed_mods):
+            elif combo_matches(normalized, screenshot_key, screenshot_mods):
+                GLib.idle_add(self.capture_screenshot_for_prompt)
+                return
+            elif combo_matches(normalized, hotkey_key, hotkey_mods):
                 GLib.idle_add(self.show_prompt)
                 return
             GLib.idle_add(self._route_ambient_key, key, True)
@@ -913,7 +940,7 @@ class PanelApp:
         listener.daemon = True
         listener.start()
         self._hotkey_listener = listener
-        self._add_system(f"Global keyboard active: {hotkey}; ambient popup typing enabled")
+        self._add_system(f"Global keyboard active: prompt {hotkey}, screenshot {screenshot_hotkey}; ambient popup typing enabled")
 
     def _stop_hotkey_listener(self):
         listener = self._hotkey_listener
@@ -1227,7 +1254,7 @@ class PanelApp:
                 self.floating.entry.set_text(suggestion)
                 self.floating.entry.set_position(-1)
 
-    def show_prompt(self):
+    def show_prompt(self, initial_text: str = ""):
         now = time.monotonic()
         # On X11/XWayland, F8 can arrive twice: once from GNOME custom
         # shortcut (`jcp`) and once from the internal pynput listener. Without
@@ -1235,10 +1262,37 @@ class PanelApp:
         if now - self.last_prompt_toggle_at < 0.45:
             return
         self.last_prompt_toggle_at = now
-        if self.floating.get_visible():
+        if self.floating.get_visible() and not initial_text:
             self.floating.hide()
         else:
-            self.floating.show_at_pointer()
+            self.floating.show_at_pointer(initial_text)
+
+    def capture_screenshot_for_prompt(self) -> bool:
+        """Hotkey flow: crop now, save image, then let user edit/send prompt."""
+        if self.floating.get_visible():
+            self.floating.hide()
+        threading.Thread(target=self._capture_screenshot_for_prompt_worker, daemon=True).start()
+        return False
+
+    def _capture_screenshot_for_prompt_worker(self) -> None:
+        screenshot_dir = Path(tempfile.gettempdir()) / "jcode-panel-screenshots"
+        screenshot_dir.mkdir(parents=True, exist_ok=True)
+        path = screenshot_dir / f"screenshot-area-{int(time.time())}.png"
+        GLib.idle_add(self.toast.update_feedback, "Drag to select a screenshot area...")
+        GLib.idle_add(self._set_capture_status, "screenshot area")
+        if self._capture_gnome_shell_area(path) or self._capture_portal_screenshot(path, interactive=True) or self._capture_with_commands(path, "area"):
+            GLib.idle_add(self._open_prompt_with_screenshot, str(path))
+            return
+        GLib.idle_add(self._screenshot_failed, "Screenshot cancelled or no screenshot tool found")
+
+    def _open_prompt_with_screenshot(self, path: str) -> bool:
+        self._finish_activity("captured")
+        self.process_status = "screenshot ready"
+        self._update_header_status()
+        initial = f"Screenshot file: {path} "
+        self.toast.update_feedback("Screenshot saved. Add text, then press Enter to send. Esc keeps the saved file and cancels sending.")
+        self.show_prompt(initial)
+        return False
 
     def handle_slash_command(self, text: str) -> bool:
         parts = text.strip().split(maxsplit=1)
@@ -1333,20 +1387,27 @@ class PanelApp:
         if self._capture_portal_screenshot(path, interactive=True):
             GLib.idle_add(self._send_screenshot_prompt, prompt, str(path))
             return
+        if self._capture_with_commands(path, mode):
+            GLib.idle_add(self._send_screenshot_prompt, prompt, str(path))
+            return
+        GLib.idle_add(self._screenshot_failed, "Screenshot cancelled or no screenshot tool found")
+
+    def _capture_with_commands(self, path: Path, mode: str) -> bool:
         commands = self._screenshot_commands(path, mode)
         error = ""
         for command in commands:
             try:
                 result = self._run_screenshot_command(command)
                 if result.returncode == 0 and path.exists() and path.stat().st_size > 0:
-                    GLib.idle_add(self._send_screenshot_prompt, prompt, str(path))
-                    return
+                    return True
                 error = (result.stderr or "").strip() or f"{command[0]} exited {result.returncode}"
             except FileNotFoundError:
                 continue
             except Exception as exc:
                 error = str(exc)
-        GLib.idle_add(self._screenshot_failed, error or "No screenshot tool found")
+        if error:
+            append_log(f"Screenshot command capture failed: {error}")
+        return False
 
     def _screenshot_commands(self, path: Path, mode: str) -> list[list[str]]:
         if mode == "area":

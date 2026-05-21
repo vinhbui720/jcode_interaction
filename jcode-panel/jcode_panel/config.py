@@ -21,6 +21,7 @@ STATE_PATH = CONFIG_HOME / "state.toml"
 @dataclass
 class GeneralConfig:
     hotkey: str = "f8"
+    screenshot_hotkey: str = "ctrl+shift+s"
     terminal: str = "auto"
     terminal_template: str = ""
     autostart: bool = True
