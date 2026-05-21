@@ -136,13 +136,14 @@ def load_css(Gtk, Gdk, config=None) -> None:
     }}
     .toast-stats {{
       color: #0f172a;
-      background: rgba(219, 234, 254, 0.72);
-      border: 1px solid rgba(59, 130, 246, 0.24);
-      border-radius: 8px;
-      padding: 5px 8px;
-      font-size: 11px;
-      font-weight: 700;
+      background: rgba(255, 255, 255, 0.88);
+      border: 1px solid rgba(148, 163, 184, 0.30);
+      border-radius: 999px;
+      padding: 3px 7px;
+      font-size: 10px;
+      font-weight: 800;
       font-style: normal;
+      box-shadow: none;
     }}
     .toast-notice {{
       color: #64748b;

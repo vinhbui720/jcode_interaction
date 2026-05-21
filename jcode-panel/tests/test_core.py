@@ -586,12 +586,17 @@ def test_markdown_to_pango_renders_safe_colored_subset():
 
 
 def test_split_token_stats_removes_inline_telemetry():
-    from jcode_panel.gtk_app import split_token_stats
+    from jcode_panel.gtk_app import split_token_stats, token_stats_badge_markup
 
     cleaned, stats = split_token_stats("Done. [Tokens] upload: 14434 download: 321 cache_read: 3840 cache_write: 0")
 
     assert cleaned == "Done."
-    assert stats == "tokens · upload 14434 · download 321 · cache read 3840 · cache write 0"
+    assert stats == "14434,321,3840,0"
+    markup = token_stats_badge_markup(stats)
+    assert "⬆ 14.4k" in markup
+    assert "⬇ 321" in markup
+    assert "◌ 3.8k" in markup
+    assert "✎ 0" in markup
 
 
 def test_format_stream_lines_keeps_recent_lines_and_wraps_long_stream():

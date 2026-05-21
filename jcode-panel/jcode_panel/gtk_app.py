@@ -104,11 +104,32 @@ def split_token_stats(text: str) -> tuple[str, str]:
         return text, ""
     last = matches[-1]
     upload, download, cache_read, cache_write = last.groups()
-    stats = f"tokens · upload {upload} · download {download} · cache read {cache_read} · cache write {cache_write}"
+    stats = f"{upload},{download},{cache_read},{cache_write}"
     cleaned = TOKEN_STATS_RE.sub("", text or "")
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
     return cleaned, stats
+
+
+def token_stats_badge_markup(stats: str) -> str:
+    parts = [p.strip() for p in (stats or "").split(",")]
+    if len(parts) != 4 or not all(p.isdigit() for p in parts):
+        return html.escape(stats or "")
+    upload, download, cache_read, cache_write = (_compact_number(int(p)) for p in parts)
+    return (
+        f'<span foreground="#2563eb">⬆ {upload}</span>  '
+        f'<span foreground="#16a34a">⬇ {download}</span>  '
+        f'<span foreground="#7c3aed">◌ {cache_read}</span>  '
+        f'<span foreground="#f97316">✎ {cache_write}</span>'
+    )
+
+
+def _compact_number(value: int) -> str:
+    if value >= 1_000_000:
+        return f"{value / 1_000_000:.1f}m".rstrip("0").rstrip(".")
+    if value >= 1_000:
+        return f"{value / 1_000:.1f}k".rstrip("0").rstrip(".")
+    return str(value)
 
 
 def format_stream_lines(text: str, max_lines: int = 9) -> str:
@@ -728,6 +749,8 @@ class AnswerToast(Gtk.Window):
         self.connect("focus-out-event", self._on_hover_out)
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         add_class(root, "toast-root")
+        feedback_overlay = Gtk.Overlay()
+        feedback_stack = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         title = Gtk.Label(label="jcode feedback")
         title.set_xalign(0)
         add_class(title, "toast-title")
@@ -735,6 +758,10 @@ class AnswerToast(Gtk.Window):
         self.stats.set_use_markup(True)
         self.stats.set_xalign(0)
         self.stats.set_line_wrap(True)
+        self.stats.set_halign(Gtk.Align.END)
+        self.stats.set_valign(Gtk.Align.START)
+        self.stats.set_margin_top(18)
+        self.stats.set_margin_end(14)
         add_class(self.stats, "toast-stats")
         self.stats.hide()
         self.label = Gtk.Label(label="")
@@ -773,9 +800,11 @@ class AnswerToast(Gtk.Window):
         actions.pack_start(prompt_btn, False, False, 0)
         actions.pack_start(self.jump_btn, False, False, 0)
         actions.pack_end(close_btn, False, False, 0)
-        root.pack_start(title, False, False, 0)
-        root.pack_start(self.stats, False, False, 0)
-        root.pack_start(self.scroller, True, True, 0)
+        feedback_stack.pack_start(title, False, False, 0)
+        feedback_stack.pack_start(self.scroller, True, True, 0)
+        feedback_overlay.add(feedback_stack)
+        feedback_overlay.add_overlay(self.stats)
+        root.pack_start(feedback_overlay, True, True, 0)
         root.pack_start(self.notice, False, False, 0)
         root.pack_start(actions, False, False, 0)
         self.add(root)
@@ -837,7 +866,7 @@ class AnswerToast(Gtk.Window):
         self.refresh_source_id = 0
         self.label.set_markup(markdown_to_pango(self.pending_feedback))
         if self.pending_stats:
-            self.stats.set_markup(f'<span foreground="#0f172a">{html.escape(self.pending_stats)}</span>')
+            self.stats.set_markup(token_stats_badge_markup(self.pending_stats))
             self.stats.show()
         else:
             self.stats.hide()
