@@ -522,3 +522,56 @@ def test_ambient_key_routes_when_entry_not_focused():
     PanelApp._route_ambient_key(app, key, True, force=True)
 
     assert appended == ["a"]
+
+
+def test_markdown_to_pango_renders_safe_colored_subset():
+    from jcode_panel.gtk_app import markdown_to_pango
+
+    markup = markdown_to_pango("# Title\n- **done** with `cmd` and <unsafe>")
+
+    assert "Title" in markup
+    assert "foreground" in markup
+    assert "weight=\"bold\"" in markup
+    assert "font_family=\"monospace\"" in markup
+    assert "&lt;unsafe&gt;" in markup
+
+
+def test_format_stream_lines_keeps_recent_lines_and_wraps_long_stream():
+    from jcode_panel.gtk_app import format_stream_lines
+
+    assert format_stream_lines("a\nb\nc", max_lines=2) == "b\nc"
+    wrapped = format_stream_lines("x " * 260, max_lines=3)
+    assert "\n" in wrapped
+    assert len(wrapped.splitlines()) <= 3
+
+
+def test_token_notice_from_raw_supports_common_usage_shapes():
+    from jcode_panel.gtk_app import token_notice_from_raw
+
+    assert token_notice_from_raw({"usage": {"input_tokens": 12, "output_tokens": 34}}) == "tokens: in 12, out 34"
+    assert token_notice_from_raw({"total_tokens": 46}) == "tokens: total 46"
+
+
+def test_event_notice_text_separates_context_and_tokens():
+    from types import SimpleNamespace
+    from jcode_panel.gtk_app import PanelApp
+    from jcode_panel.protocol import PanelEvent, PanelEventKind
+
+    app = SimpleNamespace()
+    event = PanelEvent(
+        kind=PanelEventKind.STATUS,
+        text="running",
+        raw={
+            "state": "running",
+            "tool_name": "bash",
+            "context": {"app": "Firefox", "url": "https://example.com"},
+            "usage": {"input_tokens": 10, "output_tokens": 20},
+        },
+    )
+
+    notice = PanelApp._event_notice_text(app, event)
+
+    assert "running" in notice
+    assert "bash" in notice
+    assert "context: Firefox" in notice
+    assert "tokens: in 10, out 20" in notice

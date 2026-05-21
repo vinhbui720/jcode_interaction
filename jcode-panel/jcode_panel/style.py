@@ -115,6 +115,15 @@ def load_css(Gtk, Gdk, config=None) -> None:
       background: transparent;
       font-size: 12px;
     }}
+    .toast-notice {{
+      color: #64748b;
+      background: rgba(226, 232, 240, 0.55);
+      border-left: 3px solid #38bdf8;
+      border-radius: 7px;
+      padding: 5px 8px;
+      font-size: 11px;
+      font-style: normal;
+    }}
     .toast-icon-button {{
       min-width: 28px;
       min-height: 28px;

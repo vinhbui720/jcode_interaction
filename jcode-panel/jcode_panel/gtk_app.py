@@ -5,6 +5,8 @@ import os
 # Native Wayland intentionally prevents arbitrary window placement.
 os.environ.setdefault("GDK_BACKEND", "x11")
 
+import html
+import re
 import threading
 import time
 import subprocess
@@ -32,6 +34,75 @@ from .terminal import launch
 from .style import add_class, load_css
 from .positioning import xdotool_mouse_position_full
 from .updater import self_update
+
+
+def markdown_to_pango(text: str) -> str:
+    """Render a small, safe markdown subset as Pango markup for GTK labels."""
+    lines: list[str] = []
+    in_fence = False
+    for raw_line in (text or "").strip().splitlines():
+        line = raw_line.rstrip()
+        if line.strip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        escaped = html.escape(line)
+        if in_fence:
+            lines.append(f'<span foreground="#0f766e" font_family="monospace">{escaped}</span>')
+            continue
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            title = html.escape(stripped.lstrip("#").strip())
+            lines.append(f'<span foreground="#7c3aed" weight="bold" size="larger">{title}</span>')
+            continue
+        bullet = re.match(r"^(\s*)([-*•]|\d+\.)\s+(.*)$", line)
+        if bullet:
+            body = _inline_markdown_to_pango(bullet.group(3))
+            lines.append(f'<span foreground="#06b6d4">●</span> {body}')
+            continue
+        if not stripped:
+            lines.append("")
+            continue
+        lines.append(_inline_markdown_to_pango(line))
+    return "\n".join(lines)
+
+
+def _inline_markdown_to_pango(text: str) -> str:
+    escaped = html.escape(text)
+    escaped = re.sub(r"`([^`]+)`", r'<span foreground="#0f766e" font_family="monospace">\1</span>', escaped)
+    escaped = re.sub(r"\*\*([^*]+)\*\*", r'<span foreground="#2563eb" weight="bold">\1</span>', escaped)
+    escaped = re.sub(r"\*([^*]+)\*", r'<span foreground="#9333ea" style="italic">\1</span>', escaped)
+    return escaped
+
+
+def format_stream_lines(text: str, max_lines: int = 9) -> str:
+    """Keep streamed assistant text readable by showing recent logical lines."""
+    normalized = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    lines = normalized.split("\n")
+    if len(lines) == 1 and len(lines[0]) > 360:
+        # Long no-newline streams are hard to read in a toast. Soft-wrap them
+        # into line-sized chunks without changing the conversation buffer.
+        chunks = re.findall(r".{1,120}(?:\s+|$)", lines[0]) or [lines[0]]
+        lines = [chunk.strip() for chunk in chunks if chunk.strip()]
+    return "\n".join(lines[-max_lines:])
+
+
+def token_notice_from_raw(raw: dict | None) -> str:
+    if not raw:
+        return ""
+    candidates = [raw]
+    for key in ("usage", "tokens", "token_usage", "metrics"):
+        value = raw.get(key)
+        if isinstance(value, dict):
+            candidates.append(value)
+    for data in candidates:
+        parts = []
+        for key, label in (("input_tokens", "in"), ("prompt_tokens", "in"), ("output_tokens", "out"), ("completion_tokens", "out"), ("total_tokens", "total")):
+            value = data.get(key)
+            if isinstance(value, (int, float)):
+                parts.append(f"{label} {int(value)}")
+        if parts:
+            return "tokens: " + ", ".join(dict.fromkeys(parts))
+    return ""
 
 
 @dataclass
@@ -447,10 +518,18 @@ class AnswerToast(Gtk.Window):
         title.set_xalign(0)
         add_class(title, "toast-title")
         self.label = Gtk.Label(label="")
+        self.label.set_use_markup(True)
         self.label.set_xalign(0)
+        self.label.set_yalign(0)
         self.label.set_line_wrap(True)
-        self.label.set_max_width_chars(52)
+        self.label.set_selectable(True)
+        self.label.set_max_width_chars(70)
         add_class(self.label, "toast-text")
+        self.notice = Gtk.Label(label="")
+        self.notice.set_use_markup(True)
+        self.notice.set_xalign(0)
+        self.notice.set_line_wrap(True)
+        add_class(self.notice, "toast-notice")
         actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         open_btn = self._icon_button("view-list-symbolic", "Open conversation")
         open_btn.connect("clicked", lambda _b: self.app.show_dropdown())
@@ -463,12 +542,14 @@ class AnswerToast(Gtk.Window):
         actions.pack_end(close_btn, False, False, 0)
         root.pack_start(title, False, False, 0)
         root.pack_start(self.label, True, True, 0)
+        root.pack_start(self.notice, False, False, 0)
         root.pack_start(actions, False, False, 0)
         self.add(root)
-        self.set_default_size(380, 150)
+        self.set_default_size(520, 220)
         self.hide_source_id = 0
         self.refresh_source_id = 0
         self.pending_feedback = ""
+        self.pending_notice = ""
 
     def _draw_transparent(self, _widget, cr):
         cr.set_source_rgba(0, 0, 0, 0)
@@ -486,11 +567,23 @@ class AnswerToast(Gtk.Window):
         add_class(button, "toast-icon-button")
         return button
 
-    def update_feedback(self, text: str):
-        text = text.strip()
+    def update_feedback(self, text: str, notice: str = ""):
+        text = format_stream_lines(text.strip())
         if not text:
             return
-        self.pending_feedback = text[-900:]
+        self.pending_feedback = text[-1600:]
+        if notice:
+            self.pending_notice = notice
+        if not self.refresh_source_id:
+            self.refresh_source_id = GLib.timeout_add(80, self._flush_feedback)
+        self.show_all()
+        self._move_to_corner()
+        self._reset_idle_hide_timer()
+
+    def update_notice(self, notice: str):
+        if not notice.strip():
+            return
+        self.pending_notice = notice.strip()
         if not self.refresh_source_id:
             self.refresh_source_id = GLib.timeout_add(80, self._flush_feedback)
         self.show_all()
@@ -499,7 +592,12 @@ class AnswerToast(Gtk.Window):
 
     def _flush_feedback(self) -> bool:
         self.refresh_source_id = 0
-        self.label.set_text(self.pending_feedback)
+        self.label.set_markup(markdown_to_pango(self.pending_feedback))
+        if self.pending_notice:
+            self.notice.set_markup(f'<span foreground="#64748b">{html.escape(self.pending_notice)}</span>')
+            self.notice.show()
+        else:
+            self.notice.hide()
         self.show_all()
         self._move_to_corner()
         return False
@@ -653,6 +751,7 @@ class PanelApp:
         self.send_sequence = 0
         self.answer_sequence = 0
         self.feedback_text = ""
+        self.feedback_notice = ""
         self.dropdown_refresh_id = 0
         self.last_prompt_toggle_at = 0.0
         self._ambient_shift = False
@@ -750,13 +849,18 @@ class PanelApp:
             feedback = self._event_feedback_text(event)
             if feedback:
                 self.feedback_text = feedback
-                self.toast.update_feedback(self.feedback_text)
+                self.toast.update_feedback(self.feedback_text, self.feedback_notice)
+            else:
+                notice = self._event_notice_text(event)
+                if notice:
+                    self.feedback_notice = notice
+                    self.toast.update_notice(notice)
         elif event.kind == PanelEventKind.ERROR:
             self._finish_activity("error")
             self.process_status = "error"
             self.feedback_text = event.text or "Error"
             self._update_header_status()
-            self.toast.update_feedback(self.feedback_text)
+            self.toast.update_feedback(self.feedback_text, self.feedback_notice)
         elif event.kind == PanelEventKind.MESSAGE and event.text:
             if self.answer_sequence != self.send_sequence:
                 return False
@@ -769,6 +873,9 @@ class PanelApp:
             else:
                 self.feedback_text += event.text
             self.process_status = "answering"
+            notice = self._event_notice_text(event)
+            if notice:
+                self.feedback_notice = notice
             self._schedule_answer_timeout(self.answer_sequence)
             if terminal_message:
                 self.stop_answering("complete")
@@ -776,7 +883,7 @@ class PanelApp:
                 self.live_activity = LiveActivity(label="jcode", state="answering", started_at=self.live_activity.started_at or time.monotonic(), active=True)
                 self._ensure_activity_tick()
             self._update_header_status()
-            self.toast.update_feedback(self.feedback_text)
+            self.toast.update_feedback(self.feedback_text, self.feedback_notice)
         return False
 
     def _handle_transient_status(self, event: PanelEvent) -> bool:
@@ -882,6 +989,27 @@ class PanelApp:
                     return value.strip()
         return ""
 
+    def _event_notice_text(self, event: PanelEvent) -> str:
+        raw = event.raw or {}
+        notices: list[str] = []
+        if event.kind in {PanelEventKind.STATUS, PanelEventKind.PROGRESS, PanelEventKind.TOOL}:
+            label = activity_label(raw, event.text or "")
+            state = activity_state(raw, event.text or "")
+            if label or state:
+                notices.append(" · ".join(x for x in [state, label] if x))
+        ctx = raw.get("context") or raw.get("active_context") or raw.get("context_summary")
+        if isinstance(ctx, str) and ctx.strip():
+            notices.append("context: " + ctx.strip())
+        elif isinstance(ctx, dict):
+            app = str(ctx.get("app") or ctx.get("window") or ctx.get("title") or "").strip()
+            url = str(ctx.get("url") or "").strip()
+            if app or url:
+                notices.append("context: " + " · ".join(x for x in [app, url] if x))
+        token_notice = token_notice_from_raw(raw)
+        if token_notice:
+            notices.append(token_notice)
+        return "  •  ".join(dict.fromkeys(notices))
+
     def send_prompt(self, text: str, include_context: bool):
         self._sync_client_session()
         self.send_sequence += 1
@@ -894,6 +1022,8 @@ class PanelApp:
         # for UI display/state, but not prepended or sent as extra metadata.
         payload, metadata = text.strip(), None
         self.feedback_text = ""
+        context_summary = self.active_context.summary() if include_context and self.active_context else ""
+        self.feedback_notice = f"context: {context_summary}" if context_summary else ""
         self.process_status = "sending"
         self.live_activity = LiveActivity(label="jcode", state="sending", started_at=time.monotonic(), active=True)
         self._ensure_activity_tick()
