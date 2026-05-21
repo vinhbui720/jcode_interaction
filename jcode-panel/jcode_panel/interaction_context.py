@@ -51,7 +51,7 @@ def normalize_interaction_tags_with_cursor(text: str, cursor: int | None = None)
     rather than using a whole-string length delta that can place the cursor in
     the middle of a chip.
     """
-    if cursor is None or cursor < 0:
+    if cursor is None or cursor < 0 or (cursor == 0 and text):
         cursor = len(text)
     output: list[str] = []
     new_cursor = cursor
@@ -75,7 +75,7 @@ def complete_interaction_token(text: str, cursor: int | None = None) -> tuple[st
     interaction commands work even when the user expects command completion
     rather than typing the full token and waiting for the changed signal.
     """
-    if cursor is None or cursor < 0:
+    if cursor is None or cursor < 0 or (cursor == 0 and text):
         cursor = len(text)
     prefix = text[:cursor]
     match = INTERACTION_PARTIAL_RE.search(prefix)
@@ -91,7 +91,7 @@ def complete_interaction_token(text: str, cursor: int | None = None) -> tuple[st
 
 
 def interaction_token_hints(text: str, cursor: int | None = None) -> list[str]:
-    if cursor is None or cursor < 0:
+    if cursor is None or cursor < 0 or (cursor == 0 and text):
         cursor = len(text)
     match = INTERACTION_PARTIAL_RE.search(text[:cursor])
     if not match:
