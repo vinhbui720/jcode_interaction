@@ -17,8 +17,8 @@ CHIP_LABELS = {
 # @vscode, /vscode, @obsidian, /obsidian anywhere in the prompt.
 INTERACTION_TAG_RE = re.compile(r"(?<![\w\[])([@/])(vscode|obsidian)\b", re.IGNORECASE)
 # Accept new visual chips and legacy chips for backward compatibility.
-INTERACTION_CHIP_RE = re.compile(r"(?:⟦\s*[@/]\s*(vscode|obsidian)\s*⟧|\[(vscode|obsidian)\])", re.IGNORECASE)
-INTERACTION_CHIP_DELETE_RE = re.compile(r"(?:⟦\s*[@/]\s*(?:vscode|obsidian)\s*⟧|\[(?:vscode|obsidian)\])\s*$", re.IGNORECASE)
+INTERACTION_CHIP_RE = re.compile(r"(?:\{\{\s*[@/]\s*(vscode|obsidian)\s*\}\}|⟦\s*[@/]\s*(vscode|obsidian)\s*⟧|\[(vscode|obsidian)\])", re.IGNORECASE)
+INTERACTION_CHIP_DELETE_RE = re.compile(r"(?:\{\{\s*[@/]\s*(?:vscode|obsidian)\s*\}\}|⟦\s*[@/]\s*(?:vscode|obsidian)\s*⟧|\[(?:vscode|obsidian)\])\s*$", re.IGNORECASE)
 INTERACTION_PARTIAL_RE = re.compile(r"(?<![\w\[])([@/])([a-zA-Z_][\w-]*)?$")
 
 
@@ -36,7 +36,7 @@ class InteractionContextError(RuntimeError):
 def chip_for_source(source: str, marker: str = "@") -> str:
     source = source.lower().strip()
     marker = "/" if marker == "/" else "@"
-    return f"⟦{marker}{CHIP_LABELS.get(source, source)}⟧"
+    return f"{{{{{marker}{CHIP_LABELS.get(source, source)}}}}}"
 
 
 def normalize_interaction_tags(text: str) -> str:
@@ -80,7 +80,7 @@ def interaction_token_hints(text: str, cursor: int | None = None) -> list[str]:
 def interaction_sources(text: str) -> list[str]:
     sources: list[str] = []
     for match in INTERACTION_CHIP_RE.finditer(text):
-        sources.append((match.group(1) or match.group(2)).lower())
+        sources.append(next(group for group in match.groups() if group).lower())
     return sources
 
 

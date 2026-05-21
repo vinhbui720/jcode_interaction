@@ -668,7 +668,7 @@ def test_interaction_tag_normalization_and_sources():
     from jcode_panel.interaction_context import interaction_sources, normalize_interaction_tags
 
     text = normalize_interaction_tags("compare @vscode with /obsidian")
-    assert text == "compare ⟦@vscode⟧ with ⟦/obsidian⟧"
+    assert text == "compare {{@vscode}} with {{/obsidian}}"
     assert interaction_sources(text) == ["vscode", "obsidian"]
 
 
@@ -681,7 +681,7 @@ def test_interaction_context_expands_each_chip(tmp_path: Path, monkeypatch):
     vscode_json.write_text('{"file":"%s","line":3,"selection":"","languageId":"python","workspaceRoot":"%s"}' % (code, tmp_path))
     monkeypatch.setattr("jcode_panel.interaction_context.VSCODE_CONTEXT_PATH", vscode_json)
 
-    expanded = ic.expand_interaction_chips("check ⟦@vscode⟧ and again ⟦@vscode⟧")
+    expanded = ic.expand_interaction_chips("check {{@vscode}} and again {{@vscode}}")
 
     assert expanded.count("Context: vscode") == 2
     assert f"file: {code}" in expanded
@@ -705,12 +705,14 @@ def test_interaction_context_missing_app_blocks_send(tmp_path: Path, monkeypatch
 def test_interaction_partial_completion():
     from jcode_panel.interaction_context import complete_interaction_token, interaction_token_hints
 
+    assert interaction_token_hints("ask @") == ["@obsidian", "@vscode"]
+    assert interaction_token_hints("ask /") == ["/obsidian", "/vscode"]
     assert interaction_token_hints("fix @vsc") == ["@vscode"]
     text, pos, changed = complete_interaction_token("fix @vsc", len("fix @vsc"))
     assert changed is True
-    assert text == "fix ⟦@vscode⟧"
+    assert text == "fix {{@vscode}}"
     assert pos == len(text)
 
     text, pos, changed = complete_interaction_token("compare /obs with text", len("compare /obs"))
     assert changed is True
-    assert text == "compare ⟦/obsidian⟧ with text"
+    assert text == "compare {{/obsidian}} with text"
