@@ -2,4 +2,4 @@
 set -euo pipefail
 SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
 ROOT="$(cd "$(dirname "$SCRIPT")/.." && pwd)"
-exec env GDK_BACKEND=x11 PYTHONPATH="$ROOT" python3 -m jcode_panel.main --prompt "$@"
+exec env GDK_BACKEND=x11 PYTHONPATH="$ROOT:$ROOT/.python-deps" python3 -m jcode_panel.main --prompt "$@"

@@ -18,7 +18,7 @@ need_cmd xdotool
 need_cmd xprop
 
 python_missing=0
-python3 - <<'PY' || python_missing=1
+PYTHONPATH="$PWD:$PWD/.python-deps" python3 - <<'PY' || python_missing=1
 missing = []
 for mod in ["requests", "pynput"]:
     try:
@@ -46,7 +46,7 @@ cat > "$HOME/.config/autostart/jcode-panel.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=jcode-panel
-Exec=env GDK_BACKEND=x11 PYTHONPATH=$PWD python3 -m jcode_panel.main --background
+Exec=env GDK_BACKEND=x11 PYTHONPATH=$PWD:$PWD/.python-deps python3 -m jcode_panel.main --background
 X-GNOME-Autostart-enabled=true
 EOF
 mkdir -p "$HOME/.local/share/applications"
@@ -56,8 +56,8 @@ ln -sf "$PWD/bin/jcp" "$HOME/.local/bin/jcp"
 sed "s#Exec=jcode-panel#Exec=$HOME/.local/bin/jcode-panel#; s#Icon=applications-system#Icon=jcode-panel#" jcode-panel.desktop > "$HOME/.local/share/applications/jcode-panel.desktop"
 sed "s#Exec=jcode-panel --prompt#Exec=$HOME/.local/bin/jcp#; s#Icon=applications-system#Icon=jcode-panel#" jcode-panel-prompt.desktop > "$HOME/.local/share/applications/jcode-panel-prompt.desktop"
 
-PYTHONPATH="$PWD" python3 -m jcode_panel.main --diagnose || true
-PYTHONPATH="$PWD" python3 -m jcode_panel.main --install-shortcut || true
+PYTHONPATH="$PWD:$PWD/.python-deps" python3 -m jcode_panel.main --diagnose || true
+PYTHONPATH="$PWD:$PWD/.python-deps" python3 -m jcode_panel.main --install-shortcut || true
 
 echo "Installed autostart entry. Browser extension is in ./extension and is optional."
 echo "Aliases installed:"
