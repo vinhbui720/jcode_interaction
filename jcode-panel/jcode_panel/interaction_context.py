@@ -166,22 +166,74 @@ def _read_vscode_context() -> InteractionContext:
 def _read_obsidian_context() -> InteractionContext:
     data = _read_json_context(OBSIDIAN_CONTEXT_PATH, "Obsidian is not open or no active note found")
     path = str(data.get("path") or data.get("file") or "").strip()
+    vault_path = str(data.get("vaultPath") or "").strip()
     title = str(data.get("title") or Path(path).name or "Obsidian").strip()
     line = _safe_int(data.get("line"), 0)
     selection = str(data.get("selection") or "").strip()
     text = str(data.get("text") or "").strip()
-    parts = ["Context: obsidian", f"note: {title}"]
+    absolute_path = _obsidian_absolute_path(path, vault_path)
+    parts = [
+        "Context: obsidian",
+        "Use this context to act on the active Obsidian note when the user asks for an edit.",
+        f"note: {title}",
+    ]
     if path:
         parts.append(f"path: {path}")
+    if absolute_path:
+        parts.append(f"absolute_path: {absolute_path}")
     if line:
         parts.append(f"line: {line}")
     if selection:
         parts.extend(["selection:", _fence(selection, "markdown")])
     elif text:
-        parts.extend(["active note excerpt:", _fence(text[:12000], "markdown")])
+        parts.extend(["active note excerpt near cursor:", _fence(_limit_numbered_excerpt(text, line or 1, radius=24), "markdown")])
     else:
         raise InteractionContextError("Obsidian is not open or no active note found")
     return InteractionContext("obsidian", title, "\n".join(parts))
+
+
+def _obsidian_absolute_path(path: str, vault_path: str = "") -> str:
+    if not path:
+        return ""
+    raw = Path(path).expanduser()
+    if raw.is_absolute():
+        return str(raw)
+    candidates: list[Path] = []
+    if vault_path:
+        candidates.append(Path(vault_path).expanduser() / path)
+    candidates.extend(_known_obsidian_vaults(path))
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return str(candidates[0]) if candidates else path
+
+
+def _known_obsidian_vaults(relative_path: str) -> list[Path]:
+    config = Path.home() / ".config" / "obsidian" / "obsidian.json"
+    try:
+        data = json.loads(config.read_text())
+        vaults = data.get("vaults") or {}
+        return [Path(str(item.get("path") or "")).expanduser() / relative_path for item in vaults.values() if item.get("path")]
+    except Exception:
+        return []
+
+
+def _limit_numbered_excerpt(text: str, line: int, radius: int = 24) -> str:
+    lines = text.splitlines()
+    if len(lines) <= radius + 1:
+        return text[:6000]
+    target_index = max(0, min(len(lines) - 1, line - 1))
+    # Obsidian plugin excerpts are already numbered. Detect the target line in
+    # that excerpt when possible, otherwise fall back to the center.
+    for idx, raw in enumerate(lines):
+        if raw.lstrip().startswith(f"{line}:"):
+            target_index = idx
+            break
+    start = max(0, target_index - radius)
+    end = min(len(lines), target_index + radius + 1)
+    prefix = [f"... {start} earlier excerpt lines omitted ..."] if start else []
+    suffix = [f"... {len(lines) - end} later excerpt lines omitted ..."] if end < len(lines) else []
+    return "\n".join([*prefix, *lines[start:end], *suffix])[:6000]
 
 
 def _read_json_context(path: Path, missing_message: str) -> dict:

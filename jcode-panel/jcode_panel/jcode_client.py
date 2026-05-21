@@ -127,12 +127,25 @@ class JcodeClient:
             raise JcodeUnavailable("persistent jcode client is not writable")
         self.events.put(PanelEvent(kind=PanelEventKind.STATUS, text="Sending prompt to persistent jcode client..."))
         try:
-            self.process.stdin.write(prompt.replace("\r", "") + "\n")
+            self.process.stdin.write(self._repl_wire_prompt(prompt) + "\n")
             self.process.stdin.flush()
         except Exception as exc:
             self.last_error = str(exc)
             self.events.put(PanelEvent(kind=PanelEventKind.ERROR, text=f"jcode repl send failed: {exc}"))
             self.disconnect()
+
+    def _repl_wire_prompt(self, prompt: str) -> str:
+        """Return one physical stdin line for the interactive repl.
+
+        The panel prompt can contain app-context blocks with many newlines. The
+        repl stdin protocol is line-oriented, so raw newlines split one request
+        into many broken requests. Encode multiline prompts as a single readable
+        line with escaped newlines.
+        """
+        prompt = prompt.replace("\r", "").strip()
+        if "\n" not in prompt:
+            return prompt
+        return "Please interpret escaped \\n sequences as line breaks in this prompt: " + json.dumps(prompt, ensure_ascii=False)
 
     def _run_first_prompt(self, prompt: str) -> None:
         """Bootstrap a new real Jcode session, then keep it alive via REPL."""

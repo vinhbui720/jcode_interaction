@@ -708,6 +708,36 @@ def test_interaction_context_missing_app_blocks_send(tmp_path: Path, monkeypatch
         raise AssertionError("expected missing VS Code context to block send")
 
 
+def test_jcode_repl_wire_prompt_is_single_physical_line():
+    from jcode_panel.jcode_client import JcodeClient
+
+    wire = JcodeClient()._repl_wire_prompt("hello\nworld")
+
+    assert "\n" not in wire
+    assert "\\n" in wire
+
+
+def test_obsidian_context_uses_absolute_path_and_limited_excerpt(tmp_path: Path, monkeypatch):
+    import json
+    from jcode_panel import interaction_context as ic
+
+    vault = tmp_path / "Vault"
+    note = vault / "Folder" / "Note.md"
+    note.parent.mkdir(parents=True)
+    note.write_text("ok")
+    lines = "\n".join(f"{i}: line {i}" for i in range(1, 120))
+    ctx = tmp_path / "obsidian.json"
+    ctx.write_text(json.dumps({"path": "Folder/Note.md", "vaultPath": str(vault), "title": "Note", "line": 100, "text": lines}))
+    monkeypatch.setattr("jcode_panel.interaction_context.OBSIDIAN_CONTEXT_PATH", ctx)
+
+    expanded = ic.expand_interaction_chips("please edit [@obsidian]")
+
+    assert f"absolute_path: {note}" in expanded
+    assert "active note excerpt near cursor" in expanded
+    assert "\n1: line 1\n" not in expanded
+    assert "100: line 100" in expanded
+
+
 def test_interaction_partial_completion():
     from jcode_panel.interaction_context import complete_interaction_token, interaction_token_hints
 

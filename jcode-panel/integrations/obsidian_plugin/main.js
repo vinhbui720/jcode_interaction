@@ -35,6 +35,7 @@ module.exports = class JcodePanelPlugin extends Plugin {
       app: 'obsidian',
       title: file.basename,
       path: file.path,
+      vaultPath: this.vaultBasePath(),
       line: cursor.line + 1,
       column: cursor.ch + 1,
       selection: selection.slice(0, 12000),
@@ -43,5 +44,13 @@ module.exports = class JcodePanelPlugin extends Plugin {
     };
     fs.mkdirSync(path.dirname(contextPath), { recursive: true });
     fs.writeFileSync(contextPath, JSON.stringify(payload, null, 2));
+  }
+
+  vaultBasePath() {
+    try {
+      const adapter = this.app.vault.adapter;
+      if (adapter && typeof adapter.getBasePath === 'function') return adapter.getBasePath();
+    } catch (_) {}
+    return '';
   }
 };
