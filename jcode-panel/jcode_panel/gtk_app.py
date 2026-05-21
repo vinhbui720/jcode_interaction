@@ -1329,7 +1329,7 @@ class PanelApp:
         screenshot_dir.mkdir(parents=True, exist_ok=True)
         path = screenshot_dir / f"screenshot-area-{int(time.time())}.png"
         GLib.idle_add(self._set_capture_status, "screenshot area")
-        captured = self._capture_gnome_shell_area(path) or self._capture_portal_screenshot(path, interactive=True) or self._capture_with_commands(path, "area")
+        captured = self._capture_portal_screenshot(path, interactive=True, timeout_seconds=20) or self._capture_gnome_shell_area(path) or self._capture_with_commands(path, "area")
         append_log(f"Screenshot hotkey capture result: captured={captured} path={path} exists={path.exists()} size={path.stat().st_size if path.exists() else 0}")
         if captured:
             if self.capture_cancelled:
@@ -1371,8 +1371,9 @@ class PanelApp:
         self._finish_activity("cancelled")
         self.process_status = "screenshot cancelled"
         self._update_header_status()
-        if existing_text.strip() and not self.capture_cancelled:
+        if not self.capture_cancelled:
             self.show_prompt(existing_text)
+            self.floating.entry.set_placeholder_text("Screenshot cancelled. Add text or try screenshot hotkey again.")
         return False
 
     def _show_capture_in_input_status(self, text: str) -> bool:
@@ -1518,7 +1519,7 @@ class PanelApp:
             return subprocess.run(shell_cmd, shell=True, cwd=str(Path.home()), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=60)
         return subprocess.run(command, cwd=str(Path.home()), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, timeout=60)
 
-    def _capture_portal_screenshot(self, path: Path, interactive: bool = True) -> bool:
+    def _capture_portal_screenshot(self, path: Path, interactive: bool = True, timeout_seconds: int = 30) -> bool:
         """Capture via xdg-desktop-portal Screenshot and copy returned URI."""
         try:
             bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
@@ -1560,10 +1561,10 @@ class PanelApp:
                 GLib.Variant("(sa{sv})", ("", {"interactive": GLib.Variant("b", bool(interactive)), "handle_token": GLib.Variant("s", token)})),
                 GLib.VariantType.new("(o)"),
                 Gio.DBusCallFlags.NONE,
-                120000,
+                max(1000, timeout_seconds * 1000),
                 None,
             ).unpack()[0]
-            deadline = time.monotonic() + 120
+            deadline = time.monotonic() + max(1, timeout_seconds)
             context = GLib.MainContext.default()
             try:
                 while not done.is_set() and time.monotonic() < deadline:
@@ -1571,6 +1572,7 @@ class PanelApp:
                         context.iteration(False)
                     done.wait(0.05)
                 if not done.is_set():
+                    append_log(f"Portal screenshot timed out after {timeout_seconds}s")
                     return False
             finally:
                 bus.signal_unsubscribe(sub_id)
