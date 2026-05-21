@@ -29,6 +29,7 @@ from .floating import CompletionState
 from .diagnostics import append_log
 from .jcode_client import JcodeClient, JcodeUnavailable
 from .protocol import PanelEvent, PanelEventKind, activity_is_terminal, activity_label, activity_state
+from .hotkeys import MODIFIERS, hotkey_parts, key_name_from_pynput, normalize_hotkey, normalize_key_name
 from .notify import notify
 from .terminal import launch
 from .style import add_class, load_css
@@ -634,6 +635,54 @@ class AnswerToast(Gtk.Window):
         self.move(max(0, geo.x + geo.width - width - 24), max(0, geo.y + geo.height - height - 48))
 
 
+class HotkeyCaptureDialog(Gtk.Dialog):
+    def __init__(self, parent: Gtk.Window, current: str):
+        super().__init__(title="Record hotkey", transient_for=parent, flags=0)
+        self.set_modal(True)
+        self.set_default_size(380, 130)
+        self.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        self.add_button("Use hotkey", Gtk.ResponseType.OK)
+        self.captured = normalize_hotkey(current)
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin=14)
+        add_class(root, "modern-card")
+        title = Gtk.Label(label="Press the new hotkey combo")
+        title.set_xalign(0)
+        add_class(title, "modern-title")
+        self.preview = Gtk.Label(label=self.captured)
+        self.preview.set_xalign(0)
+        add_class(self.preview, "hotkey-preview")
+        hint = Gtk.Label(label="Examples: F8, Ctrl+Alt+J, Shift+Super+Space. Press Esc to cancel.")
+        hint.set_xalign(0)
+        hint.set_line_wrap(True)
+        add_class(hint, "modern-subtitle")
+        root.pack_start(title, False, False, 0)
+        root.pack_start(self.preview, False, False, 0)
+        root.pack_start(hint, False, False, 0)
+        self.get_content_area().add(root)
+        self.connect("key-press-event", self._on_key_press)
+        self.show_all()
+
+    def _on_key_press(self, _widget, event):
+        key = normalize_key_name(Gdk.keyval_name(event.keyval) or "")
+        if key == "escape":
+            self.response(Gtk.ResponseType.CANCEL)
+            return True
+        if key in MODIFIERS:
+            return True
+        mods: list[str] = []
+        if event.state & Gdk.ModifierType.CONTROL_MASK:
+            mods.append("ctrl")
+        if event.state & Gdk.ModifierType.MOD1_MASK:
+            mods.append("alt")
+        if event.state & Gdk.ModifierType.SHIFT_MASK:
+            mods.append("shift")
+        if event.state & Gdk.ModifierType.SUPER_MASK:
+            mods.append("super")
+        self.captured = normalize_hotkey("+".join(mods + [key]))
+        self.preview.set_text(self.captured)
+        return True
+
+
 class SettingsDialog(Gtk.Dialog):
     def __init__(self, app: "PanelApp"):
         super().__init__(title="jcode-panel Settings", transient_for=app.dropdown, flags=0)
@@ -651,7 +700,13 @@ class SettingsDialog(Gtk.Dialog):
 
         grid = Gtk.Grid(column_spacing=10, row_spacing=10, margin=14)
         add_class(grid, "modern-card")
-        self.hotkey = Gtk.Entry(text=app.config.general.hotkey)
+        self.hotkey = Gtk.Entry(text=normalize_hotkey(app.config.general.hotkey))
+        self.hotkey.set_placeholder_text("f8 or ctrl+alt+j")
+        hotkey_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        hotkey_box.pack_start(self.hotkey, True, True, 0)
+        record_hotkey = Gtk.Button(label="Record…")
+        record_hotkey.connect("clicked", self._record_hotkey)
+        hotkey_box.pack_start(record_hotkey, False, False, 0)
         self.terminal = Gtk.Entry(text=app.config.general.terminal)
         self.template = Gtk.Entry(text=app.config.general.terminal_template)
         self.debug = Gtk.CheckButton(label="Debug raw preview")
@@ -660,7 +715,7 @@ class SettingsDialog(Gtk.Dialog):
         self.context.set_active(app.config.session.send_context_default)
         self.auto_update = Gtk.CheckButton(label="Auto-update app on start")
         self.auto_update.set_active(app.config.general.auto_update_on_start)
-        fields = [("Hotkey", self.hotkey), ("Terminal", self.terminal), ("Terminal template", self.template)]
+        fields = [("Hotkey", hotkey_box), ("Terminal", self.terminal), ("Terminal template", self.template)]
         for row, (label, widget) in enumerate(fields):
             field_label = Gtk.Label(label=label)
             field_label.set_xalign(0)
@@ -713,9 +768,17 @@ class SettingsDialog(Gtk.Dialog):
         self.get_content_area().add(notebook)
         self.show_all()
 
+    def _record_hotkey(self, _button):
+        dialog = HotkeyCaptureDialog(self, self.hotkey.get_text())
+        response = dialog.run()
+        if response == Gtk.ResponseType.OK:
+            self.hotkey.set_text(dialog.captured)
+        dialog.destroy()
+
     def save(self):
         cfg = self.app.config
-        cfg.general.hotkey = self.hotkey.get_text().strip() or "f8"
+        old_hotkey = cfg.general.hotkey
+        cfg.general.hotkey = normalize_hotkey(self.hotkey.get_text().strip() or "f8")
         cfg.general.terminal = self.terminal.get_text().strip() or "auto"
         cfg.general.terminal_template = self.template.get_text().strip()
         cfg.general.debug = self.debug.get_active()
@@ -730,6 +793,8 @@ class SettingsDialog(Gtk.Dialog):
         cfg.ui.font_bold = self.bold.get_active()
         cfg.ui.font_italic = self.italic.get_active()
         cfg.save()
+        if normalize_hotkey(old_hotkey) != cfg.general.hotkey:
+            self.app.restart_hotkey_listener()
 
 
 class PanelApp:
@@ -757,6 +822,8 @@ class PanelApp:
         self._ambient_shift = False
         self._ambient_ctrl = False
         self._ambient_alt = False
+        self._hotkey_listener = None
+        self._hotkey_pressed_mods: set[str] = set()
         self.indicator = AppIndicator3.Indicator.new("jcode-panel", "jcode-panel", AppIndicator3.IndicatorCategory.APPLICATION_STATUS)
         self.indicator.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
         self.indicator.set_label("jcode", "")
@@ -788,29 +855,51 @@ class PanelApp:
             self._add_system("Wayland detected: global hotkey and active-window context may be limited. v1 is X11-first.")
 
     def _start_hotkey_listener(self):
+        self._stop_hotkey_listener()
         try:
             from pynput import keyboard  # type: ignore
         except Exception as exc:
             self._add_system(f"Global keyboard unavailable: {exc}")
             return
 
-        hotkey = self.config.general.hotkey.lower()
+        hotkey = normalize_hotkey(self.config.general.hotkey)
+        hotkey_mods, hotkey_key = hotkey_parts(hotkey)
+        self.config.general.hotkey = hotkey
 
         def on_press(key):
-            name = getattr(key, "name", None) or getattr(key, "char", "")
-            normalized = str(name).lower()
-            if normalized == hotkey:
+            normalized = key_name_from_pynput(key)
+            if normalized in MODIFIERS:
+                self._hotkey_pressed_mods.add(normalized)
+            elif normalized == hotkey_key and hotkey_mods.issubset(self._hotkey_pressed_mods):
                 GLib.idle_add(self.show_prompt)
                 return
             GLib.idle_add(self._route_ambient_key, key, True)
 
         def on_release(key):
+            normalized = key_name_from_pynput(key)
+            if normalized in MODIFIERS:
+                self._hotkey_pressed_mods.discard(normalized)
             GLib.idle_add(self._route_ambient_key, key, False)
 
         listener = keyboard.Listener(on_press=on_press, on_release=on_release)
         listener.daemon = True
         listener.start()
-        self._add_system(f"Global keyboard active: {self.config.general.hotkey}; ambient popup typing enabled")
+        self._hotkey_listener = listener
+        self._add_system(f"Global keyboard active: {hotkey}; ambient popup typing enabled")
+
+    def _stop_hotkey_listener(self):
+        listener = self._hotkey_listener
+        self._hotkey_listener = None
+        self._hotkey_pressed_mods.clear()
+        if listener:
+            try:
+                listener.stop()
+            except Exception:
+                pass
+
+    def restart_hotkey_listener(self):
+        self._start_hotkey_listener()
+        self._add_system(f"Hotkey updated to {self.config.general.hotkey}")
 
     def _connect_jcode_async(self):
         def worker():

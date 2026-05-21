@@ -575,3 +575,15 @@ def test_event_notice_text_separates_context_and_tokens():
     assert "bash" in notice
     assert "context: Firefox" in notice
     assert "tokens: in 10, out 20" in notice
+
+
+def test_hotkey_normalization_and_parts():
+    from jcode_panel.hotkeys import hotkey_parts, normalize_hotkey, normalize_key_name
+
+    assert normalize_key_name("Control_L") == "ctrl"
+    assert normalize_key_name("Return") == "enter"
+    assert normalize_hotkey("Alt+Control+J") == "ctrl+alt+j"
+    assert normalize_hotkey("shift-super-space") == "shift+super+space"
+    mods, key = hotkey_parts("ctrl+alt+j")
+    assert mods == {"ctrl", "alt"}
+    assert key == "j"

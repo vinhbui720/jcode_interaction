@@ -165,6 +165,16 @@ def load_css(Gtk, Gdk, config=None) -> None:
       font-size: 12px;
       font-style: normal;
     }}
+    .hotkey-preview {{
+      color: #1d4ed8;
+      background: rgba(219, 234, 254, 0.92);
+      border: 1px solid rgba(37, 99, 235, 0.30);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 18px;
+      font-weight: 800;
+      font-family: JetBrains Mono, Fira Code, monospace;
+    }}
     notebook, notebook stack, notebook header {{
       background: #f8fafc;
       color: #0f172a;
