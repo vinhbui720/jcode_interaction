@@ -892,6 +892,8 @@ class PanelApp:
         self.pending_screenshots: list[str] = []
         self.capture_cancelled = False
         self.capture_in_progress = False
+        self.capture_portal_done = False
+        self.capture_portal_cancelled = False
         self.dropdown_refresh_id = 0
         self.last_prompt_toggle_at = 0.0
         self._ambient_shift = False
@@ -1308,6 +1310,8 @@ class PanelApp:
     def cancel_input_mode(self) -> bool:
         self.capture_cancelled = True
         self.capture_in_progress = False
+        self.capture_portal_done = True
+        self.capture_portal_cancelled = True
         self.pending_screenshots.clear()
         self._finish_activity("cancelled")
         self.process_status = "cancelled"
@@ -1323,6 +1327,8 @@ class PanelApp:
         existing_text = self.floating.entry.get_text() if self.floating.get_visible() else ""
         self.capture_cancelled = False
         self.capture_in_progress = True
+        self.capture_portal_done = False
+        self.capture_portal_cancelled = False
         # The GNOME/portal drag UI cannot reliably receive events while our
         # XWayland popup owns focus/keyboard. Release it during selection, then
         # restore the input with the same content plus [pic#].
@@ -1453,6 +1459,9 @@ class PanelApp:
             if current and current != old_fingerprint and self._save_clipboard_image(path, timeout=2.0):
                 append_log(f"Screenshot captured from clipboard: {path}")
                 return True
+            if self.capture_portal_done and self.capture_portal_cancelled:
+                append_log("Screenshot portal cancelled; stop clipboard wait")
+                return False
             time.sleep(0.2)
         append_log(f"Clipboard screenshot wait timed out after {timeout_seconds}s")
         return False
@@ -1610,6 +1619,8 @@ class PanelApp:
                     return
                 try:
                     response, results = params.unpack()
+                    self.capture_portal_done = True
+                    self.capture_portal_cancelled = int(response) != 0
                     if int(response) == 0:
                         uri = results.get("uri")
                         if uri:
