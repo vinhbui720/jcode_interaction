@@ -194,6 +194,7 @@ class FloatingInput(Gtk.Window):
         self.connect("draw", self._draw_transparent)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         add_class(box, "floating-root")
+        entry_overlay = Gtk.Overlay()
         self.entry = Gtk.Entry()
         self.entry.set_can_focus(True)
         self.entry.connect("activate", self._on_enter)
@@ -202,7 +203,14 @@ class FloatingInput(Gtk.Window):
         self.connect("key-press-event", self._on_key)
         self.connect("button-press-event", self._on_pointer_interaction)
         self.connect("focus-out-event", self._on_focus_out)
-        box.pack_start(self.entry, True, True, 0)
+        entry_overlay.add(self.entry)
+        self.input_counter = Gtk.Label(label="0/4000")
+        self.input_counter.set_halign(Gtk.Align.END)
+        self.input_counter.set_valign(Gtk.Align.CENTER)
+        self.input_counter.set_margin_end(10)
+        add_class(self.input_counter, "input-counter")
+        entry_overlay.add_overlay(self.input_counter)
+        box.pack_start(entry_overlay, True, True, 0)
         self.slash_hint = Gtk.Label(label="")
         self.slash_hint.set_xalign(0)
         self.slash_hint.set_line_wrap(True)
@@ -232,6 +240,7 @@ class FloatingInput(Gtk.Window):
             self.entry.set_position(-1)
         self.entry.set_placeholder_text("Ask jcode...")
         self._update_slash_hint("")
+        self._update_input_counter()
         self.typed_once = False
         self.submitting = False
         self.follow_mouse = True
@@ -266,9 +275,9 @@ class FloatingInput(Gtk.Window):
             primary = self._clipboard_text(Gdk.SELECTION_PRIMARY)
             clipboard = self._clipboard_text(Gdk.SELECTION_CLIPBOARD)
             uris = self._clipboard_uris(Gdk.SELECTION_CLIPBOARD)
-            file_path, line = self.app._best_active_file_hint(ctx.app, ctx.window_title)
+            integration_selection, file_path, line = self.app._best_integration_context_hint(ctx.app, ctx.window_title)
             chips = build_popup_context_chips(
-                selected_text=primary or ctx.selected_text,
+                selected_text=integration_selection or primary or ctx.selected_text,
                 clipboard_text=clipboard or ctx.clipboard_text,
                 clipboard_uris=uris,
                 app=ctx.app,
@@ -315,7 +324,18 @@ class FloatingInput(Gtk.Window):
         if text:
             self.typed_once = True
         self.completions.update([])
+        self._update_input_counter()
         self._update_slash_hint(self.entry.get_text().strip())
+
+    def _update_input_counter(self) -> None:
+        if not hasattr(self, "input_counter"):
+            return
+        count = len(self.entry.get_text() or "")
+        self.input_counter.set_text(f"{count}/4000")
+        ctx = self.input_counter.get_style_context()
+        ctx.remove_class("input-counter-warn")
+        if count > 4000:
+            ctx.add_class("input-counter-warn")
 
     def _update_slash_hint(self, text: str) -> None:
         if not hasattr(self, "slash_hint"):
@@ -1334,8 +1354,8 @@ class PanelApp:
             return match.group(0)
         return PIC_TAG_RE.sub(replace, text)
 
-    def _best_active_file_hint(self, app: str = "", window_title: str = "") -> tuple[str, int | None]:
-        """Return a matching editor-backed file hint, if the editor is active."""
+    def _best_integration_context_hint(self, app: str = "", window_title: str = "") -> tuple[str, str, int | None]:
+        """Return matching editor selection, file path and line if editor is active."""
         haystack = f"{app} {window_title}".lower()
         candidates = []
         if any(token in haystack for token in ("code", "vscode", "visual studio code")):
@@ -1353,11 +1373,12 @@ class PanelApp:
                     file_path = str(Path(vault_path).expanduser() / file_path)
                 line_raw = data.get("line")
                 line = int(line_raw) if str(line_raw or "").isdigit() else None
-                if file_path:
-                    return file_path, line
+                selection = str(data.get("selection") or "").strip()
+                if file_path or selection:
+                    return selection, file_path, line
             except Exception:
                 continue
-        return "", None
+        return "", "", None
 
 
     def _schedule_send_watchdog(self, send_sequence: int) -> None:

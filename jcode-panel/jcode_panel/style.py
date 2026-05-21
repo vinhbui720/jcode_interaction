@@ -62,6 +62,19 @@ def load_css(Gtk, Gdk, config=None) -> None:
       font-weight: 600;
       font-style: normal;
     }}
+    .input-counter {{
+      color: #64748b;
+      background: rgba(255, 255, 255, 0.72);
+      border-radius: 7px;
+      padding: 2px 6px;
+      font-size: 11px;
+      font-weight: 700;
+      font-style: normal;
+    }}
+    .input-counter-warn {{
+      color: #b91c1c;
+      background: rgba(254, 226, 226, 0.86);
+    }}
     .context-strip {{
       color: #2563eb;
       background: rgba(239, 246, 255, 0.80);
@@ -74,7 +87,7 @@ def load_css(Gtk, Gdk, config=None) -> None:
       background: rgba(255, 255, 255, 0.88);
       border: 1.5px solid rgba(96, 165, 250, 0.64);
       border-radius: 10px;
-      padding: 7px 14px;
+      padding: 7px 82px 7px 14px;
       min-height: 18px;
       caret-color: #2563eb;
       box-shadow: none;
