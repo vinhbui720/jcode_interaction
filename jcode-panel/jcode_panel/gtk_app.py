@@ -1335,7 +1335,14 @@ class PanelApp:
         if self.floating.get_visible():
             self.floating.hide()
         threading.Thread(target=self._capture_screenshot_for_prompt_worker, args=(existing_text,), daemon=True).start()
+        GLib.timeout_add(450, self._show_capture_status_prompt, existing_text)
         GLib.timeout_add_seconds(10, self._capture_watchdog_restore, existing_text)
+        return False
+
+    def _show_capture_status_prompt(self, existing_text: str) -> bool:
+        if self.capture_in_progress and not self.capture_cancelled and not self.floating.get_visible():
+            self.show_prompt(existing_text)
+            self.floating.entry.set_placeholder_text("Cropping screenshot... finish crop or press Esc to cancel.")
         return False
 
     def _capture_watchdog_restore(self, existing_text: str) -> bool:
