@@ -700,3 +700,17 @@ def test_interaction_context_missing_app_blocks_send(tmp_path: Path, monkeypatch
         assert "VS Code is not open" in str(exc)
     else:
         raise AssertionError("expected missing VS Code context to block send")
+
+
+def test_interaction_partial_completion():
+    from jcode_panel.interaction_context import complete_interaction_token, interaction_token_hints
+
+    assert interaction_token_hints("fix @vsc") == ["@vscode"]
+    text, pos, changed = complete_interaction_token("fix @vsc", len("fix @vsc"))
+    assert changed is True
+    assert text == "fix ⟦🔵 vscode⟧"
+    assert pos == len(text)
+
+    text, pos, changed = complete_interaction_token("compare /obs with text", len("compare /obs"))
+    assert changed is True
+    assert text == "compare ⟦🟣 obsidian⟧ with text"

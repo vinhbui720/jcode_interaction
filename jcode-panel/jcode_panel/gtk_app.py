@@ -38,7 +38,7 @@ from .terminal import launch
 from .style import add_class, load_css
 from .positioning import xdotool_mouse_position_full
 from .updater import self_update
-from .interaction_context import InteractionContextError, INTERACTION_CHIP_DELETE_RE, expand_interaction_chips, normalize_interaction_tags
+from .interaction_context import InteractionContextError, INTERACTION_CHIP_DELETE_RE, complete_interaction_token, expand_interaction_chips, interaction_token_hints, normalize_interaction_tags
 
 
 def markdown_to_pango(text: str) -> str:
@@ -298,6 +298,12 @@ class FloatingInput(Gtk.Window):
     def _update_slash_hint(self, text: str) -> None:
         if not hasattr(self, "slash_hint"):
             return
+        interaction_hints = interaction_token_hints(self.entry.get_text(), self.entry.get_position())
+        if interaction_hints:
+            self.slash_hint.set_text("Tab/Space/Enter chip · " + "   ".join(interaction_hints))
+            self.slash_hint.show()
+            self._resize_for_suggestions(True)
+            return
         if not text.startswith("/"):
             self.slash_hint.set_text("")
             self.slash_hint.hide()
@@ -462,6 +468,8 @@ class FloatingInput(Gtk.Window):
     def _on_enter(self, _entry):
         if self.submitting:
             return
+        if self._complete_interaction_at_cursor():
+            return
         self.submitting = True
         text = self.entry.get_text().strip()
         if text.startswith("/") and self.app.handle_slash_command(text):
@@ -505,7 +513,11 @@ class FloatingInput(Gtk.Window):
         if alt and key and key.lower() == "c":
             self.context_enabled = not self.context_enabled
             return True
+        if key in {"space", "KP_Space"} and self._complete_interaction_at_cursor(add_trailing_space=True):
+            return True
         if key == "Tab":
+            if self._complete_interaction_at_cursor(add_trailing_space=True):
+                return True
             text = self.entry.get_text()
             if text.startswith("/"):
                 if not self.completions.items:
@@ -517,6 +529,19 @@ class FloatingInput(Gtk.Window):
                     self._update_slash_hint(suggestion)
             return True
         return False
+
+    def _complete_interaction_at_cursor(self, add_trailing_space: bool = False) -> bool:
+        text = self.entry.get_text()
+        updated, pos, changed = complete_interaction_token(text, self.entry.get_position())
+        if not changed:
+            return False
+        if add_trailing_space and (pos >= len(updated) or updated[pos:pos + 1] != " "):
+            updated = updated[:pos] + " " + updated[pos:]
+            pos += 1
+        self.entry.set_text(updated)
+        self.entry.set_position(pos)
+        self._update_slash_hint(updated.strip())
+        return True
 
 
 class Dropdown(Gtk.Window):
