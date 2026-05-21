@@ -485,8 +485,7 @@ class FloatingInput(Gtk.Window):
         key = Gdk.keyval_name(event.keyval)
         alt = bool(event.state & Gdk.ModifierType.MOD1_MASK)
         if key == "Escape":
-            self.app.pending_screenshots.clear()
-            self.hide()
+            self.app.cancel_input_mode()
             return True
         if alt and key and key.lower() == "c":
             self.context_enabled = not self.context_enabled
@@ -883,6 +882,8 @@ class PanelApp:
         self.feedback_text = ""
         self.feedback_notice = ""
         self.pending_screenshots: list[str] = []
+        self.capture_cancelled = False
+        self.capture_in_progress = False
         self.dropdown_refresh_id = 0
         self.last_prompt_toggle_at = 0.0
         self._ambient_shift = False
@@ -1296,36 +1297,68 @@ class PanelApp:
         else:
             self.floating.show_at_pointer(initial_text)
 
-    def capture_screenshot_for_prompt(self) -> bool:
-        """Hotkey flow: crop now, save image, then let user edit/send prompt."""
-        if not self.floating.get_visible():
-            self.show_prompt()
-        self.floating.entry.set_placeholder_text("Cropping screenshot... input stays here; Enter sends, Esc cancels")
-        threading.Thread(target=self._capture_screenshot_for_prompt_worker, daemon=True).start()
+    def cancel_input_mode(self) -> bool:
+        self.capture_cancelled = True
+        self.capture_in_progress = False
+        self.pending_screenshots.clear()
+        self._finish_activity("cancelled")
+        self.process_status = "cancelled"
+        self._update_header_status()
+        if self.floating.get_visible():
+            self.floating.hide()
         return False
 
-    def _capture_screenshot_for_prompt_worker(self) -> None:
+    def capture_screenshot_for_prompt(self) -> bool:
+        """Hotkey flow: crop now, save image, then let user edit/send prompt."""
+        if self.capture_in_progress:
+            return False
+        existing_text = self.floating.entry.get_text() if self.floating.get_visible() else ""
+        self.capture_cancelled = False
+        self.capture_in_progress = True
+        # The GNOME/portal drag UI cannot reliably receive events while our
+        # XWayland popup owns focus/keyboard. Release it during selection, then
+        # restore the input with the same content plus [pic#].
+        if self.floating.get_visible():
+            self.floating.hide()
+        self.toast.update_feedback("Drag to select area. Esc cancels capture.")
+        threading.Thread(target=self._capture_screenshot_for_prompt_worker, args=(existing_text,), daemon=True).start()
+        return False
+
+    def _capture_screenshot_for_prompt_worker(self, existing_text: str) -> None:
         screenshot_dir = Path(tempfile.gettempdir()) / "jcode-panel-screenshots"
         screenshot_dir.mkdir(parents=True, exist_ok=True)
         path = screenshot_dir / f"screenshot-area-{int(time.time())}.png"
-        GLib.idle_add(self._show_capture_in_input_status, "Drag to select area...")
         GLib.idle_add(self._set_capture_status, "screenshot area")
         if self._capture_gnome_shell_area(path) or self._capture_portal_screenshot(path, interactive=True) or self._capture_with_commands(path, "area"):
-            GLib.idle_add(self._open_prompt_with_screenshot, str(path))
+            if self.capture_cancelled:
+                GLib.idle_add(self.cancel_input_mode)
+            else:
+                GLib.idle_add(self._open_prompt_with_screenshot, str(path), existing_text)
             return
-        GLib.idle_add(self._screenshot_failed, "Screenshot cancelled or no screenshot tool found")
+        GLib.idle_add(self._restore_prompt_after_cancelled_capture, existing_text)
 
-    def _open_prompt_with_screenshot(self, path: str) -> bool:
+    def _open_prompt_with_screenshot(self, path: str, existing_text: str = "") -> bool:
+        self.capture_in_progress = False
+        if self.capture_cancelled:
+            return self.cancel_input_mode()
         self._finish_activity("captured")
         self.process_status = "screenshot ready"
         self._update_header_status()
         self.pending_screenshots.append(path)
         tag = pic_tag(len(self.pending_screenshots)) + " "
-        if self.floating.get_visible():
-            self.floating.append_text(tag)
-        else:
-            self.show_prompt(tag)
+        base = existing_text.rstrip()
+        new_text = ((base + " ") if base else "") + tag
+        self.show_prompt(new_text)
         self.floating.entry.set_placeholder_text("Add text or more screenshots. Enter sends, Esc cancels request.")
+        return False
+
+    def _restore_prompt_after_cancelled_capture(self, existing_text: str) -> bool:
+        self.capture_in_progress = False
+        self._finish_activity("cancelled")
+        self.process_status = "screenshot cancelled"
+        self._update_header_status()
+        if existing_text.strip() and not self.capture_cancelled:
+            self.show_prompt(existing_text)
         return False
 
     def _show_capture_in_input_status(self, text: str) -> bool:
