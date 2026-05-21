@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
-Name=jcode-panel
-Comment=Minimal top-bar GUI client for jcode
+Name=Jcode Interaction
+Comment=Top-bar interaction client for jcode
 Exec=jcode-panel
 Icon=jcode-panel
 Terminal=false

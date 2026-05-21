@@ -45,7 +45,7 @@ mkdir -p "$HOME/.config/autostart" "$HOME/.local/bin" "$HOME/.local/share/icons/
 cat > "$HOME/.config/autostart/jcode-panel.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=jcode-panel
+Name=Jcode Interaction
 Exec=env GDK_BACKEND=x11 PYTHONPATH=$PWD:$PWD/.python-deps python3 -m jcode_panel.main --background
 X-GNOME-Autostart-enabled=true
 EOF
@@ -54,7 +54,10 @@ cp assets/icon.svg "$HOME/.local/share/icons/hicolor/scalable/apps/jcode-panel.s
 ln -sf "$PWD/bin/jcode-panel" "$HOME/.local/bin/jcode-panel"
 ln -sf "$PWD/bin/jcp" "$HOME/.local/bin/jcp"
 sed "s#Exec=jcode-panel#Exec=$HOME/.local/bin/jcode-panel#; s#Icon=applications-system#Icon=jcode-panel#" jcode-panel.desktop > "$HOME/.local/share/applications/jcode-panel.desktop"
-sed "s#Exec=jcode-panel --prompt#Exec=$HOME/.local/bin/jcp#; s#Icon=applications-system#Icon=jcode-panel#" jcode-panel-prompt.desktop > "$HOME/.local/share/applications/jcode-panel-prompt.desktop"
+# Older installs exposed a second app-grid launcher for the prompt. The prompt
+# remains available through F8, tray menu, and `jcp`, but only one visible app is
+# installed: Jcode Interaction.
+rm -f "$HOME/.local/share/applications/jcode-panel-prompt.desktop"
 
 PYTHONPATH="$PWD:$PWD/.python-deps" python3 -m jcode_panel.main --diagnose || true
 PYTHONPATH="$PWD:$PWD/.python-deps" python3 -m jcode_panel.main --install-shortcut || true
@@ -63,7 +66,7 @@ echo "Installed autostart entry. Browser extension is in ./extension and is opti
 echo "Aliases installed:"
 echo "  jcode-panel        # open app"
 echo "  jcp                # open prompt"
-echo "Desktop launchers installed with jcode-panel icon."
+echo "Desktop launcher installed as Jcode Interaction."
 
 if [[ "$deps_missing" -ne 0 ]]; then
   cat >&2 <<'EOF'

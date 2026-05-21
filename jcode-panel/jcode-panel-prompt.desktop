@@ -1,8 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=jcode-panel Prompt
-Comment=Open jcode-panel floating prompt
+Name=Jcode Interaction Prompt
+Comment=Open the Jcode Interaction floating prompt
 Exec=jcode-panel --prompt
 Icon=jcode-panel
 Terminal=false
 Categories=Utility;Development;
+NoDisplay=true

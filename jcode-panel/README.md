@@ -65,22 +65,21 @@ The installer does not install or configure jcode automatically. If diagnostics 
 
 Ubuntu Wayland can block app-level global hotkeys from `pynput`. The installer now creates a GNOME-native custom shortcut:
 
-- **F8 → `jcp` → open jcode-panel prompt**
+- **F8 → `jcp` → open the Jcode Interaction prompt**
 
-If F8 still does not work, check Ubuntu Settings → Keyboard → Custom Shortcuts and make sure `jcode-panel Prompt` is bound to F8.
+If F8 still does not work, check Ubuntu Settings → Keyboard → Custom Shortcuts and make sure `Jcode Interaction` is bound to F8.
 
 Fallbacks:
 
 - tray menu → `Prompt`
-- application launcher → `jcode-panel Prompt`
+- application launcher → `Jcode Interaction`
 - command line: `PYTHONPATH=. python3 -m jcode_panel.main --prompt`
 
 ## Executor-friendly usage
 
 After `./install.sh`, no terminal command is needed for normal use:
 
-- App launcher: **jcode-panel**
-- App launcher: **jcode-panel Prompt**
+- App launcher: **Jcode Interaction**
 - Tray menu: **Prompt**
 - Alias: `jcode-panel`
 - Alias: `jcp` opens the prompt directly

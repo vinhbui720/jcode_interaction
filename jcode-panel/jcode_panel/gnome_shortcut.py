@@ -11,7 +11,7 @@ class ShortcutResult:
     message: str
 
 
-def install_f8_shortcut(command: str = "jcp", name: str = "jcode-panel Prompt") -> ShortcutResult:
+def install_f8_shortcut(command: str = "jcp", name: str = "Jcode Interaction") -> ShortcutResult:
     """Install a GNOME-native custom shortcut for Wayland-safe F8 handling."""
     if not shutil.which("gsettings"):
         return ShortcutResult(False, "gsettings not available")
