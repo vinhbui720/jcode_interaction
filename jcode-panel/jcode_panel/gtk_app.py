@@ -760,7 +760,7 @@ class AnswerToast(Gtk.Window):
         self.stats.set_line_wrap(True)
         self.stats.set_halign(Gtk.Align.END)
         self.stats.set_valign(Gtk.Align.START)
-        self.stats.set_margin_top(18)
+        self.stats.set_margin_top(-30)
         self.stats.set_margin_end(14)
         add_class(self.stats, "toast-stats")
         self.stats.hide()
