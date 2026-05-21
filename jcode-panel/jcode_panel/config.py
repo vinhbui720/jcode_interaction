@@ -17,6 +17,7 @@ except Exception:  # pragma: no cover
 CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "jcode-panel"
 CONFIG_PATH = CONFIG_HOME / "config.toml"
 STATE_PATH = CONFIG_HOME / "state.toml"
+CONFIG_BACKUP_PATH = CONFIG_HOME / "config.toml.bak"
 
 
 @dataclass
@@ -68,10 +69,22 @@ class AppConfig:
     def load(cls, path: Path = CONFIG_PATH) -> "AppConfig":
         cfg = cls()
         if not path.exists():
-            cfg.save(path)
-            return cfg
-        text = path.read_text()
-        data = tomllib.loads(text) if tomllib else _load_simple_toml(text)
+            backup = path.with_name(path.name + ".bak")
+            if backup.exists():
+                path = backup
+            else:
+                cfg.save(path)
+                return cfg
+        try:
+            text = path.read_text()
+            data = tomllib.loads(text) if tomllib else _load_simple_toml(text)
+        except Exception:
+            backup = path.with_name(path.name + ".bak")
+            if not backup.exists() or backup == path:
+                return cfg
+            text = backup.read_text()
+            data = tomllib.loads(text) if tomllib else _load_simple_toml(text)
+            path = backup
         for section_name, section_cls in (
             ("general", GeneralConfig),
             ("session", SessionConfig),
@@ -102,6 +115,11 @@ class AppConfig:
                 tmp.flush()
                 os.fsync(tmp.fileno())
             os.replace(tmp_name, path)
+            try:
+                backup = path.with_name(path.name + ".bak")
+                backup.write_text(text)
+            except Exception:
+                pass
         finally:
             try:
                 if os.path.exists(tmp_name):

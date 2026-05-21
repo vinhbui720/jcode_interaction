@@ -760,7 +760,7 @@ class AnswerToast(Gtk.Window):
         self.stats.set_line_wrap(True)
         self.stats.set_halign(Gtk.Align.END)
         self.stats.set_valign(Gtk.Align.START)
-        self.stats.set_margin_top(-30)
+        self.stats.set_margin_top(0)
         self.stats.set_margin_end(14)
         add_class(self.stats, "toast-stats")
         self.stats.hide()
@@ -813,7 +813,7 @@ class AnswerToast(Gtk.Window):
         self.refresh_source_id = 0
         self.pending_feedback = ""
         self.pending_notice = ""
-        self.pending_stats = ""
+        self.pending_stats = self.app.controller.state.last_token_stats
         self.pending_scroll_value: float | None = None
         self.pending_was_at_bottom = True
         self.scrollbar_hover = False
@@ -841,6 +841,8 @@ class AnswerToast(Gtk.Window):
         text, stats = split_token_stats(text)
         if stats:
             self.pending_stats = stats
+            self.app.controller.state.set_last_token_stats(stats)
+            self.app.controller.state.save()
         self.pending_was_at_bottom = self._is_at_bottom()
         self.pending_scroll_value = self._scroll_value()
         self.pending_feedback = self._limit_feedback_text(text)

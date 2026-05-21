@@ -21,6 +21,20 @@ def test_default_config_roundtrip(tmp_path: Path):
     assert AppConfig.load(path).general.debug is True
 
 
+def test_config_loads_backup_when_primary_missing(tmp_path: Path):
+    path = tmp_path / "config.toml"
+    cfg = AppConfig.load(path)
+    cfg.ui.base_color = "#123456"
+    cfg.general.hotkey = "ctrl+alt+j"
+    cfg.save(path)
+    path.unlink()
+
+    loaded = AppConfig.load(path)
+
+    assert loaded.ui.base_color == "#123456"
+    assert loaded.general.hotkey == "ctrl+alt+j"
+
+
 def test_context_summary_and_block():
     ctx = ActiveContext(app="Firefox", window_title="Issue", browser=BrowserContext(title="Repo", url="https://github.com/a/b", selected_text="hello"))
     assert "github.com" in ctx.summary()
@@ -79,7 +93,7 @@ def test_terminal_launch_defaults_to_home_cwd(monkeypatch):
 
 def test_state_roundtrip_and_prompt_dedupe(tmp_path: Path):
     path = tmp_path / "state.toml"
-    state = AppState(saved_session="fox", saved_session_name="Panel Fox")
+    state = AppState(saved_session="fox", saved_session_name="Panel Fox", last_token_stats="1,2,3,4")
     state.remember_prompt("hello")
     state.remember_prompt("hello")
     state.remember_prompt("world")
@@ -87,7 +101,20 @@ def test_state_roundtrip_and_prompt_dedupe(tmp_path: Path):
     loaded = AppState.load(path)
     assert loaded.saved_session == "fox"
     assert loaded.saved_session_name == "Panel Fox"
+    assert loaded.last_token_stats == "1,2,3,4"
     assert loaded.prompt_history == ["hello", "world"]
+
+
+def test_state_loads_backup_when_primary_missing(tmp_path: Path):
+    path = tmp_path / "state.toml"
+    state = AppState(saved_session="fox", last_token_stats="9,8,7,6")
+    state.save(path)
+    path.unlink()
+
+    loaded = AppState.load(path)
+
+    assert loaded.saved_session == "fox"
+    assert loaded.last_token_stats == "9,8,7,6"
 
 
 def test_prompt_builder_sends_direct_text_without_context_or_metadata():
