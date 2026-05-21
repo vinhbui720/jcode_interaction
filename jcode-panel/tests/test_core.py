@@ -524,6 +524,52 @@ def test_ambient_key_routes_when_entry_not_focused():
     assert appended == ["a"]
 
 
+def test_ambient_key_routes_edit_keys_when_entry_not_focused():
+    from types import SimpleNamespace
+    from jcode_panel.gtk_app import PanelApp
+
+    routed = []
+
+    class Entry:
+        def has_focus(self):
+            return False
+
+    app = SimpleNamespace(
+        _ambient_shift=False,
+        _ambient_ctrl=False,
+        _ambient_alt=False,
+        floating=SimpleNamespace(
+            get_visible=lambda: True,
+            suppress_listener=object(),
+            entry=Entry(),
+            edit_key=routed.append,
+        ),
+    )
+
+    PanelApp._route_ambient_key(app, SimpleNamespace(name="left", char=None), True, force=True)
+
+    assert routed == ["left"]
+
+
+def test_ambient_escape_dismisses_feedback_toast():
+    from types import SimpleNamespace
+    from jcode_panel.gtk_app import PanelApp
+
+    stopped = []
+    app = SimpleNamespace(
+        _ambient_shift=False,
+        _ambient_ctrl=False,
+        _ambient_alt=False,
+        floating=SimpleNamespace(get_visible=lambda: False),
+        toast=SimpleNamespace(get_visible=lambda: True),
+        stop_answering=stopped.append,
+    )
+
+    PanelApp._route_ambient_key(app, SimpleNamespace(name="esc", char=None), True, force=True)
+
+    assert stopped == ["dismissed"]
+
+
 def test_markdown_to_pango_renders_safe_colored_subset():
     from jcode_panel.gtk_app import markdown_to_pango
 

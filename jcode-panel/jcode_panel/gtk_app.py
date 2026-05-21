@@ -461,6 +461,23 @@ class FloatingInput(Gtk.Window):
             self.entry.set_text(current[:pos - 1] + current[pos:])
             self.entry.set_position(pos - 1)
 
+    def edit_key(self, key: str) -> None:
+        current = self.entry.get_text()
+        pos = self.entry.get_position()
+        if pos < 0:
+            pos = len(current)
+        if key == "left":
+            self.entry.set_position(max(0, pos - 1))
+        elif key == "right":
+            self.entry.set_position(min(len(current), pos + 1))
+        elif key == "home":
+            self.entry.set_position(0)
+        elif key == "end":
+            self.entry.set_position(-1)
+        elif key == "delete" and pos < len(current):
+            self.entry.set_text(current[:pos] + current[pos + 1:])
+            self.entry.set_position(pos)
+
     def submit(self) -> None:
         self._on_enter(self.entry)
 
@@ -600,6 +617,7 @@ class AnswerToast(Gtk.Window):
         if visual:
             self.set_visual(visual)
         self.connect("draw", self._draw_transparent)
+        self.connect("key-press-event", self._on_key)
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         add_class(root, "toast-root")
         title = Gtk.Label(label="jcode feedback")
@@ -701,6 +719,13 @@ class AnswerToast(Gtk.Window):
 
     def dismiss(self):
         self.hide()
+
+    def _on_key(self, _widget, event):
+        key = Gdk.keyval_name(event.keyval)
+        if key == "Escape":
+            self.app.stop_answering("dismissed")
+            return True
+        return False
 
     def _reset_idle_hide_timer(self):
         if self.hide_source_id:
@@ -1310,6 +1335,9 @@ class PanelApp:
             self._ambient_alt = pressed
             return False
         if not pressed or not self.floating.get_visible():
+            if pressed and lowered == "esc" and self.toast.get_visible():
+                self.stop_answering("dismissed")
+                return False
             return False
         if self.floating.suppress_listener and not force:
             return False
@@ -1325,6 +1353,9 @@ class PanelApp:
             return False
         if lowered == "backspace":
             self.floating.backspace()
+            return False
+        if lowered in {"left", "right", "home", "end", "delete"}:
+            self.floating.edit_key(lowered)
             return False
         if lowered == "space":
             self.floating.append_text(" ")
