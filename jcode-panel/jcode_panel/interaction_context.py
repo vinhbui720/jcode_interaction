@@ -17,8 +17,8 @@ CHIP_LABELS = {
 # @vscode, @obsidian anywhere in the prompt. Slash remains reserved for jcode commands.
 INTERACTION_TAG_RE = re.compile(r"(?<![\w\[])(@)(vscode|obsidian)\b", re.IGNORECASE)
 # Accept new visual chips and legacy chips for backward compatibility.
-INTERACTION_CHIP_RE = re.compile(r"(?:\{\{\s*[@/]\s*(vscode|obsidian)\s*\}\}|⟦\s*[@/]\s*(vscode|obsidian)\s*⟧|\[(vscode|obsidian)\])", re.IGNORECASE)
-INTERACTION_CHIP_DELETE_RE = re.compile(r"(?:\{\{\s*[@/]\s*(?:vscode|obsidian)\s*\}\}|⟦\s*[@/]\s*(?:vscode|obsidian)\s*⟧|\[(?:vscode|obsidian)\])\s*$", re.IGNORECASE)
+INTERACTION_CHIP_RE = re.compile(r"(?:\[\s*@(vscode|obsidian)\s*\]|\{\{\s*[@/]\s*(vscode|obsidian)\s*\}\}|⟦\s*[@/]\s*(vscode|obsidian)\s*⟧|\[(vscode|obsidian)\])", re.IGNORECASE)
+INTERACTION_CHIP_DELETE_RE = re.compile(r"(?:\[\s*@(?:vscode|obsidian)\s*\]|\{\{\s*[@/]\s*(?:vscode|obsidian)\s*\}\}|⟦\s*[@/]\s*(?:vscode|obsidian)\s*⟧|\[(?:vscode|obsidian)\])\s*$", re.IGNORECASE)
 INTERACTION_PARTIAL_RE = re.compile(r"(?<![\w\[])(@)([a-zA-Z_][\w-]*)?$")
 
 
@@ -35,7 +35,7 @@ class InteractionContextError(RuntimeError):
 
 def chip_for_source(source: str, marker: str = "@") -> str:
     source = source.lower().strip()
-    return f"{{{{@{CHIP_LABELS.get(source, source)}}}}}"
+    return f"[@{CHIP_LABELS.get(source, source)}]"
 
 
 def normalize_interaction_tags(text: str) -> str:

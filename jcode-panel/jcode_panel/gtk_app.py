@@ -289,7 +289,7 @@ class FloatingInput(Gtk.Window):
         if normalized != old_text:
             self.entry.handler_block_by_func(self._on_changed)
             self.entry.set_text(normalized)
-            self.entry.set_position(new_position)
+            self.entry.set_position(-1)
             self.entry.handler_unblock_by_func(self._on_changed)
         self.completions.update([])
         self._update_slash_hint(self.entry.get_text().strip())
@@ -544,7 +544,7 @@ class FloatingInput(Gtk.Window):
             updated = updated[:pos] + " " + updated[pos:]
             pos += 1
         self.entry.set_text(updated)
-        self.entry.set_position(pos)
+        self.entry.set_position(-1)
         self._update_slash_hint(updated.strip())
         return True
 
