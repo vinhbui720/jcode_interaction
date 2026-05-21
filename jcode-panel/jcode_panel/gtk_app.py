@@ -38,7 +38,7 @@ from .terminal import launch
 from .style import add_class, load_css
 from .positioning import xdotool_mouse_position_full
 from .updater import self_update
-from .interaction_context import InteractionContextError, expand_interaction_chips, normalize_interaction_tags
+from .interaction_context import InteractionContextError, INTERACTION_CHIP_DELETE_RE, expand_interaction_chips, normalize_interaction_tags
 
 
 def markdown_to_pango(text: str) -> str:
@@ -447,7 +447,7 @@ class FloatingInput(Gtk.Window):
             self.entry.set_text(current[:match.start()] + current[pos:])
             self.entry.set_position(match.start())
             return
-        tag_match = re.search(r"\[(?:vscode|obsidian)\]\s*$", prefix, re.IGNORECASE)
+        tag_match = INTERACTION_CHIP_DELETE_RE.search(prefix)
         if tag_match:
             self.entry.set_text(current[:tag_match.start()] + current[pos:])
             self.entry.set_position(tag_match.start())

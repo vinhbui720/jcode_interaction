@@ -667,8 +667,8 @@ def test_config_save_is_reloadable_after_multiple_writes(tmp_path: Path):
 def test_interaction_tag_normalization_and_sources():
     from jcode_panel.interaction_context import interaction_sources, normalize_interaction_tags
 
-    text = normalize_interaction_tags("compare @vscode with @obsidian")
-    assert text == "compare [vscode] with [obsidian]"
+    text = normalize_interaction_tags("compare @vscode with /obsidian")
+    assert text == "compare ⟦🔵 vscode⟧ with ⟦🟣 obsidian⟧"
     assert interaction_sources(text) == ["vscode", "obsidian"]
 
 
@@ -681,7 +681,7 @@ def test_interaction_context_expands_each_chip(tmp_path: Path, monkeypatch):
     vscode_json.write_text('{"file":"%s","line":3,"selection":"","languageId":"python","workspaceRoot":"%s"}' % (code, tmp_path))
     monkeypatch.setattr("jcode_panel.interaction_context.VSCODE_CONTEXT_PATH", vscode_json)
 
-    expanded = ic.expand_interaction_chips("check [vscode] and again [vscode]")
+    expanded = ic.expand_interaction_chips("check ⟦🔵 vscode⟧ and again ⟦🔵 vscode⟧")
 
     assert expanded.count("Context: vscode") == 2
     assert f"file: {code}" in expanded

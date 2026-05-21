@@ -9,8 +9,16 @@ CONTEXT_DIR = Path.home() / ".local" / "state" / "jcode-panel" / "contexts"
 VSCODE_CONTEXT_PATH = CONTEXT_DIR / "vscode.json"
 OBSIDIAN_CONTEXT_PATH = CONTEXT_DIR / "obsidian.json"
 
-INTERACTION_TAG_RE = re.compile(r"(?<![\w\[])@(vscode|obsidian)\b", re.IGNORECASE)
-INTERACTION_CHIP_RE = re.compile(r"\[(vscode|obsidian)\]", re.IGNORECASE)
+INTERACTION_SOURCES = {"vscode", "obsidian"}
+CHIP_LABELS = {
+    "vscode": "🔵 vscode",
+    "obsidian": "🟣 obsidian",
+}
+# @vscode, /vscode, @obsidian, /obsidian anywhere in the prompt.
+INTERACTION_TAG_RE = re.compile(r"(?<![\w\[])([@/])(vscode|obsidian)\b", re.IGNORECASE)
+# Accept new visual chips and legacy chips for backward compatibility.
+INTERACTION_CHIP_RE = re.compile(r"(?:⟦\s*(?:🔵|🟣)?\s*(vscode|obsidian)\s*⟧|\[(vscode|obsidian)\])", re.IGNORECASE)
+INTERACTION_CHIP_DELETE_RE = re.compile(r"(?:⟦\s*(?:🔵|🟣)?\s*(?:vscode|obsidian)\s*⟧|\[(?:vscode|obsidian)\])\s*$", re.IGNORECASE)
 
 
 @dataclass
@@ -24,13 +32,25 @@ class InteractionContextError(RuntimeError):
     pass
 
 
+def chip_for_source(source: str) -> str:
+    source = source.lower().strip()
+    return f"⟦{CHIP_LABELS.get(source, source)}⟧"
+
+
 def normalize_interaction_tags(text: str) -> str:
-    """Turn @vscode/@obsidian mentions into lightweight editable chips."""
-    return INTERACTION_TAG_RE.sub(lambda m: f"[{m.group(1).lower()}]", text)
+    """Turn @source or /source mentions into lightweight editable chips."""
+    return INTERACTION_TAG_RE.sub(lambda m: chip_for_source(m.group(2)), text)
 
 
 def interaction_sources(text: str) -> list[str]:
-    return [m.group(1).lower() for m in INTERACTION_CHIP_RE.finditer(text)]
+    sources: list[str] = []
+    for match in INTERACTION_CHIP_RE.finditer(text):
+        sources.append((match.group(1) or match.group(2)).lower())
+    return sources
+
+
+def strip_interaction_chips(text: str) -> str:
+    return re.sub(r"[ \t]{2,}", " ", INTERACTION_CHIP_RE.sub("", text)).strip()
 
 
 def expand_interaction_chips(text: str) -> str:
@@ -38,8 +58,7 @@ def expand_interaction_chips(text: str) -> str:
     sources = interaction_sources(text)
     if not sources:
         return text
-    prompt_text = INTERACTION_CHIP_RE.sub("", text)
-    prompt_text = re.sub(r"[ \t]{2,}", " ", prompt_text).strip()
+    prompt_text = strip_interaction_chips(text)
     blocks = [read_interaction_context(source).body for source in sources]
     return "\n\n".join([*blocks, "User prompt:\n" + prompt_text]).strip()
 
