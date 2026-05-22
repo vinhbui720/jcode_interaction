@@ -213,7 +213,7 @@ pub fn run() {
         }
         return;
     }
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(RuntimeState(Mutex::new(state::load_state())))
@@ -261,6 +261,12 @@ pub fn run() {
             crate::ui::windows::current_feedback,
             crate::ui::windows::hide_feedback,
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to run jcode-panel tauri app");
+        .build(tauri::generate_context!())
+        .expect("failed to build jcode-panel tauri app");
+
+    app.run(|_app_handle, event| {
+        if let tauri::RunEvent::ExitRequested { api, .. } = event {
+            api.prevent_exit();
+        }
+    });
 }

@@ -1,7 +1,10 @@
 use crate::core::{formatting, positioning, state::TokenStats};
 use serde::Serialize;
 use std::{process::Command, sync::Mutex, thread, time::Duration};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize};
+use tauri::{
+    AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder,
+};
 
 static LAST_FEEDBACK: Mutex<Option<FeedbackPayload>> = Mutex::new(None);
 
@@ -13,21 +16,90 @@ pub struct FeedbackPayload {
     pub stats: Option<TokenStats>,
 }
 
-fn show_window(app: &AppHandle, label: &str) -> Result<(), String> {
-    let window = app
-        .get_webview_window(label)
-        .ok_or_else(|| format!("missing window {label}"))?;
+#[derive(Debug, Clone, Copy)]
+enum PanelWindow {
+    Dropdown,
+    Prompt,
+    Settings,
+    Feedback,
+}
+
+impl PanelWindow {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Dropdown => "dropdown",
+            Self::Prompt => "prompt",
+            Self::Settings => "settings",
+            Self::Feedback => "feedback",
+        }
+    }
+
+    fn title(self) -> &'static str {
+        match self {
+            Self::Dropdown => "Jcode Interaction",
+            Self::Prompt => "Jcode Prompt",
+            Self::Settings => "Jcode Panel Settings",
+            Self::Feedback => "Jcode Feedback",
+        }
+    }
+
+    fn url(self) -> String {
+        format!("index.html?window={}", self.label())
+    }
+
+    fn size(self) -> (f64, f64) {
+        match self {
+            Self::Dropdown => (420.0, 620.0),
+            Self::Prompt => (720.0, 112.0),
+            Self::Settings => (720.0, 520.0),
+            Self::Feedback => (540.0, 300.0),
+        }
+    }
+
+    fn is_overlay(self) -> bool {
+        matches!(self, Self::Prompt | Self::Feedback)
+    }
+}
+
+fn ensure_window(app: &AppHandle, kind: PanelWindow) -> Result<WebviewWindow, String> {
+    if let Some(window) = app.get_webview_window(kind.label()) {
+        return Ok(window);
+    }
+    let (width, height) = kind.size();
+    let mut builder =
+        WebviewWindowBuilder::new(app, kind.label(), WebviewUrl::App(kind.url().into()))
+            .title(kind.title())
+            .inner_size(width, height)
+            .visible(false)
+            .resizable(!kind.is_overlay());
+
+    if kind.is_overlay() {
+        builder = builder
+            .decorations(false)
+            .transparent(true)
+            .shadow(false)
+            .always_on_top(true)
+            .skip_taskbar(true);
+    } else {
+        builder = builder.decorations(true);
+    }
+
+    builder.build().map_err(|err| err.to_string())
+}
+
+fn show_window(app: &AppHandle, kind: PanelWindow) -> Result<WebviewWindow, String> {
+    let window = ensure_window(app, kind)?;
     window.show().map_err(|err| err.to_string())?;
     window.unminimize().map_err(|err| err.to_string())?;
     window.set_focus().map_err(|err| err.to_string())?;
-    Ok(())
+    Ok(window)
 }
 
-fn hide_window(app: &AppHandle, label: &str) -> Result<(), String> {
-    let window = app
-        .get_webview_window(label)
-        .ok_or_else(|| format!("missing window {label}"))?;
-    window.hide().map_err(|err| err.to_string())
+fn close_window(app: &AppHandle, kind: PanelWindow) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window(kind.label()) {
+        window.close().map_err(|err| err.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -36,16 +108,13 @@ pub fn show_prompt(app: AppHandle) -> Result<(), String> {
 }
 
 pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("prompt") {
-        place_prompt_at_mouse_or_center(&window);
-    }
-    let result = show_window(app, "prompt");
-    if result.is_ok() {
-        if let Some(window) = app.get_webview_window("prompt") {
-            let _ = window.emit("prompt-shown", ());
-        }
-    }
-    result
+    let window = ensure_window(app, PanelWindow::Prompt)?;
+    place_prompt_at_mouse_or_center(&window);
+    window.show().map_err(|err| err.to_string())?;
+    window.unminimize().map_err(|err| err.to_string())?;
+    window.set_focus().map_err(|err| err.to_string())?;
+    let _ = window.emit("prompt-shown", ());
+    Ok(())
 }
 
 #[tauri::command]
@@ -91,19 +160,19 @@ fn mouse_position() -> Option<(i32, i32)> {
 
 #[tauri::command]
 pub fn hide_prompt(app: AppHandle) -> Result<(), String> {
-    let result = hide_window(&app, "prompt");
+    let result = close_window(&app, PanelWindow::Prompt);
     crate::app::reset_prompt_shortcut(&app);
     result
 }
 
 #[tauri::command]
 pub fn show_dropdown(app: AppHandle) -> Result<(), String> {
-    show_window(&app, "dropdown")
+    show_window(&app, PanelWindow::Dropdown).map(|_| ())
 }
 
 #[tauri::command]
 pub fn show_settings(app: AppHandle) -> Result<(), String> {
-    show_window(&app, "settings")
+    show_window(&app, PanelWindow::Settings).map(|_| ())
 }
 
 #[tauri::command]
@@ -147,9 +216,8 @@ pub fn show_feedback_window(
     let app_for_main = app.clone();
     let payload_for_main = payload.clone();
     app.run_on_main_thread(move || {
-        if let Some(window) = app_for_main.get_webview_window("feedback") {
-            let was_visible = window.is_visible().unwrap_or(false);
-            if !was_visible {
+        if let Ok(window) = ensure_window(&app_for_main, PanelWindow::Feedback) {
+            if !window.is_visible().unwrap_or(false) {
                 move_feedback_to_mouse_screen(&window);
                 let _ = window.show();
             }
@@ -185,7 +253,7 @@ pub fn current_feedback() -> Option<FeedbackPayload> {
 
 #[tauri::command]
 pub fn hide_feedback(app: AppHandle) -> Result<(), String> {
-    hide_window(&app, "feedback")?;
+    close_window(&app, PanelWindow::Feedback)?;
     crate::ui::status::set_process_status(&app, crate::core::activity::IDLE_STATUS)?;
     Ok(())
 }

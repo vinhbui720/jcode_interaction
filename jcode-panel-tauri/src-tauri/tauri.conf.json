@@ -11,56 +11,7 @@
   },
   "app": {
     "withGlobalTauri": false,
-    "windows": [
-      {
-        "label": "dropdown",
-        "title": "Jcode Interaction",
-        "url": "index.html?window=dropdown",
-        "width": 420,
-        "height": 620,
-        "visible": false,
-        "decorations": true,
-        "resizable": true
-      },
-      {
-        "label": "prompt",
-        "title": "Jcode Prompt",
-        "url": "index.html?window=prompt",
-        "width": 720,
-        "height": 112,
-        "visible": false,
-        "decorations": false,
-        "transparent": true,
-        "shadow": false,
-        "alwaysOnTop": true,
-        "resizable": false,
-        "skipTaskbar": true
-      },
-      {
-        "label": "settings",
-        "title": "Jcode Panel Settings",
-        "url": "index.html?window=settings",
-        "width": 720,
-        "height": 520,
-        "visible": false,
-        "decorations": true,
-        "resizable": true
-      },
-      {
-        "label": "feedback",
-        "title": "Jcode Feedback",
-        "url": "index.html?window=feedback",
-        "width": 540,
-        "height": 300,
-        "visible": false,
-        "decorations": false,
-        "transparent": true,
-        "shadow": false,
-        "alwaysOnTop": true,
-        "resizable": false,
-        "skipTaskbar": true
-      }
-    ]
+    "windows": []
   },
   "bundle": {
     "active": true,
