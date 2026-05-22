@@ -49,8 +49,10 @@ class AppState:
             browser_bridge_seen=bool(raw.get("browser_bridge_seen", False)),
         )
 
-    def save(self, path: Path = STATE_PATH) -> None:
+    def save(self, path: Path = STATE_PATH, *, allow_clear_session: bool = False) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
+        if not allow_clear_session:
+            self._preserve_existing_non_empty_values(path)
         data: dict[str, Any] = asdict(self)
         # Keep fallback TOML parser simple and deterministic.
         data["prompt_history"] = PROMPT_HISTORY_SEPARATOR.join(self.prompt_history[-100:])
@@ -90,3 +92,28 @@ class AppState:
 
     def set_last_token_stats(self, stats: str) -> None:
         self.last_token_stats = stats.strip()
+
+    def _preserve_existing_non_empty_values(self, path: Path) -> None:
+        """Avoid clobbering durable runtime state with startup/default blanks.
+
+        Startup and settings flows can construct a fresh AppState before jcode has
+        reported a session or token usage. Those flows should not erase the last
+        known resumable session/token badge. Explicit user actions, such as
+        starting a new section, pass allow_clear_session=True to permit clearing.
+        """
+        try:
+            existing = AppState.load(path)
+        except Exception:
+            return
+        if not self.saved_session and existing.saved_session:
+            self.saved_session = existing.saved_session
+        if (not self.saved_session_name or self.saved_session_name == "jcode-panel") and existing.saved_session_name:
+            self.saved_session_name = existing.saved_session_name
+        if not self.last_token_stats and existing.last_token_stats:
+            self.last_token_stats = existing.last_token_stats
+        if not self.prompt_history and existing.prompt_history:
+            self.prompt_history = existing.prompt_history
+        if not self.last_context_summary and existing.last_context_summary:
+            self.last_context_summary = existing.last_context_summary
+        if not self.browser_bridge_seen and existing.browser_bridge_seen:
+            self.browser_bridge_seen = existing.browser_bridge_seen

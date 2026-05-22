@@ -31,8 +31,20 @@ class AppController:
 
     def __init__(self, config: AppConfig, state: AppState | None = None):
         self.config = config
+        state_provided = state is not None
         self.state = state or AppState.load()
+        if not state_provided:
+            self._sync_persisted_session_fields()
         self.prompt_builder = PromptBuilder()
+
+    def _sync_persisted_session_fields(self) -> None:
+        """Keep legacy config session and durable state from drifting apart."""
+        if not self.state.saved_session and self.config.session.saved_session:
+            self.state.set_saved_session(self.config.session.saved_session)
+            self.state.save()
+        elif self.state.saved_session and self.config.session.saved_session != self.state.saved_session:
+            self.config.session.saved_session = self.state.saved_session
+            self.config.save()
 
     @property
     def active_session(self) -> str:
@@ -63,6 +75,6 @@ class AppController:
         self.state.set_saved_session("")
         self.state.set_saved_session_name(section_name)
         self.config.session.saved_session = ""
-        self.state.save()
+        self.state.save(allow_clear_session=True)
         self.config.save()
         return section_name

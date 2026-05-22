@@ -117,6 +117,30 @@ def test_state_loads_backup_when_primary_missing(tmp_path: Path):
     assert loaded.last_token_stats == "9,8,7,6"
 
 
+def test_state_save_preserves_existing_session_and_tokens_when_blank(tmp_path: Path):
+    path = tmp_path / "state.toml"
+    AppState(saved_session="fox", saved_session_name="Panel Fox", last_token_stats="tokens: total 42").save(path)
+
+    AppState().save(path)
+    loaded = AppState.load(path)
+
+    assert loaded.saved_session == "fox"
+    assert loaded.saved_session_name == "Panel Fox"
+    assert loaded.last_token_stats == "tokens: total 42"
+
+
+def test_state_save_can_intentionally_clear_session_for_new_section(tmp_path: Path):
+    path = tmp_path / "state.toml"
+    AppState(saved_session="fox", saved_session_name="Panel Fox", last_token_stats="tokens: total 42").save(path)
+
+    AppState(saved_session="", saved_session_name="Fresh Panel", last_token_stats="").save(path, allow_clear_session=True)
+    loaded = AppState.load(path)
+
+    assert loaded.saved_session == ""
+    assert loaded.saved_session_name == "Fresh Panel"
+    assert loaded.last_token_stats == ""
+
+
 def test_prompt_builder_sends_direct_text_without_context_or_metadata():
     ctx = ActiveContext(
         app="Firefox",
