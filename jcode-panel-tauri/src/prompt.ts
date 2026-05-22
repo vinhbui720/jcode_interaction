@@ -14,6 +14,27 @@ export async function renderPrompt(root: HTMLElement) {
     </main>`;
   const input = root.querySelector<HTMLInputElement>('#prompt-input')!;
   const hint = root.querySelector<HTMLDivElement>('#prompt-hint')!;
+  const send = root.querySelector<HTMLButtonElement>('#send')!;
+  let submitting = false;
+  let followTimer: number | undefined;
+
+  const stopFollowing = () => {
+    if (followTimer) window.clearInterval(followTimer);
+    followTimer = undefined;
+  };
+  const startFollowing = () => {
+    stopFollowing();
+    followTimer = window.setInterval(async () => {
+      try {
+        const keepGoing = await api.promptFollowMouseTick();
+        if (!keepGoing) stopFollowing();
+      } catch {
+        stopFollowing();
+      }
+    }, 16);
+  };
+  startFollowing();
+
   try {
     const [ctx, chips] = await Promise.all([api.activeContextSnapshot(), api.popupContextChips()]);
     if (!input.value && chips.length) {
@@ -26,7 +47,36 @@ export async function renderPrompt(root: HTMLElement) {
   } catch {
     // Context capture is best-effort, keep prompt usable without X11 helpers.
   }
-  root.querySelector<HTMLButtonElement>('#close')!.onclick = () => api.hidePrompt();
+
+  const hide = async () => {
+    stopFollowing();
+    await api.hidePrompt();
+  };
+
+  const submit = async () => {
+    if (submitting) return;
+    const value = input.value.trim();
+    if (!value) return;
+    submitting = true;
+    stopFollowing();
+    input.disabled = true;
+    send.disabled = true;
+    try {
+      await api.showFeedback('Sending prompt to jcode...', 'Working');
+      const result = await api.submitPrompt(value);
+      await api.showFeedback(result.output || 'Done.', result.ok ? 'jcode response complete' : 'jcode returned an error', result.token_stats ?? null);
+      input.value = '';
+      await api.hidePrompt();
+    } catch (error) {
+      await api.showFeedback(String(error || 'Prompt failed'), 'Error');
+      input.disabled = false;
+      send.disabled = false;
+      input.focus();
+      submitting = false;
+    }
+  };
+
+  root.querySelector<HTMLButtonElement>('#close')!.onclick = hide;
   root.querySelector<HTMLButtonElement>('#shot')!.onclick = async () => {
     hint.textContent = 'Capturing screenshot...';
     try {
@@ -38,33 +88,26 @@ export async function renderPrompt(root: HTMLElement) {
       hint.textContent = String(error || 'Screenshot failed');
     }
   };
-  root.querySelector<HTMLButtonElement>('#send')!.onclick = async () => {
-    const value = input.value.trim();
-    if (!value) return;
-    input.disabled = true;
-    try {
-      await api.showFeedback('Sending prompt to jcode...', 'Working');
-      const result = await api.submitPrompt(value);
-      await api.showFeedback(result.output || 'Done.', result.ok ? 'jcode response complete' : 'jcode returned an error', result.token_stats ?? null);
-      input.value = '';
-      await api.hidePrompt();
-    } catch (error) {
-      await api.showFeedback(String(error || 'Prompt failed'), 'Error');
-    } finally {
-      input.disabled = false;
-      input.focus();
-    }
-  };
+  send.onclick = submit;
   input.addEventListener('keydown', async (event) => {
-    if (event.key === 'Escape') await api.hidePrompt();
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      await hide();
+      return;
+    }
     if (event.key === 'Tab') {
       event.preventDefault();
       const result = await api.normalizePromptText(input.value);
       input.value = result.text;
       input.setSelectionRange(input.value.length, input.value.length);
       hint.textContent = result.hints.length ? `Context: ${result.hints.join(', ')}` : 'Context chip ready';
+      return;
     }
-    if (event.key === 'Enter') root.querySelector<HTMLButtonElement>('#send')!.click();
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      event.stopPropagation();
+      await submit();
+    }
   });
   input.addEventListener('input', async () => {
     const result = await api.normalizePromptText(input.value);
@@ -74,5 +117,6 @@ export async function renderPrompt(root: HTMLElement) {
     }
     hint.textContent = result.hints.length ? `Context: ${result.hints.join(', ')}` : 'Use @vscode/@obsidian for live app context, 📷 for a screenshot tag.';
   });
+  window.addEventListener('beforeunload', stopFollowing);
   setTimeout(() => input.focus(), 50);
 }

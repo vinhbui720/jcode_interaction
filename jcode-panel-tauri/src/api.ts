@@ -28,6 +28,7 @@ export const api = {
   showPrompt: () => invoke('show_prompt'),
   showDropdown: () => invoke('show_dropdown'),
   showSettings: () => invoke('show_settings'),
+  promptFollowMouseTick: () => invoke<boolean>('prompt_follow_mouse_tick'),
   showFeedback: (text: string, notice?: string, stats?: { upload: number; download: number; cache_read: number; cache_write: number } | null) => invoke('show_feedback', { text, notice, stats }),
   hideFeedback: () => invoke('hide_feedback'),
   hidePrompt: () => invoke('hide_prompt'),

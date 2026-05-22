@@ -1,7 +1,18 @@
 use crate::core::{formatting, positioning, state::TokenStats};
 use serde::Serialize;
-use std::{process::Command, thread, time::Duration};
+use std::{process::Command, sync::Mutex};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewWindow};
+
+static PROMPT_TRACKING: Mutex<PromptTrackingState> = Mutex::new(PromptTrackingState {
+    current_x: None,
+    current_y: None,
+});
+
+#[derive(Debug, Clone, Copy)]
+struct PromptTrackingState {
+    current_x: Option<f64>,
+    current_y: Option<f64>,
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FeedbackPayload {
@@ -29,48 +40,58 @@ pub fn show_prompt(app: AppHandle) -> Result<(), String> {
 }
 
 pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
+    reset_prompt_tracking();
     if let Some(window) = app.get_webview_window("prompt") {
         place_prompt_at_mouse_or_center(&window);
     }
-    show_window(app, "prompt")?;
-    start_prompt_mouse_follow(app);
-    Ok(())
+    show_window(app, "prompt")
 }
 
-fn start_prompt_mouse_follow(app: &AppHandle) {
-    let app = app.clone();
-    thread::spawn(move || {
-        let mut current: Option<(f64, f64)> = None;
-        for _ in 0..90 {
-            let Some(window) = app.get_webview_window("prompt") else {
-                break;
-            };
-            if !window.is_visible().unwrap_or(false) {
-                break;
+#[tauri::command]
+pub fn prompt_follow_mouse_tick(app: AppHandle) -> Result<bool, String> {
+    let Some(window) = app.get_webview_window("prompt") else {
+        return Ok(false);
+    };
+    if !window.is_visible().unwrap_or(false) {
+        reset_prompt_tracking();
+        return Ok(false);
+    }
+    let Some((x, y)) = mouse_position() else {
+        return Ok(true);
+    };
+    if x <= 2 && y <= 2 {
+        return Ok(true);
+    }
+    let target = ((x + 20).max(0) as f64, (y + 24).max(0) as f64);
+    let next = {
+        let mut tracking = PROMPT_TRACKING
+            .lock()
+            .map_err(|_| "prompt tracking lock poisoned".to_string())?;
+        let next = match (tracking.current_x, tracking.current_y) {
+            (Some(cx), Some(cy)) => {
+                let alpha = 0.55;
+                (
+                    smooth_step(cx, target.0, alpha),
+                    smooth_step(cy, target.1, alpha),
+                )
             }
-            let Some((x, y)) = mouse_position() else {
-                thread::sleep(Duration::from_millis(16));
-                continue;
-            };
-            if x <= 2 && y <= 2 {
-                thread::sleep(Duration::from_millis(16));
-                continue;
-            }
-            let target = ((x + 20).max(0) as f64, (y + 24).max(0) as f64);
-            let next = match current {
-                None => target,
-                Some((cx, cy)) => {
-                    let alpha = 0.55;
-                    let nx = smooth_step(cx, target.0, alpha);
-                    let ny = smooth_step(cy, target.1, alpha);
-                    (nx, ny)
-                }
-            };
-            current = Some(next);
-            let _ = window.set_position(PhysicalPosition::new(next.0 as i32, next.1 as i32));
-            thread::sleep(Duration::from_millis(16));
-        }
-    });
+            _ => target,
+        };
+        tracking.current_x = Some(next.0);
+        tracking.current_y = Some(next.1);
+        next
+    };
+    window
+        .set_position(PhysicalPosition::new(next.0 as i32, next.1 as i32))
+        .map_err(|err| err.to_string())?;
+    Ok(true)
+}
+
+fn reset_prompt_tracking() {
+    if let Ok(mut tracking) = PROMPT_TRACKING.lock() {
+        tracking.current_x = None;
+        tracking.current_y = None;
+    }
 }
 
 fn smooth_step(current: f64, target: f64, alpha: f64) -> f64 {
@@ -107,6 +128,7 @@ fn mouse_position() -> Option<(i32, i32)> {
 
 #[tauri::command]
 pub fn hide_prompt(window: WebviewWindow) -> Result<(), String> {
+    reset_prompt_tracking();
     hide_window(window)
 }
 
