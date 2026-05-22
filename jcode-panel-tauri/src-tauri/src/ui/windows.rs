@@ -99,11 +99,12 @@ fn ensure_window(app: &AppHandle, kind: PanelWindow) -> Result<WebviewWindow, St
 fn show_window(app: &AppHandle, kind: PanelWindow) -> Result<WebviewWindow, String> {
     let window = ensure_window(app, kind)?;
     if !kind.is_overlay() {
-        let _ = window.center();
+        place_window_on_mouse_screen(&window);
     }
     window.show().map_err(|err| err.to_string())?;
     window.unminimize().map_err(|err| err.to_string())?;
     window.set_focus().map_err(|err| err.to_string())?;
+    activate_window_title(kind.title());
     Ok(window)
 }
 
@@ -125,9 +126,36 @@ pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
     window.show().map_err(|err| err.to_string())?;
     window.unminimize().map_err(|err| err.to_string())?;
     window.set_focus().map_err(|err| err.to_string())?;
+    activate_window_title(PanelWindow::Prompt.title());
     let _ = window.emit("prompt-shown", ());
     follow_prompt_while_visible(app.clone());
     Ok(())
+}
+
+fn place_window_on_mouse_screen(window: &tauri::WebviewWindow) {
+    let monitor = monitor_at_mouse(window).or_else(|| window.current_monitor().ok().flatten());
+    if let Some(monitor) = monitor {
+        let pos = monitor.position();
+        let size = monitor.size();
+        let window_size = window
+            .outer_size()
+            .ok()
+            .unwrap_or_else(|| PhysicalSize::new(720_u32, 520_u32));
+        let x = pos.x + ((size.width as i32 - window_size.width as i32) / 2).max(0);
+        let y = pos.y + ((size.height as i32 - window_size.height as i32) / 2).max(0);
+        let _ = window.set_position(PhysicalPosition::new(x, y));
+    } else {
+        let _ = window.center();
+    }
+}
+
+fn activate_window_title(title: &str) {
+    if std::env::var_os("DISPLAY").is_none() {
+        return;
+    }
+    let _ = Command::new("xdotool")
+        .args(["search", "--name", title, "windowactivate", "--sync", "%@"])
+        .spawn();
 }
 
 #[tauri::command]

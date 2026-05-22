@@ -8,7 +8,8 @@ use crate::{
 };
 use std::{
     fs,
-    io::Write,
+    io::{BufRead, BufReader, Write},
+    net::Shutdown,
     os::unix::net::{UnixListener, UnixStream},
     path::PathBuf,
     process,
@@ -87,7 +88,9 @@ fn send_request_to_running_instance(command: &str) -> bool {
     let Ok(mut stream) = UnixStream::connect(socket_path()) else {
         return false;
     };
-    stream.write_all(command.as_bytes()).is_ok() && stream.write_all(b"\n").is_ok()
+    let ok = stream.write_all(command.as_bytes()).is_ok() && stream.write_all(b"\n").is_ok();
+    let _ = stream.shutdown(Shutdown::Write);
+    ok
 }
 
 fn start_ipc_server(app: &tauri::AppHandle) {
@@ -102,11 +105,12 @@ fn start_ipc_server(app: &tauri::AppHandle) {
     let app = app.clone();
     thread::spawn(move || {
         for stream in listener.incoming() {
-            let Ok(mut stream) = stream else {
+            let Ok(stream) = stream else {
                 continue;
             };
+            let mut reader = BufReader::new(stream);
             let mut command = String::new();
-            let _ = std::io::Read::read_to_string(&mut stream, &mut command);
+            let _ = reader.read_line(&mut command);
             let command = command.trim().to_string();
             let app_for_main = app.clone();
             let _ = app.run_on_main_thread(move || {
