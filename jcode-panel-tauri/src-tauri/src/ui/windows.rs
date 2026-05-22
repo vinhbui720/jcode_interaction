@@ -64,7 +64,6 @@ pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
     if result.is_ok() {
         activate_prompt_window();
         start_prompt_focus_guard(app);
-        start_prompt_mouse_follow(app);
         if let Some(window) = app.get_webview_window("prompt") {
             let _ = window.emit("prompt-shown", ());
         }
@@ -97,7 +96,10 @@ fn start_prompt_focus_guard(app: &AppHandle) {
     PROMPT_FOCUS_ACTIVE.store(true, Ordering::SeqCst);
     let app = app.clone();
     thread::spawn(move || {
-        while PROMPT_FOCUS_ACTIVE.load(Ordering::SeqCst) {
+        for _ in 0..8 {
+            if !PROMPT_FOCUS_ACTIVE.load(Ordering::SeqCst) {
+                break;
+            }
             let visible = app
                 .get_webview_window("prompt")
                 .and_then(|window| window.is_visible().ok())
@@ -107,8 +109,9 @@ fn start_prompt_focus_guard(app: &AppHandle) {
                 break;
             }
             activate_prompt_once();
-            thread::sleep(Duration::from_millis(120));
+            thread::sleep(Duration::from_millis(80));
         }
+        PROMPT_FOCUS_ACTIVE.store(false, Ordering::SeqCst);
     });
 }
 
@@ -132,41 +135,6 @@ fn activate_prompt_once() {
         .status();
 }
 
-fn start_prompt_mouse_follow(app: &AppHandle) {
-    stop_prompt_mouse_follow();
-    PROMPT_TRACKING_ACTIVE.store(true, Ordering::SeqCst);
-    let app = app.clone();
-    thread::spawn(move || {
-        while PROMPT_TRACKING_ACTIVE.load(Ordering::SeqCst) {
-            let Some((x, y)) = mouse_position() else {
-                thread::sleep(Duration::from_millis(16));
-                continue;
-            };
-            if x <= 2 && y <= 2 {
-                thread::sleep(Duration::from_millis(16));
-                continue;
-            }
-            let target = ((x + 20).max(0) as f64, (y + 24).max(0) as f64);
-            let next = next_prompt_position(target).unwrap_or(target);
-            let app_for_main = app.clone();
-            let _ = app.run_on_main_thread(move || {
-                let Some(window) = app_for_main.get_webview_window("prompt") else {
-                    PROMPT_TRACKING_ACTIVE.store(false, Ordering::SeqCst);
-                    return;
-                };
-                if !window.is_visible().unwrap_or(false) {
-                    PROMPT_TRACKING_ACTIVE.store(false, Ordering::SeqCst);
-                    reset_prompt_tracking();
-                    return;
-                }
-                let _ = window.set_position(PhysicalPosition::new(next.0 as i32, next.1 as i32));
-            });
-            thread::sleep(Duration::from_millis(16));
-        }
-        reset_prompt_tracking();
-    });
-}
-
 fn stop_prompt_mouse_follow() {
     PROMPT_TRACKING_ACTIVE.store(false, Ordering::SeqCst);
 }
@@ -178,25 +146,6 @@ pub fn prompt_follow_mouse_tick(app: AppHandle) -> Result<bool, String> {
         .get_webview_window("prompt")
         .and_then(|window| window.is_visible().ok())
         .unwrap_or(false))
-}
-
-fn next_prompt_position(target: (f64, f64)) -> Result<(f64, f64), String> {
-    let mut tracking = PROMPT_TRACKING
-        .lock()
-        .map_err(|_| "prompt tracking lock poisoned".to_string())?;
-    let next = match (tracking.current_x, tracking.current_y) {
-        (Some(cx), Some(cy)) => {
-            let alpha = 0.55;
-            (
-                smooth_step(cx, target.0, alpha),
-                smooth_step(cy, target.1, alpha),
-            )
-        }
-        _ => target,
-    };
-    tracking.current_x = Some(next.0);
-    tracking.current_y = Some(next.1);
-    Ok(next)
 }
 
 fn reset_prompt_tracking() {

@@ -48,36 +48,7 @@ pub fn header_status(process_status: &str, activity: Option<&LiveActivity>) -> S
 pub fn ready_status(client_name: &str) -> String {
     let name = client_name.trim();
     let name = if name.is_empty() { "jcode" } else { name };
-    let icon = client_icon(name);
-    if icon.is_empty() {
-        truncate_header_label(&format!("{name} Ready"))
-    } else {
-        truncate_header_label(&format!("{icon} {name} Ready"))
-    }
-}
-
-pub fn client_icon(client_name: &str) -> &'static str {
-    match client_name.trim().to_ascii_lowercase().as_str() {
-        "giraffe" => "🦒",
-        "rabbit" => "🐇",
-        "fox" => "🦊",
-        "wolf" => "🐺",
-        "bear" => "🐻",
-        "panda" => "🐼",
-        "cat" => "🐱",
-        "dog" => "🐶",
-        "owl" => "🦉",
-        "whale" => "🐋",
-        "dolphin" => "🐬",
-        "tiger" => "🐯",
-        "lion" => "🦁",
-        "monkey" => "🐒",
-        "penguin" => "🐧",
-        "koala" => "🐨",
-        "frog" => "🐸",
-        "dragon" => "🐉",
-        _ => "",
-    }
+    truncate_header_label(&format!("{name} Ready"))
 }
 
 pub fn header_status_at(
