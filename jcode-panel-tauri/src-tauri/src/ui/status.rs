@@ -1,5 +1,5 @@
 use crate::{
-    core::{activity, state},
+    core::{activity, protocol, state},
     ui::commands::RuntimeState,
 };
 use std::{thread, time::Duration};
@@ -80,6 +80,71 @@ pub fn refresh_header_status(app: &AppHandle) -> Result<(), String> {
         .clone();
     let header = header_for_state(&state);
     set_header_status(app, &header)
+}
+
+pub fn record_stream_event(app: &AppHandle, event: &protocol::PanelEvent) -> Result<(), String> {
+    use protocol::PanelEventKind;
+    match event.kind {
+        PanelEventKind::Status | PanelEventKind::Progress | PanelEventKind::Tool => {
+            let label = protocol::activity_label(event.raw.as_ref(), &event.text);
+            let state_text = protocol::activity_state(event.raw.as_ref(), &event.text);
+            let label = if label.trim().is_empty() {
+                event.kind_label().to_string()
+            } else {
+                label
+            };
+            let state_text = if state_text.trim().is_empty() {
+                event.kind_label().to_string()
+            } else {
+                state_text
+            };
+            let terminal = protocol::activity_is_terminal(event);
+            let header = {
+                let runtime = app.state::<RuntimeState>();
+                let mut app_state = runtime.0.lock().expect("state lock");
+                if terminal {
+                    app_state.process_status = state_text.clone();
+                    app_state.live_activity = None;
+                } else {
+                    let mut live = activity::LiveActivity::new(label, state_text.clone());
+                    if let Some(existing) = app_state.live_activity.as_ref() {
+                        if existing.active && existing.label == live.label {
+                            live.started_at_ms = existing.started_at_ms;
+                        }
+                    }
+                    app_state.process_status = state_text;
+                    app_state.live_activity = Some(live);
+                }
+                let header = header_for_state(&app_state);
+                state::save_state(&app_state).map_err(|err| err.to_string())?;
+                header
+            };
+            set_header_status(app, &header)?;
+        }
+        PanelEventKind::Message if !event.text.trim().is_empty() => {
+            let header = {
+                let runtime = app.state::<RuntimeState>();
+                let mut app_state = runtime.0.lock().expect("state lock");
+                let mut live = activity::LiveActivity::new("jcode", activity::ANSWERING_STATUS);
+                if let Some(existing) = app_state.live_activity.as_ref() {
+                    if existing.active && existing.label == live.label {
+                        live.started_at_ms = existing.started_at_ms;
+                    }
+                }
+                app_state.process_status = activity::ANSWERING_STATUS.into();
+                app_state.live_activity = Some(live);
+                let header = header_for_state(&app_state);
+                state::save_state(&app_state).map_err(|err| err.to_string())?;
+                header
+            };
+            set_header_status(app, &header)?;
+        }
+        PanelEventKind::Error => {
+            set_process_status(app, activity::ERROR_STATUS)?;
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 pub fn header_for_state(state: &state::AppState) -> String {

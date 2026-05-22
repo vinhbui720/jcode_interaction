@@ -1,7 +1,8 @@
 use crate::core::{formatting, protocol, state::TokenStats};
 use serde::{Deserialize, Serialize};
 use std::{
-    process::Command,
+    io::{BufRead, BufReader},
+    process::{Command, Stdio},
     sync::{Mutex, OnceLock},
     time::{Duration, Instant},
 };
@@ -143,6 +144,17 @@ pub fn jcode_available_cached() -> bool {
 }
 
 pub fn send_prompt(prompt: &str, session_id: Option<&str>) -> anyhow::Result<SendResult> {
+    send_prompt_streaming(prompt, session_id, |_| {})
+}
+
+pub fn send_prompt_streaming<F>(
+    prompt: &str,
+    session_id: Option<&str>,
+    mut on_event: F,
+) -> anyhow::Result<SendResult>
+where
+    F: FnMut(protocol::PanelEvent),
+{
     let prompt = prompt.trim();
     let mut command = Command::new("jcode");
     if let Some(session) = session_id.filter(|s| !s.trim().is_empty()) {
@@ -155,10 +167,25 @@ pub fn send_prompt(prompt: &str, session_id: Option<&str>) -> anyhow::Result<Sen
         command.arg("run").arg("--ndjson");
     }
     command.arg(prompt);
-    let output = command.output()?;
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = command.spawn()?;
+    let stdout = child.stdout.take().expect("stdout piped");
+    let mut parsed = ParsedRunOutput::default();
+    let mut raw_stdout = String::new();
+    for line in BufReader::new(stdout).lines() {
+        let line = line?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        raw_stdout.push_str(&line);
+        raw_stdout.push('\n');
+        let event = protocol::parse_panel_event(&line);
+        apply_event_to_parsed(&mut parsed, &event);
+        on_event(event);
+    }
+    let output = child.wait_with_output()?;
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    let parsed = parse_run_output(&stdout);
+    finalize_parsed_text(&mut parsed);
     Ok(SendResult {
         ok: output.status.success(),
         session_id: parsed
@@ -166,10 +193,10 @@ pub fn send_prompt(prompt: &str, session_id: Option<&str>) -> anyhow::Result<Sen
             .or_else(|| session_id.map(str::to_string).filter(|s| !s.is_empty())),
         output: if !parsed.text.trim().is_empty() {
             parsed.text
-        } else if stdout.trim().is_empty() {
+        } else if raw_stdout.trim().is_empty() {
             stderr
         } else {
-            stdout
+            raw_stdout
         },
         token_stats: parsed.token_stats,
     })
@@ -184,27 +211,35 @@ struct ParsedRunOutput {
 
 fn parse_run_output(output: &str) -> ParsedRunOutput {
     let mut parsed = ParsedRunOutput::default();
-    let mut chunks = vec![];
     for line in output.lines().filter(|line| !line.trim().is_empty()) {
         let event = protocol::parse_panel_event(line);
-        if !event.session_id.is_empty() {
-            parsed.session_id = Some(event.session_id.clone());
-        }
-        if let Some(raw) = event.raw.as_ref() {
-            if let Some(stats) = token_stats_from_raw(raw) {
-                parsed.token_stats = Some(stats);
-            }
-        }
-        if !event.text.trim().is_empty() {
-            chunks.push(event.text);
+        apply_event_to_parsed(&mut parsed, &event);
+    }
+    finalize_parsed_text(&mut parsed);
+    parsed
+}
+
+fn apply_event_to_parsed(parsed: &mut ParsedRunOutput, event: &protocol::PanelEvent) {
+    if !event.session_id.is_empty() {
+        parsed.session_id = Some(event.session_id.clone());
+    }
+    if let Some(raw) = event.raw.as_ref() {
+        if let Some(stats) = token_stats_from_raw(raw) {
+            parsed.token_stats = Some(stats);
         }
     }
-    let (cleaned, inline_stats) = formatting::split_token_stats(&chunks.join("\n"));
+    if !event.text.trim().is_empty() {
+        parsed.text.push_str(&event.text);
+        parsed.text.push('\n');
+    }
+}
+
+fn finalize_parsed_text(parsed: &mut ParsedRunOutput) {
+    let (cleaned, inline_stats) = formatting::split_token_stats(&parsed.text);
     if parsed.token_stats.is_none() {
         parsed.token_stats = token_stats_from_csv(&inline_stats);
     }
-    parsed.text = cleaned;
-    parsed
+    parsed.text = cleaned.trim().to_string();
 }
 
 fn token_stats_from_csv(stats: &str) -> Option<TokenStats> {

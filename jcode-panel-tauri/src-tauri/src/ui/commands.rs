@@ -1,7 +1,7 @@
 use crate::{
     core::{
         config, controller, conversation, diagnostics, formatting, interaction_context, jcode,
-        popup_context, state, terminal,
+        popup_context, protocol, state, terminal,
     },
     integrations,
     ui::status,
@@ -235,8 +235,25 @@ fn submit_prompt_background(app: &AppHandle, prompt: String) -> Result<(), Strin
         .collect();
     let outgoing_prompt = formatting::expand_pic_tags(&expanded, &screenshots);
     let (outgoing_prompt, _) = controller.build_prompt(&outgoing_prompt, None, true, false);
-    let result =
-        jcode::send_prompt(&outgoing_prompt, session.as_deref()).map_err(|err| err.to_string())?;
+    let mut live_feedback = String::new();
+    let app_for_events = app.clone();
+    let result = jcode::send_prompt_streaming(&outgoing_prompt, session.as_deref(), move |event| {
+        let _ = status::record_stream_event(&app_for_events, &event);
+        let notice = protocol::event_preview(&event, false);
+        if matches!(event.kind, protocol::PanelEventKind::Message) && !event.text.trim().is_empty()
+        {
+            live_feedback.push_str(&event.text);
+        }
+        let text = if live_feedback.trim().is_empty() {
+            notice.clone()
+        } else {
+            live_feedback.clone()
+        };
+        if !text.trim().is_empty() || !notice.trim().is_empty() {
+            let _ = crate::ui::windows::show_feedback_window(&app_for_events, &text, &notice, None);
+        }
+    })
+    .map_err(|err| err.to_string())?;
     status::record_jcode_response(
         app,
         &result.output,

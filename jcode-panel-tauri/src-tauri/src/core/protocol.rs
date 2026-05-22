@@ -34,6 +34,22 @@ pub struct PanelEvent {
     pub raw: Option<Value>,
 }
 
+impl PanelEvent {
+    pub fn kind_label(&self) -> &'static str {
+        match self.kind {
+            PanelEventKind::Message => "message",
+            PanelEventKind::Status => "status",
+            PanelEventKind::Progress => "progress",
+            PanelEventKind::Error => "error",
+            PanelEventKind::Session => "session",
+            PanelEventKind::Completions => "completions",
+            PanelEventKind::UiHint => "ui hint",
+            PanelEventKind::Tool => "tool",
+            PanelEventKind::Raw => "raw",
+        }
+    }
+}
+
 pub fn parse_panel_event(line: &str) -> PanelEvent {
     let Ok(value) = serde_json::from_str::<Value>(line) else {
         return PanelEvent {
