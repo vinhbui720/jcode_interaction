@@ -100,7 +100,7 @@ fn start_prompt_mouse_follow(app: &AppHandle) {
                     });
                 }
             }
-            thread::sleep(Duration::from_millis(120));
+            thread::sleep(Duration::from_millis(50));
         }
         reset_prompt_tracking();
     });
@@ -132,12 +132,12 @@ fn next_prompt_position_if_changed(target: (f64, f64)) -> Result<Option<(f64, f6
         .map_err(|_| "prompt tracking lock poisoned".to_string())?;
     let next = match (tracking.current_x, tracking.current_y) {
         (Some(cx), Some(cy)) => {
-            if (target.0 - cx).abs() < 10.0 && (target.1 - cy).abs() < 10.0 {
+            if (target.0 - cx).abs() < 4.0 && (target.1 - cy).abs() < 4.0 {
                 return Ok(None);
             }
             (
-                smooth_step(cx, target.0, 0.45),
-                smooth_step(cy, target.1, 0.45),
+                smooth_step(cx, target.0, 0.65),
+                smooth_step(cy, target.1, 0.65),
             )
         }
         _ => target,

@@ -92,6 +92,23 @@ export function renderPrompt(root: HTMLElement) {
     setTimeout(() => input.focus(), 120);
   };
 
+  const loadPromptContext = async () => {
+    try {
+      const chips = await api.popupContextChips();
+      if (!input.value.trim() && chips.length) {
+        input.value = `${chips.map((chip) => chip.tag).join(' ')} `;
+        input.setSelectionRange(input.value.length, input.value.length);
+      }
+      if (chips.length) {
+        const summary = chips.map((chip) => chip.kind).join(' · ');
+        currentSuggestions = [{ value: '', label: 'context', detail: summary }];
+      }
+      updateUi();
+    } catch {
+      updateUi();
+    }
+  };
+
   const hide = async () => {
     try { await api.hidePrompt(); } catch { /* keep UI responsive */ }
   };
@@ -223,24 +240,16 @@ export function renderPrompt(root: HTMLElement) {
   input.addEventListener('click', updateUi);
   input.addEventListener('keyup', updateUi);
 
-  void listen('prompt-shown', () => focusInput());
+  void listen('prompt-shown', () => {
+    focusInput();
+    void loadPromptContext();
+  });
 
   void api.snapshot().then((snapshot) => {
     maxChars = snapshot.config.max_prompt_chars || maxChars;
     screenshotHotkey = snapshot.config.screenshot_hotkey || screenshotHotkey;
     updateUi();
   }).catch(updateUi);
-
-  void Promise.all([api.activeContextSnapshot(), api.popupContextChips()]).then(([ctx, chips]) => {
-    if (!input.value && chips.length) {
-      input.value = `${chips.map((chip) => chip.tag).join(' ')} `;
-    }
-    let browserHost = '';
-    try { browserHost = ctx.browser?.url ? new URL(ctx.browser.url).host : ''; } catch { browserHost = ctx.browser?.title ?? ''; }
-    const summary = [ctx.app || (browserHost ? 'Browser' : ''), browserHost || ctx.window_title, (ctx.browser?.selected_text || ctx.selected_text) ? 'selected text' : ''].filter(Boolean).join(' · ');
-    if (summary) currentSuggestions = [{ value: '', label: 'context', detail: summary }];
-    updateUi();
-  }).catch(() => {});
 
   updateUi();
   focusInput();
