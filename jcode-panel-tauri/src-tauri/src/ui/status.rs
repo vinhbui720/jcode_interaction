@@ -2,6 +2,7 @@ use crate::{
     core::{activity, state},
     ui::commands::RuntimeState,
 };
+use std::{thread, time::Duration};
 use tauri::{AppHandle, Manager};
 
 pub fn set_process_status(app: &AppHandle, process_status: &str) -> Result<(), String> {
@@ -37,7 +38,35 @@ pub fn start_activity(app: &AppHandle, process_status: &str, label: &str) -> Res
         state.live_activity = Some(live_activity);
         state::save_state(&state).map_err(|err| err.to_string())?;
     }
-    set_header_status(app, &header)
+    set_header_status(app, &header)?;
+    start_header_ticker(app);
+    Ok(())
+}
+
+fn start_header_ticker(app: &AppHandle) {
+    let app = app.clone();
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_secs(1));
+        let state = app
+            .state::<RuntimeState>()
+            .0
+            .lock()
+            .expect("state lock")
+            .clone();
+        let still_active = state
+            .live_activity
+            .as_ref()
+            .map(|activity| activity.active)
+            .unwrap_or(false);
+        if !still_active {
+            break;
+        }
+        let header = activity::header_status(&state.process_status, state.live_activity.as_ref());
+        let app_for_main = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            let _ = set_header_status(&app_for_main, &header);
+        });
+    });
 }
 
 pub fn refresh_header_status(app: &AppHandle) -> Result<(), String> {

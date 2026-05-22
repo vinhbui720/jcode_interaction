@@ -5,6 +5,7 @@ export type Snapshot = {
   state: { active_session?: string | null; active_section: string; last_prompt: string; token_stats?: { upload: number; download: number; cache_read: number; cache_write: number } | null; recent_messages: { author: string; text: string }[]; prompt_history: string[]; last_context_summary: string; browser_bridge_seen: boolean; process_status: string; live_activity?: { label: string; state: string; started_at_ms: number; active: boolean } | null };
   jcode_available: boolean;
   conversation_preview: string;
+  header_status: string;
 };
 
 export type DiagnosticsReport = { checks: { name: string; ok: boolean; message: string; fix: string }[] };

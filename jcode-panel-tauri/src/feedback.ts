@@ -128,7 +128,8 @@ export function renderFeedback(root: HTMLElement) {
         return api.snapshot();
       })
       .then((snapshot) => {
-        statusEl.textContent = snapshot.state.process_status || 'idle';
+        statusEl.textContent = snapshot.header_status || snapshot.state.process_status || 'idle';
+        statusEl.className = `toast-status toast-status-${(snapshot.state.process_status || 'idle').replace(/[^a-z0-9_-]/gi, '').toLowerCase()}`;
         if (!statsEl.innerHTML && snapshot.state.token_stats) {
           statsEl.innerHTML = renderStats(snapshot.state.token_stats);
           statsEl.hidden = false;

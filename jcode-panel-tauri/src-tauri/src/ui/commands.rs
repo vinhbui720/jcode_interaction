@@ -18,6 +18,7 @@ pub struct AppSnapshot {
     pub state: state::AppState,
     pub jcode_available: bool,
     pub conversation_preview: String,
+    pub header_status: String,
 }
 
 #[tauri::command]
@@ -33,6 +34,10 @@ pub fn snapshot(runtime: State<RuntimeState>) -> AppSnapshot {
     }
     AppSnapshot {
         config: config::load_config(),
+        header_status: crate::core::activity::header_status(
+            &state.process_status,
+            state.live_activity.as_ref(),
+        ),
         state,
         jcode_available: jcode::jcode_available_cached(),
         conversation_preview: buffer.latest_preview(false),
