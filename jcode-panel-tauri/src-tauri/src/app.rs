@@ -205,7 +205,6 @@ fn parse_shortcut(hotkey: &str) -> Option<Shortcut> {
 }
 
 pub fn run() {
-    std::env::set_var("GDK_BACKEND", "x11");
     let command_on_startup = startup_command();
     if !acquire_single_instance() {
         if let Some(command) = command_on_startup {
