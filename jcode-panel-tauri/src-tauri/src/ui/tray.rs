@@ -1,4 +1,4 @@
-use crate::ui::windows;
+use crate::ui::{status, windows};
 use std::{path::PathBuf, process::Command};
 use tauri::{
     menu::{Menu, MenuItem},
@@ -53,6 +53,7 @@ pub fn install(app: &mut App) -> tauri::Result<()> {
     }
 
     builder.build(app)?;
+    let _ = status::refresh_header_status(app.handle());
     notify_startup(app);
     Ok(())
 }

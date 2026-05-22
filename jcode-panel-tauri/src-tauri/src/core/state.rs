@@ -1,3 +1,4 @@
+use crate::core::activity::LiveActivity;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 
@@ -27,6 +28,10 @@ pub struct AppState {
     pub last_context_summary: String,
     #[serde(default)]
     pub browser_bridge_seen: bool,
+    #[serde(default = "default_process_status")]
+    pub process_status: String,
+    #[serde(default)]
+    pub live_activity: Option<LiveActivity>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,12 +51,18 @@ impl Default for AppState {
             prompt_history: vec![],
             last_context_summary: String::new(),
             browser_bridge_seen: false,
+            process_status: default_process_status(),
+            live_activity: None,
         }
     }
 }
 
 fn default_active_section() -> String {
     "Fresh Panel".into()
+}
+
+fn default_process_status() -> String {
+    "idle".into()
 }
 
 impl AppState {
@@ -120,6 +131,12 @@ pub fn save_state_to_path_preserving(
         }
         if !state.browser_bridge_seen && existing.browser_bridge_seen {
             state.browser_bridge_seen = true;
+        }
+        if state.process_status.is_empty() && !existing.process_status.is_empty() {
+            state.process_status = existing.process_status;
+        }
+        if state.live_activity.is_none() && existing.live_activity.is_some() {
+            state.live_activity = existing.live_activity;
         }
     }
     if let Some(parent) = path.parent() {

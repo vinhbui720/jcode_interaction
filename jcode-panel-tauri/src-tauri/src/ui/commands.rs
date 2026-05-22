@@ -4,6 +4,7 @@ use crate::{
         popup_context, state, terminal,
     },
     integrations,
+    ui::status,
 };
 use serde::{Deserialize, Serialize};
 use std::{process::Command, sync::Mutex, thread};
@@ -133,11 +134,15 @@ pub fn submit_prompt_async(prompt: String, app: AppHandle) -> Result<(), String>
     } else {
         "Sending prompt to persistent jcode client..."
     };
+    status::record_user_prompt(&app, &prompt)?;
+    status::start_activity(&app, crate::core::activity::SENDING_STATUS, "jcode")?;
     let _ = crate::ui::windows::show_feedback_window(&app, notice, "Working", None);
     let app_for_worker = app.clone();
     thread::spawn(move || {
         let result = submit_prompt_background(&app_for_worker, prompt);
         if let Err(error) = result {
+            let _ =
+                status::set_process_status(&app_for_worker, crate::core::activity::ERROR_STATUS);
             let _ =
                 crate::ui::windows::show_feedback_window(&app_for_worker, &error, "Error", None);
         }
@@ -184,27 +189,18 @@ fn submit_prompt_background(app: &AppHandle, prompt: String) -> Result<(), Strin
     let (outgoing_prompt, _) = controller.build_prompt(&outgoing_prompt, None, true, false);
     let result =
         jcode::send_prompt(&outgoing_prompt, session.as_deref()).map_err(|err| err.to_string())?;
-    let runtime = app.state::<RuntimeState>();
-    let mut state = runtime.0.lock().expect("state lock");
-    let user_prompt = prompt.clone();
-    state.last_prompt = prompt;
-    state.remember_prompt(&user_prompt);
-    state.recent_messages.push(state::ConversationMessage {
-        author: "You".into(),
-        text: user_prompt,
-    });
-    state.recent_messages.push(state::ConversationMessage {
-        author: "jcode".into(),
-        text: result.output.clone(),
-    });
-    if let Some(session_id) = &result.session_id {
-        state.active_session = Some(session_id.clone());
-    }
-    if let Some(token_stats) = &result.token_stats {
-        state.token_stats = Some(token_stats.clone());
-    }
-    state::save_state(&state).map_err(|err| err.to_string())?;
-    drop(state);
+    status::record_jcode_response(
+        app,
+        &result.output,
+        result.session_id.clone(),
+        result.token_stats.clone(),
+    )?;
+    let final_status = if result.ok {
+        crate::core::activity::COMPLETE_STATUS
+    } else {
+        crate::core::activity::ERROR_STATUS
+    };
+    status::set_process_status(app, final_status)?;
     let notice = if result.ok {
         "jcode response complete"
     } else {

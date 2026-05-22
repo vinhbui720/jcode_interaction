@@ -15,7 +15,8 @@ function inlineMarkdown(value: string) {
 }
 
 function renderMarkdown(value: string) {
-  const lines = (value || '').trim().split('\n');
+  const limited = limitFeedback(value || '');
+  const lines = limited.trim().split('\n');
   return lines.map((line) => {
     if (!line.trim()) return '<br />';
     if (line.trim().startsWith('#')) return `<strong class="toast-heading">${escapeHtml(line.replace(/^#+/, '').trim())}</strong>`;
@@ -23,6 +24,12 @@ function renderMarkdown(value: string) {
     if (bullet) return `<div><span class="toast-bullet">●</span> ${inlineMarkdown(bullet[1])}</div>`;
     return `<div>${inlineMarkdown(line)}</div>`;
   }).join('');
+}
+
+function limitFeedback(value: string) {
+  const limit = 20_000;
+  if (value.length <= limit) return value;
+  return `... earlier feedback omitted ...\n${value.slice(value.length - limit)}`;
 }
 
 function compact(value: number) {
@@ -44,9 +51,10 @@ export function renderFeedback(root: HTMLElement) {
           <div class="toast-title">jcode feedback</div>
           <div id="toast-stats" class="toast-stats"></div>
         </div>
-        <div id="toast-text" class="toast-text">Waiting for feedback...</div>
+        <div id="toast-text" class="toast-text" tabindex="0">Waiting for feedback...</div>
         <div id="toast-notice" class="toast-notice"></div>
         <div class="toast-actions">
+          <button id="toast-jump" class="toast-jump" title="Back to latest feedback" hidden>Back to latest feedback</button>
           <button id="toast-open" title="Open conversation">Open</button>
           <button id="toast-reply" title="Reply">Reply</button>
           <button id="toast-close" title="Dismiss">Dismiss</button>
@@ -57,7 +65,16 @@ export function renderFeedback(root: HTMLElement) {
   const textEl = root.querySelector<HTMLDivElement>('#toast-text')!;
   const noticeEl = root.querySelector<HTMLDivElement>('#toast-notice')!;
   const statsEl = root.querySelector<HTMLDivElement>('#toast-stats')!;
+  const jumpButton = root.querySelector<HTMLButtonElement>('#toast-jump')!;
   let hideTimer: number | undefined;
+  let userPinnedScroll = false;
+
+  const isAtBottom = () => textEl.scrollHeight - textEl.scrollTop - textEl.clientHeight < 8;
+  const scrollLatest = () => {
+    textEl.scrollTop = textEl.scrollHeight;
+    userPinnedScroll = false;
+    jumpButton.hidden = true;
+  };
 
   const scheduleHide = () => {
     if (hideTimer) window.clearTimeout(hideTimer);
@@ -65,20 +82,36 @@ export function renderFeedback(root: HTMLElement) {
   };
 
   const apply = (payload: FeedbackPayload) => {
+    const shouldStickToLatest = !userPinnedScroll && isAtBottom();
+    const oldScrollTop = textEl.scrollTop;
     textEl.innerHTML = renderMarkdown(payload.text || 'No feedback text.');
     noticeEl.textContent = payload.notice || '';
     noticeEl.hidden = !payload.notice;
     statsEl.innerHTML = renderStats(payload.stats);
     statsEl.hidden = !payload.stats;
+    if (shouldStickToLatest) {
+      window.requestAnimationFrame(scrollLatest);
+    } else {
+      textEl.scrollTop = oldScrollTop;
+      jumpButton.hidden = isAtBottom();
+    }
     scheduleHide();
   };
 
+  jumpButton.onclick = scrollLatest;
+  textEl.addEventListener('scroll', () => {
+    userPinnedScroll = !isAtBottom();
+    jumpButton.hidden = !userPinnedScroll;
+  });
   root.querySelector<HTMLButtonElement>('#toast-close')!.onclick = () => api.hideFeedback();
   root.querySelector<HTMLButtonElement>('#toast-reply')!.onclick = () => api.hideFeedback().finally(() => api.showPrompt());
   root.querySelector<HTMLButtonElement>('#toast-open')!.onclick = () => api.hideFeedback().finally(() => api.showDropdown());
 
   root.addEventListener('mouseenter', () => { if (hideTimer) window.clearTimeout(hideTimer); });
   root.addEventListener('mouseleave', scheduleHide);
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') void api.hideFeedback();
+  });
 
   void listen<FeedbackPayload>('feedback-update', (event) => apply(event.payload));
   void api.currentFeedback().then((payload) => { if (payload) apply(payload); }).catch(() => {});

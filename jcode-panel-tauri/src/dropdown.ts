@@ -1,5 +1,9 @@
 import { api, Snapshot } from './api';
 
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]!));
+}
+
 function tokenBadge(snapshot: Snapshot) {
   const stats = snapshot.state.token_stats;
   if (!stats) return '<span class="badge muted">no token data</span>';
@@ -13,6 +17,8 @@ export async function renderDropdown(root: HTMLElement) {
     <article class="message"><strong>${m.author}</strong><p>${m.text}</p></article>`).join('') || '<p class="muted">No messages yet.</p>';
   const history = snapshot.state.prompt_history.slice(-6).reverse().map((item) => `<li>${item}</li>`).join('') || '<li class="muted">No prompt history yet.</li>';
   const checks = diagnostics.checks.map((check) => `<li class="${check.ok ? 'ok' : 'fail'}"><strong>${check.name}</strong>: ${check.message}</li>`).join('');
+  const status = snapshot.state.process_status || 'idle';
+  const statusClass = status.replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'idle';
   root.innerHTML = `
     <main class="panel-shell">
       <header class="panel-header">
@@ -20,9 +26,10 @@ export async function renderDropdown(root: HTMLElement) {
         ${tokenBadge(snapshot)}
       </header>
       <section class="status-grid">
+        <div><span>status</span><strong class="status-pill status-${statusClass}">${escapeHtml(status)}</strong></div>
         <div><span>jcode</span><strong>${snapshot.jcode_available ? 'ready' : 'missing'}</strong></div>
-        <div><span>session</span><strong>${snapshot.state.active_session ?? 'new'}</strong></div>
-        <div><span>latest</span><strong>${snapshot.conversation_preview}</strong></div>
+        <div><span>session</span><strong>${escapeHtml(snapshot.state.active_session ?? 'new')}</strong></div>
+        <div><span>latest</span><strong>${escapeHtml(snapshot.conversation_preview)}</strong></div>
       </section>
       <section class="session-tools">
         <input id="sessionId" placeholder="Resume session id" value="${snapshot.state.active_session ?? ''}" />

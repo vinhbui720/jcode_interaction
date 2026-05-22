@@ -1,3 +1,4 @@
+pub mod activity;
 pub mod ambient;
 pub mod config;
 pub mod context;
