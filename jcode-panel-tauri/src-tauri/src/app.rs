@@ -61,11 +61,27 @@ fn cli_wants_prompt() -> bool {
         .any(|arg| arg == "--prompt" || arg == "prompt" || arg == "--show")
 }
 
-fn send_prompt_request_to_running_instance() -> bool {
+fn cli_wants_settings() -> bool {
+    std::env::args()
+        .skip(1)
+        .any(|arg| arg == "--settings" || arg == "settings")
+}
+
+fn startup_command() -> Option<&'static str> {
+    if cli_wants_settings() {
+        Some("show_settings")
+    } else if cli_wants_prompt() {
+        Some("show_prompt")
+    } else {
+        None
+    }
+}
+
+fn send_request_to_running_instance(command: &str) -> bool {
     let Ok(mut stream) = UnixStream::connect(socket_path()) else {
         return false;
     };
-    stream.write_all(b"show_prompt\n").is_ok()
+    stream.write_all(command.as_bytes()).is_ok() && stream.write_all(b"\n").is_ok()
 }
 
 fn start_ipc_server(app: &tauri::AppHandle) {
@@ -80,12 +96,19 @@ fn start_ipc_server(app: &tauri::AppHandle) {
     let app = app.clone();
     thread::spawn(move || {
         for stream in listener.incoming() {
-            let Ok(_stream) = stream else {
+            let Ok(mut stream) = stream else {
                 continue;
             };
+            let mut command = String::new();
+            let _ = std::io::Read::read_to_string(&mut stream, &mut command);
+            let command = command.trim().to_string();
             let app_for_main = app.clone();
             let _ = app.run_on_main_thread(move || {
-                let _ = crate::ui::windows::show_prompt_window(&app_for_main);
+                if command == "show_settings" {
+                    let _ = crate::ui::windows::show_settings(app_for_main.clone());
+                } else {
+                    let _ = crate::ui::windows::show_prompt_window(&app_for_main);
+                }
             });
         }
     });
@@ -177,10 +200,10 @@ fn parse_shortcut(hotkey: &str) -> Option<Shortcut> {
 
 pub fn run() {
     std::env::set_var("GDK_BACKEND", "x11");
-    let show_prompt_on_startup = cli_wants_prompt();
+    let command_on_startup = startup_command();
     if !acquire_single_instance() {
-        if show_prompt_on_startup {
-            let _ = send_prompt_request_to_running_instance();
+        if let Some(command) = command_on_startup {
+            let _ = send_request_to_running_instance(command);
         }
         return;
     }
@@ -195,10 +218,14 @@ pub fn run() {
             context::start_browser_bridge();
             let _ = integrations::vscode::install();
             let _ = integrations::obsidian::install();
-            if show_prompt_on_startup {
+            if let Some(command) = command_on_startup {
                 let handle = app.handle().clone();
                 let _ = app.handle().run_on_main_thread(move || {
-                    let _ = crate::ui::windows::show_prompt_window(&handle);
+                    if command == "show_settings" {
+                        let _ = crate::ui::windows::show_settings(handle.clone());
+                    } else {
+                        let _ = crate::ui::windows::show_prompt_window(&handle);
+                    }
                 });
             }
             Ok(())

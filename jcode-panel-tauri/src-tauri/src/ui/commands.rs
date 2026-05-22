@@ -47,8 +47,47 @@ pub fn snapshot(runtime: State<RuntimeState>) -> AppSnapshot {
 #[tauri::command]
 pub fn save_settings(new_config: config::AppConfig, app: AppHandle) -> Result<(), String> {
     config::save_config(&new_config).map_err(|err| err.to_string())?;
+    sync_gnome_prompt_shortcut(&new_config.prompt_hotkey);
     crate::app::reset_prompt_shortcut(&app);
     Ok(())
+}
+
+fn sync_gnome_prompt_shortcut(hotkey: &str) {
+    let Some(binding) = gnome_binding(hotkey) else {
+        return;
+    };
+    let schema = "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/jcode-panel-prompt/";
+    let _ = Command::new("gsettings")
+        .args(["set", schema, "binding", &binding])
+        .status();
+    let _ = Command::new("gsettings")
+        .args(["set", schema, "command", "jcp"])
+        .status();
+    let _ = Command::new("gsettings")
+        .args(["set", schema, "name", "Jcode Interaction"])
+        .status();
+}
+
+fn gnome_binding(hotkey: &str) -> Option<String> {
+    let (mods, key) = crate::core::hotkeys::hotkey_parts(hotkey);
+    if key.is_empty() {
+        return None;
+    }
+    let mut out = String::new();
+    if mods.contains("ctrl") {
+        out.push_str("<Primary>");
+    }
+    if mods.contains("alt") {
+        out.push_str("<Alt>");
+    }
+    if mods.contains("shift") {
+        out.push_str("<Shift>");
+    }
+    if mods.contains("super") {
+        out.push_str("<Super>");
+    }
+    out.push_str(&key);
+    Some(out)
 }
 
 #[tauri::command]
