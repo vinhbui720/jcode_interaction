@@ -201,6 +201,14 @@ export function renderPrompt(root: HTMLElement) {
     }
   });
 
+  window.addEventListener('blur', () => {
+    window.setTimeout(() => {
+      if (document.visibilityState === 'visible' && document.activeElement !== input) {
+        void hide();
+      }
+    }, 80);
+  });
+
   input.addEventListener('input', () => {
     selectedSuggestion = 0;
     updateUi();
