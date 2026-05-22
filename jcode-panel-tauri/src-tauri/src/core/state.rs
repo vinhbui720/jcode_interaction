@@ -44,15 +44,21 @@ pub fn state_path() -> PathBuf {
 }
 
 pub fn load_state() -> AppState {
-    let path = state_path();
-    let Ok(text) = fs::read_to_string(&path) else {
+    load_state_from_path(&state_path())
+}
+
+pub fn load_state_from_path(path: &PathBuf) -> AppState {
+    let Ok(text) = fs::read_to_string(path) else {
         return AppState::default();
     };
     serde_json::from_str(&text).unwrap_or_default()
 }
 
 pub fn save_state(state: &AppState) -> anyhow::Result<()> {
-    let path = state_path();
+    save_state_to_path(state, &state_path())
+}
+
+pub fn save_state_to_path(state: &AppState, path: &PathBuf) -> anyhow::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -60,4 +66,37 @@ pub fn save_state(state: &AppState) -> anyhow::Result<()> {
     fs::write(&tmp, serde_json::to_string_pretty(state)?)?;
     fs::rename(tmp, path)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn state_roundtrip_preserves_session_and_tokens() {
+        let path =
+            std::env::temp_dir().join(format!("jcode-panel-state-{}.json", std::process::id()));
+        let state = AppState {
+            active_session: Some("session-123".into()),
+            active_section: "Work".into(),
+            last_prompt: "hello".into(),
+            token_stats: Some(TokenStats {
+                upload: 1,
+                download: 2,
+                cache_read: 3,
+                cache_write: 4,
+            }),
+            recent_messages: vec![ConversationMessage {
+                author: "jcode".into(),
+                text: "ok".into(),
+            }],
+        };
+        save_state_to_path(&state, &path).unwrap();
+        let loaded = load_state_from_path(&path);
+        let _ = fs::remove_file(path);
+        assert_eq!(loaded.active_session.as_deref(), Some("session-123"));
+        assert_eq!(loaded.active_section, "Work");
+        assert_eq!(loaded.token_stats.unwrap().download, 2);
+        assert_eq!(loaded.recent_messages.len(), 1);
+    }
 }

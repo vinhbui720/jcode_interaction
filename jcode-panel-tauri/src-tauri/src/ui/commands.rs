@@ -37,10 +37,11 @@ pub fn submit_prompt(
     let session = runtime.0.lock().expect("state lock").active_session.clone();
     let result = jcode::send_prompt(&prompt, session.as_deref()).map_err(|err| err.to_string())?;
     let mut state = runtime.0.lock().expect("state lock");
+    let user_prompt = prompt.clone();
     state.last_prompt = prompt;
     state.recent_messages.push(state::ConversationMessage {
         author: "You".into(),
-        text: state.last_prompt.clone(),
+        text: user_prompt,
     });
     state.recent_messages.push(state::ConversationMessage {
         author: "jcode".into(),
