@@ -84,5 +84,8 @@ footer button, .settings-shell button { border: 0; border-radius: 12px; padding:
 .toast-actions .toast-jump[hidden] { display: none; }
 .settings-shell { display: grid; gap: 14px; align-content: start; }
 .settings-shell label { display: grid; gap: 6px; font-weight: 700; }
-.settings-shell input { border: 1px solid #cbd5e1; border-radius: 12px; padding: 10px; }
+.settings-shell input, .settings-shell select { border: 1px solid #cbd5e1; border-radius: 12px; padding: 10px; background: white; color: #0f172a; }
 .settings-shell .row { display: flex; align-items: center; }
+.settings-inline { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.settings-inline button.recording { background: #dc2626; color: white; }
+.settings-shell input[readonly] { cursor: pointer; background: #f8fafc; font-weight: 800; letter-spacing: .03em; }

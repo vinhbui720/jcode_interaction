@@ -37,7 +37,51 @@ pub fn load_config_from_path(path: &PathBuf) -> AppConfig {
     let Ok(text) = fs::read_to_string(path) else {
         return AppConfig::default();
     };
-    toml::from_str(&text).unwrap_or_default()
+    toml::from_str(&text)
+        .or_else(|_| migrate_legacy_config(&text))
+        .unwrap_or_default()
+}
+
+fn migrate_legacy_config(text: &str) -> Result<AppConfig, toml::de::Error> {
+    #[derive(Deserialize)]
+    struct LegacyConfig {
+        general: Option<LegacyGeneral>,
+        session: Option<LegacySession>,
+    }
+    #[derive(Deserialize)]
+    struct LegacyGeneral {
+        hotkey: Option<String>,
+        screenshot_hotkey: Option<String>,
+        terminal: Option<String>,
+    }
+    #[derive(Deserialize)]
+    struct LegacySession {
+        send_context_default: Option<bool>,
+    }
+
+    let legacy: LegacyConfig = toml::from_str(text)?;
+    let defaults = AppConfig::default();
+    Ok(AppConfig {
+        prompt_hotkey: legacy
+            .general
+            .as_ref()
+            .and_then(|general| general.hotkey.clone())
+            .unwrap_or(defaults.prompt_hotkey),
+        screenshot_hotkey: legacy
+            .general
+            .as_ref()
+            .and_then(|general| general.screenshot_hotkey.clone())
+            .unwrap_or(defaults.screenshot_hotkey),
+        terminal: legacy
+            .general
+            .and_then(|general| general.terminal)
+            .unwrap_or(defaults.terminal),
+        send_context_default: legacy
+            .session
+            .and_then(|session| session.send_context_default)
+            .unwrap_or(defaults.send_context_default),
+        max_prompt_chars: defaults.max_prompt_chars,
+    })
 }
 
 pub fn save_config(config: &AppConfig) -> anyhow::Result<()> {
@@ -77,4 +121,30 @@ mod tests {
         assert!(!loaded.send_context_default);
         assert_eq!(loaded.max_prompt_chars, 1234);
     }
+
+    #[test]
+    fn legacy_config_migrates_without_falling_back_to_defaults() {
+        let config = load_config_from_text(
+            r##"
+[general]
+hotkey = "super+z"
+screenshot_hotkey = "super+x"
+terminal = "wezterm"
+
+[session]
+send_context_default = false
+"##,
+        );
+        assert_eq!(config.prompt_hotkey, "super+z");
+        assert_eq!(config.screenshot_hotkey, "super+x");
+        assert_eq!(config.terminal, "wezterm");
+        assert!(!config.send_context_default);
+    }
+}
+
+#[cfg(test)]
+fn load_config_from_text(text: &str) -> AppConfig {
+    toml::from_str(text)
+        .or_else(|_| migrate_legacy_config(text))
+        .unwrap_or_default()
 }

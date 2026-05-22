@@ -206,6 +206,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::snapshot,
             commands::save_settings,
+            commands::available_terminals,
             commands::submit_prompt,
             commands::submit_prompt_async,
             commands::switch_session,

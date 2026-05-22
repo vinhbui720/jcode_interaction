@@ -45,8 +45,15 @@ pub fn snapshot(runtime: State<RuntimeState>) -> AppSnapshot {
 }
 
 #[tauri::command]
-pub fn save_settings(new_config: config::AppConfig) -> Result<(), String> {
-    config::save_config(&new_config).map_err(|err| err.to_string())
+pub fn save_settings(new_config: config::AppConfig, app: AppHandle) -> Result<(), String> {
+    config::save_config(&new_config).map_err(|err| err.to_string())?;
+    crate::app::reset_prompt_shortcut(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn available_terminals() -> Vec<String> {
+    terminal::detected_terminals()
 }
 
 #[tauri::command]
