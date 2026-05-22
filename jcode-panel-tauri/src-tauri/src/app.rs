@@ -9,7 +9,7 @@ use crate::{
 use std::{fs, path::PathBuf, process, sync::Mutex};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
-fn register_prompt_shortcut(app: &tauri::AppHandle) {
+pub fn register_prompt_shortcut(app: &tauri::AppHandle) {
     let cfg = config::load_config();
     let shortcut =
         parse_shortcut(&cfg.prompt_hotkey).unwrap_or_else(|| Shortcut::new(None, Code::F8));
@@ -21,6 +21,16 @@ fn register_prompt_shortcut(app: &tauri::AppHandle) {
                 let _ = crate::ui::windows::show_prompt_window(&handle);
             }
         });
+}
+
+pub fn reset_prompt_shortcut(app: &tauri::AppHandle) {
+    // On X11 a bare function-key shortcut can miss its release event when the
+    // prompt appears immediately and takes focus. If the plugin keeps F8 marked
+    // as pressed, later F8 presses are ignored. Re-registering after prompt hide
+    // clears that plugin-side key state and matches the Python app's repeated
+    // show/hide behavior.
+    let _ = app.global_shortcut().unregister_all();
+    register_prompt_shortcut(app);
 }
 
 fn lock_path() -> PathBuf {

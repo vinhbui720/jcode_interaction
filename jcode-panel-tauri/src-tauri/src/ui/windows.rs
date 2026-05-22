@@ -199,7 +199,9 @@ fn mouse_position() -> Option<(i32, i32)> {
 pub fn hide_prompt(app: AppHandle) -> Result<(), String> {
     stop_prompt_mouse_follow();
     reset_prompt_tracking();
-    hide_window(&app, "prompt")
+    let result = hide_window(&app, "prompt");
+    crate::app::reset_prompt_shortcut(&app);
+    result
 }
 
 #[tauri::command]
