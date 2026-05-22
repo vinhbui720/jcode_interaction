@@ -136,9 +136,9 @@ fn smooth_step(current: f64, target: f64, alpha: f64) -> f64 {
 }
 
 fn place_prompt_at_mouse_or_center(window: &tauri::WebviewWindow) {
-    if let Some((x, y)) = mouse_position(window) {
-        if x > 2 || y > 2 {
-            let _ = window.set_position(PhysicalPosition::new((x + 20).max(0), (y + 24).max(0)));
+    if let Some((x, y)) = mouse_position(window).or_else(positioning::last_cursor) {
+        if let Some(pos) = clamped_overlay_position(window, x + 20, y + 24) {
+            let _ = window.set_position(pos);
             return;
         }
     }
@@ -152,18 +152,21 @@ fn mouse_position(window: &tauri::WebviewWindow) -> Option<(i32, i32)> {
     // Wayland or systems without xdotool.
     if std::env::var_os("DISPLAY").is_some() {
         if let Some(pos) = xdotool_mouse_position() {
+            positioning::remember_cursor(pos);
             return Some(pos);
         }
     }
     if let Ok(pos) = window.cursor_position() {
-        return Some((pos.x.round() as i32, pos.y.round() as i32));
+        let pos = (pos.x.round() as i32, pos.y.round() as i32);
+        positioning::remember_cursor(pos);
+        return Some(pos);
     }
-    xdotool_mouse_position()
+    xdotool_mouse_position().inspect(|pos| positioning::remember_cursor(*pos))
 }
 
 fn xdotool_mouse_position() -> Option<(i32, i32)> {
     let output = Command::new("xdotool")
-        .arg("getmouselocation")
+        .args(["getmouselocation", "--shell"])
         .output()
         .ok()?;
     if !output.status.success() {
@@ -172,6 +175,29 @@ fn xdotool_mouse_position() -> Option<(i32, i32)> {
     let text = String::from_utf8_lossy(&output.stdout);
     let (x, y) = positioning::parse_xdotool_mouselocation(&text);
     Some((x?, y?))
+}
+
+fn clamped_overlay_position(
+    window: &tauri::WebviewWindow,
+    desired_x: i32,
+    desired_y: i32,
+) -> Option<PhysicalPosition<i32>> {
+    let monitor = monitor_for_point(window, desired_x, desired_y)
+        .or_else(|| window.current_monitor().ok().flatten())?;
+    let pos = monitor.position();
+    let size = monitor.size();
+    let window_size = window
+        .outer_size()
+        .ok()
+        .unwrap_or_else(|| PhysicalSize::new(720_u32, 112_u32));
+    let min_x = pos.x;
+    let min_y = pos.y;
+    let max_x = pos.x + size.width as i32 - window_size.width as i32;
+    let max_y = pos.y + size.height as i32 - window_size.height as i32;
+    Some(PhysicalPosition::new(
+        desired_x.clamp(min_x, max_x.max(min_x)),
+        desired_y.clamp(min_y, max_y.max(min_y)),
+    ))
 }
 
 #[tauri::command]
@@ -292,7 +318,15 @@ fn move_feedback_to_mouse_screen(window: &tauri::WebviewWindow) {
 }
 
 fn monitor_at_mouse(window: &tauri::WebviewWindow) -> Option<tauri::Monitor> {
-    let (mouse_x, mouse_y) = mouse_position(window)?;
+    let (mouse_x, mouse_y) = mouse_position(window).or_else(positioning::last_cursor)?;
+    monitor_for_point(window, mouse_x, mouse_y)
+}
+
+fn monitor_for_point(
+    window: &tauri::WebviewWindow,
+    mouse_x: i32,
+    mouse_y: i32,
+) -> Option<tauri::Monitor> {
     window
         .available_monitors()
         .ok()?
