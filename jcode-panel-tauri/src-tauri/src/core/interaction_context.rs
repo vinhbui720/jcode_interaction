@@ -1,4 +1,13 @@
 use regex::Regex;
+use serde_json::Value;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InteractionContext {
+    pub source: String,
+    pub title: String,
+    pub body: String,
+}
 
 pub fn chip_for_source(source: &str) -> String {
     format!("[@{}]", source.trim().to_ascii_lowercase())
@@ -83,6 +92,111 @@ pub fn strip_interaction_chips(text: &str) -> String {
         .to_string()
 }
 
+pub fn expand_interaction_chips_with<F>(text: &str, mut read: F) -> Result<String, String>
+where
+    F: FnMut(&str) -> Result<String, String>,
+{
+    let sources = interaction_sources(text);
+    if sources.is_empty() {
+        return Ok(text.into());
+    }
+    let prompt = strip_interaction_chips(text);
+    let mut blocks = vec![];
+    for source in sources {
+        blocks.push(read(&source)?);
+    }
+    blocks.push(format!("User prompt:\n{prompt}"));
+    Ok(blocks.join("\n\n").trim().into())
+}
+
+pub fn obsidian_context_from_json(data: &Value) -> InteractionContext {
+    let path = data
+        .get("path")
+        .or_else(|| data.get("file"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let vault = data
+        .get("vaultPath")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let title = data
+        .get("title")
+        .and_then(Value::as_str)
+        .unwrap_or_else(|| {
+            Path::new(path)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Obsidian")
+        });
+    let line = data.get("line").and_then(Value::as_i64).unwrap_or(0);
+    let selection = data
+        .get("selection")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let text = data
+        .get("text")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let absolute = obsidian_absolute_path(path, vault);
+    let mut parts = vec![
+        "Context: obsidian".to_string(),
+        "Use this context to act on the active Obsidian note.".into(),
+        format!("note: {title}"),
+    ];
+    if !absolute.is_empty() {
+        parts.push(format!("path: {absolute}"));
+    }
+    if line > 0 {
+        parts.push(format!("line: {line}"));
+    }
+    if !selection.is_empty() {
+        parts.push(format!("selection:\n{}", fence(selection, "markdown")));
+    } else if !text.is_empty() {
+        parts.push(format!(
+            "excerpt:\n{}",
+            fence(&limit_excerpt(text, 12_000), "markdown")
+        ));
+    }
+    InteractionContext {
+        source: "obsidian".into(),
+        title: title.into(),
+        body: parts.join("\n"),
+    }
+}
+
+fn obsidian_absolute_path(path: &str, vault: &str) -> String {
+    if path.is_empty() {
+        return String::new();
+    }
+    let p = PathBuf::from(path);
+    if p.is_absolute() {
+        return path.into();
+    }
+    if vault.is_empty() {
+        path.into()
+    } else {
+        PathBuf::from(vault)
+            .join(path)
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
+fn limit_excerpt(text: &str, limit: usize) -> String {
+    if text.len() <= limit {
+        text.into()
+    } else {
+        text[..limit].to_string()
+    }
+}
+fn fence(text: &str, lang: &str) -> String {
+    format!("```{lang}\n{text}\n```")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -99,5 +213,29 @@ mod tests {
             vec!["vscode", "obsidian"]
         );
         assert_eq!(strip_interaction_chips("[@vscode] hello"), "hello");
+    }
+
+    #[test]
+    fn interaction_context_expands_each_chip_and_errors_when_missing() {
+        let expanded =
+            expand_interaction_chips_with("compare [@vscode] with [@obsidian]", |source| {
+                Ok(format!("Context: {source}"))
+            })
+            .unwrap();
+        assert!(expanded.contains("Context: vscode"));
+        assert!(expanded.contains("Context: obsidian"));
+        assert!(expanded.contains("User prompt:\ncompare with"));
+        assert!(
+            expand_interaction_chips_with("fix [@vscode]", |_source| Err("missing".into()))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn obsidian_context_uses_absolute_path_and_limited_excerpt() {
+        let data = serde_json::json!({"path":"note.md","vaultPath":"/vault","title":"Note","line":3,"text":"hello"});
+        let ctx = obsidian_context_from_json(&data);
+        assert!(ctx.body.contains("path: /vault/note.md"));
+        assert!(ctx.body.contains("hello"));
     }
 }

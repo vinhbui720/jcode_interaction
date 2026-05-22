@@ -1,6 +1,74 @@
 use regex::Regex;
 use serde_json::Value;
 
+pub fn markdown_to_markup(text: &str) -> String {
+    let mut lines = vec![];
+    let mut in_fence = false;
+    for raw in text.trim().lines() {
+        let line = raw.trim_end();
+        if line.trim_start().starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        let escaped = html_escape(line);
+        if in_fence {
+            lines.push(format!(
+                r##"<span foreground="#0f766e" font_family="monospace">{escaped}</span>"##
+            ));
+        } else if line.trim_start().starts_with('#') {
+            lines.push(format!(
+                r##"<span foreground="#7c3aed" weight="bold" size="larger">{}</span>"##,
+                html_escape(line.trim_start_matches('#').trim())
+            ));
+        } else if let Some(rest) = line.trim_start().strip_prefix("> ") {
+            lines.push(format!(
+                r##"<span foreground="#475569">▏ {}</span>"##,
+                inline_markup(rest)
+            ));
+        } else if let Some(rest) = line.trim_start().strip_prefix("- ") {
+            lines.push(format!(
+                r##"<span foreground="#06b6d4">●</span> {}"##,
+                inline_markup(rest)
+            ));
+        } else {
+            lines.push(inline_markup(line));
+        }
+    }
+    lines.join("\n")
+}
+
+fn inline_markup(text: &str) -> String {
+    let escaped = html_escape(text);
+    let escaped = Regex::new(r"`([^`]+)`")
+        .unwrap()
+        .replace_all(
+            &escaped,
+            r##"<span foreground="#0f766e" font_family="monospace">$1</span>"##,
+        )
+        .to_string();
+    let escaped = Regex::new(r"\$([^$\n]+)\$")
+        .unwrap()
+        .replace_all(
+            &escaped,
+            r##"<span foreground="#7c3aed" font_family="serif">$1</span>"##,
+        )
+        .to_string();
+    Regex::new(r"\*\*([^*]+)\*\*")
+        .unwrap()
+        .replace_all(
+            &escaped,
+            r##"<span foreground="#2563eb" weight="bold">$1</span>"##,
+        )
+        .to_string()
+}
+
+fn html_escape(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
 pub fn split_token_stats(text: &str) -> (String, String) {
     let re = Regex::new(r"(?i)\[Tokens\]\s*upload:\s*(\d+)\s+download:\s*(\d+)\s+cache_read:\s*(\d+)\s+cache_write:\s*(\d+)").unwrap();
     let Some(caps) = re.captures_iter(text).last() else {
@@ -126,6 +194,43 @@ pub fn pic_tag(index: u32) -> String {
     format!("[pic{index}]")
 }
 
+pub fn expand_pic_tags(text: &str, screenshots: &[String]) -> String {
+    Regex::new(r"\[pic(\d+)\]")
+        .unwrap()
+        .replace_all(text, |caps: &regex::Captures| {
+            let idx = caps[1].parse::<usize>().unwrap_or(0);
+            screenshots
+                .get(idx.saturating_sub(1))
+                .cloned()
+                .unwrap_or_else(|| caps[0].to_string())
+        })
+        .to_string()
+}
+
+pub fn event_notice_text(text: &str, raw: &Value) -> String {
+    let mut parts = vec![];
+    if !text.trim().is_empty() {
+        parts.push(text.trim().to_string());
+    }
+    if let Some(tool) = raw
+        .get("tool_name")
+        .or_else(|| raw.get("command"))
+        .and_then(Value::as_str)
+    {
+        parts.push(tool.into());
+    }
+    if let Some(ctx) = raw.get("context").and_then(Value::as_object) {
+        if let Some(app) = ctx.get("app").and_then(Value::as_str) {
+            parts.push(format!("context: {app}"));
+        }
+    }
+    let token = token_notice_from_raw(raw);
+    if !token.is_empty() {
+        parts.push(token);
+    }
+    parts.join(" · ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,5 +256,30 @@ mod tests {
         );
         assert_eq!(pic_tag(2), "[pic2]");
         assert_eq!(screenshot_tag("/a.png"), "[screenshot:/a.png]");
+        assert_eq!(
+            expand_pic_tags("see [pic1]", &["/tmp/a.png".into()]),
+            "see /tmp/a.png"
+        );
+    }
+
+    #[test]
+    fn markdown_and_event_notice() {
+        let markup =
+            markdown_to_markup("# Title\n- **done** with `cmd`, $x^2$, and <unsafe>\n> quote");
+        assert!(markup.contains("Title"));
+        assert!(markup.contains("foreground"));
+        assert!(markup.contains("weight=\"bold\""));
+        assert!(markup.contains("font_family=\"monospace\""));
+        assert!(markup.contains("font_family=\"serif\""));
+        assert!(markup.contains("▏"));
+        assert!(markup.contains("&lt;unsafe&gt;"));
+        let notice = event_notice_text(
+            "running",
+            &json!({"tool_name":"bash","context":{"app":"Firefox"},"usage":{"input_tokens":10,"output_tokens":20}}),
+        );
+        assert!(notice.contains("running"));
+        assert!(notice.contains("bash"));
+        assert!(notice.contains("context: Firefox"));
+        assert!(notice.contains("tokens: in 10, out 20"));
     }
 }

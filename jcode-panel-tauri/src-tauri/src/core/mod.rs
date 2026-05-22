@@ -1,3 +1,4 @@
+pub mod ambient;
 pub mod config;
 pub mod context;
 pub mod controller;
