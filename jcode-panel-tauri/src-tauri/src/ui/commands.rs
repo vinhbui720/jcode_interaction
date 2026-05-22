@@ -245,7 +245,7 @@ fn submit_prompt_background(app: &AppHandle, prompt: String) -> Result<(), Strin
         let text = if live_feedback.trim().is_empty() {
             notice.clone()
         } else {
-            live_feedback.clone()
+            formatting::coalesce_stream_deltas(&live_feedback)
         };
         if !text.trim().is_empty() || !notice.trim().is_empty() {
             let _ = crate::ui::windows::show_feedback_window(&app_for_events, &text, &notice, None);

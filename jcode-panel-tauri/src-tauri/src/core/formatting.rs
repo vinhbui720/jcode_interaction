@@ -127,6 +127,28 @@ pub fn format_stream_lines(text: &str, max_lines: usize) -> String {
         .join("\n")
 }
 
+pub fn coalesce_stream_deltas(text: &str) -> String {
+    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+    let mut out = String::new();
+    let mut blank_count = 0;
+    for line in normalized.split('\n') {
+        if line.trim().is_empty() {
+            blank_count += 1;
+            continue;
+        }
+        if blank_count > 0 && !out.is_empty() {
+            out.push_str("\n\n");
+        }
+        blank_count = 0;
+        if out.ends_with("\n\n") || out.is_empty() {
+            out.push_str(line.trim_start());
+        } else {
+            out.push_str(line);
+        }
+    }
+    out.trim().to_string()
+}
+
 pub fn token_notice_from_raw(raw: &Value) -> String {
     let mut candidates = vec![raw];
     for key in ["usage", "tokens", "token_usage", "metrics"] {
@@ -247,6 +269,11 @@ mod tests {
             "tokens: in 2, out 3"
         );
         assert_eq!(format_stream_lines("a\nb\nc", 2), "b\nc");
+        assert_eq!(
+            coalesce_stream_deltas("What\n would\n you\n like\n?"),
+            "What would you like?"
+        );
+        assert_eq!(coalesce_stream_deltas("one\n\ntwo"), "one\n\ntwo");
     }
     #[test]
     fn screenshot_commands() {
