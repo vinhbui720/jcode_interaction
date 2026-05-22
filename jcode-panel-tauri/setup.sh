@@ -6,6 +6,7 @@ BIN="$APP_DIR/src-tauri/target/release/jcode-panel-tauri"
 USER_BIN="$HOME/.local/bin"
 DESKTOP_DIR="$HOME/.local/share/applications"
 AUTOSTART_DIR="$HOME/.config/autostart"
+ICON_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
 DESKTOP_FILE="$DESKTOP_DIR/jcode-panel.desktop"
 AUTOSTART_FILE="$AUTOSTART_DIR/jcode-panel.desktop"
 WRAPPER="$USER_BIN/jcode-panel"
@@ -19,7 +20,15 @@ npm install
 
 npm run build
 
-mkdir -p "$USER_BIN" "$DESKTOP_DIR" "$AUTOSTART_DIR"
+mkdir -p "$USER_BIN" "$DESKTOP_DIR" "$AUTOSTART_DIR" "$ICON_DIR"
+if [[ -f "$APP_DIR/../jcode-panel/assets/icon.svg" ]]; then
+  cp "$APP_DIR/../jcode-panel/assets/icon.svg" "$ICON_DIR/jcode-panel.svg"
+elif [[ -f "$APP_DIR/src-tauri/icons/icon.png" ]]; then
+  cp "$APP_DIR/src-tauri/icons/icon.png" "$ICON_DIR/jcode-panel.png"
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+  gtk-update-icon-cache -q -t "$HOME/.local/share/icons/hicolor" || true
+fi
 cat > "$WRAPPER" <<EOF
 #!/usr/bin/env bash
 export GDK_BACKEND=x11
@@ -35,7 +44,7 @@ Type=Application
 Name=Jcode Interaction
 Comment=Lightweight Rust/Tauri interaction client for jcode
 Exec=$WRAPPER
-Icon=$APP_DIR/src-tauri/icons/128x128.png
+Icon=jcode-panel
 Terminal=false
 Categories=Utility;Development;
 StartupNotify=true
@@ -47,7 +56,7 @@ Type=Application
 Name=Jcode Interaction
 Comment=Lightweight Rust/Tauri interaction client for jcode
 Exec=$WRAPPER
-Icon=$APP_DIR/src-tauri/icons/128x128.png
+Icon=jcode-panel
 Terminal=false
 Categories=Utility;Development;
 StartupNotify=true

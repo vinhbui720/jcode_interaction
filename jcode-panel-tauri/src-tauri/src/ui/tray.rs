@@ -48,9 +48,9 @@ pub fn install(app: &mut App) -> tauri::Result<()> {
             }
         });
 
-    if let Some(icon) = app.default_window_icon() {
-        builder = builder.icon(icon.clone());
-    }
+    builder = builder
+        .icon(tauri::include_image!("icons/32x32.png").clone())
+        .icon_as_template(false);
 
     builder.build(app)?;
     let _ = status::refresh_header_status(app.handle());
@@ -63,13 +63,14 @@ fn notify_startup(app: &App) {
     command
         .arg("-a")
         .arg("jcode-panel")
+        // Match the Python app title/body, but use the installed themed icon so
+        // GNOME notifications show the same panel mark instead of a generic app.
+        .arg("-i")
+        .arg(notification_icon_name_or_path(app))
         .arg("-u")
         .arg("normal")
         .arg("-t")
         .arg("5000");
-    if let Some(icon) = notification_icon_path(app) {
-        command.arg("-i").arg(icon);
-    }
     let _ = command
         .arg("jcode-panel is running")
         .arg("Use the top-bar icon, jcode-panel, or jcp to open it.")
@@ -78,14 +79,50 @@ fn notify_startup(app: &App) {
         .spawn();
 }
 
+fn notification_icon_name_or_path(app: &App) -> String {
+    themed_icon_path()
+        .filter(|path| path.exists())
+        .or_else(|| notification_icon_path(app))
+        .map(|path| path.to_string_lossy().to_string())
+        .unwrap_or_else(|| "jcode-panel".into())
+}
+
 fn notification_icon_path(_app: &App) -> Option<PathBuf> {
-    let candidates = [
+    icon_path_candidates(_app)
+        .into_iter()
+        .find(|path| path.exists())
+}
+
+fn icon_path_candidates(app: &App) -> Vec<PathBuf> {
+    [
+        themed_icon_path(),
         std::env::current_dir()
             .ok()
             .map(|dir| dir.join("src-tauri/icons/128x128.png")),
+        std::env::current_dir()
+            .ok()
+            .map(|dir| dir.join("src-tauri/icons/32x32.png")),
         std::env::current_exe()
             .ok()
             .and_then(|exe| exe.parent().map(|dir| dir.join("icons/128x128.png"))),
-    ];
-    candidates.into_iter().flatten().find(|path| path.exists())
+        app.path()
+            .resource_dir()
+            .ok()
+            .map(|dir| dir.join("icons/128x128.png")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
+fn themed_icon_path() -> Option<PathBuf> {
+    dirs::home_dir().map(|home| {
+        home.join(".local")
+            .join("share")
+            .join("icons")
+            .join("hicolor")
+            .join("scalable")
+            .join("apps")
+            .join("jcode-panel.svg")
+    })
 }
