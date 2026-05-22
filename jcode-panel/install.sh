@@ -61,7 +61,16 @@ rm -f "$HOME/.local/share/applications/jcode-panel-prompt.desktop"
 PYTHONPATH="$PWD:$PWD/.python-deps" python3 -m jcode_panel.main --diagnose || true
 PYTHONPATH="$PWD:$PWD/.python-deps" python3 -m jcode_panel.main --install-shortcut || true
 
-echo "Installed autostart entry. Browser extension is in ./extension and is optional."
+echo "Checking app integrations..."
+for integration in vscode obsidian; do
+  if PYTHONPATH="$PWD:$PWD/.python-deps" python3 -m jcode_panel.main --install-integration "$integration"; then
+    echo "OK: $integration integration installed/refreshed"
+  else
+    echo "SKIP: $integration integration not available on this machine"
+  fi
+done
+
+echo "Installed autostart entry. VS Code and Obsidian integrations are auto-refreshed when detectable. Browser extension is in ./extension and is optional."
 echo "Aliases installed:"
 echo "  jcode-panel        # open app"
 echo "  jcp                # open prompt"

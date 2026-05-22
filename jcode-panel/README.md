@@ -45,9 +45,16 @@ Normal use after install:
 - `jcode-panel` opens the dropdown/config UI.
 - `jcode-panel --quit` stops the resident app.
 
-## Install integrations
+## Integrations
 
-Install only the integrations you use:
+`./install.sh` automatically installs or refreshes safe local integrations when their host apps are detectable:
+
+- VS Code, when the `code` CLI is available.
+- Obsidian, when a vault can be found in `~/.config/obsidian/obsidian.json`.
+
+`jcode-panel --self-update` and the tray **Update app** action also refresh those integrations after the safe fast-forward update check. No prompt is required. Missing host apps are skipped without failing the panel install.
+
+Manual commands remain available if you want to retry one integration:
 
 ```bash
 jcode-panel --install-integration vscode
@@ -57,7 +64,7 @@ jcode-panel --install-integration browser
 
 ### VS Code
 
-The installer copies the local extension from `integrations/vscode_extension/`. Reload VS Code after install. The extension writes context only when the editor, cursor, or selection changes:
+The installer packages and installs the local extension from `integrations/vscode_extension/` through the VS Code CLI when available, with a local folder fallback. Reload VS Code after install/update. The extension writes context only when the editor, cursor, or selection changes:
 
 ```text
 ~/.local/state/jcode-panel/contexts/vscode.json
@@ -67,7 +74,7 @@ It records active file path, line/column, workspace, language, and selected text
 
 ### Obsidian
 
-The installer copies the plugin from `integrations/obsidian_plugin/` into your vault plugin directory. Enable it in Obsidian Community plugins, then reload Obsidian. It writes:
+The installer copies the plugin from `integrations/obsidian_plugin/` into the latest/open detected vault plugin directory and adds `jcode-panel` to `community-plugins.json`. Reload Obsidian after install/update. It writes:
 
 ```text
 ~/.local/state/jcode-panel/contexts/obsidian.json
@@ -215,6 +222,8 @@ jcode-panel --self-update
 ```
 
 The tray menu also has **Update app**. It never force-resets or deletes local work.
+
+After each successful update check, the VS Code and Obsidian integrations are reinstalled/refreshed automatically when their host apps are detectable. Missing integrations are skipped without prompting.
 
 ## Resident app behavior
 

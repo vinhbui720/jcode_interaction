@@ -16,6 +16,24 @@ def project_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def refresh_auto_integrations(root: Path) -> list[str]:
+    """Refresh integrations that can be installed safely without prompting."""
+    from .integrations import IntegrationRegistry
+
+    messages: list[str] = []
+    registry = IntegrationRegistry(root)
+    for integration_id in ("vscode", "obsidian"):
+        try:
+            status = registry.install(integration_id)
+            if status.installed:
+                messages.append(f"{integration_id}: {status.message}")
+            else:
+                messages.append(f"{integration_id}: skipped ({status.message})")
+        except Exception as exc:
+            messages.append(f"{integration_id}: skipped ({exc})")
+    return messages
+
+
 def self_update(root: Path | None = None) -> UpdateResult:
     """Best-effort git self-update for source installs.
 
@@ -36,7 +54,11 @@ def self_update(root: Path | None = None) -> UpdateResult:
         branch = subprocess.check_output(["git", "branch", "--show-current"], cwd=repo, text=True, timeout=5).strip() or "main"
         subprocess.check_call(["git", "pull", "--ff-only", "origin", branch], cwd=repo, timeout=60)
         after = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True, timeout=5).strip()
-        return UpdateResult(True, "Already up to date" if before == after else f"Updated {before[:7]} → {after[:7]}", before != after)
+        update_message = "Already up to date" if before == after else f"Updated {before[:7]} → {after[:7]}"
+        integration_messages = refresh_auto_integrations(root)
+        if integration_messages:
+            update_message += "\nIntegrations refreshed:\n" + "\n".join(f"- {message}" for message in integration_messages)
+        return UpdateResult(True, update_message, before != after)
     except subprocess.CalledProcessError as exc:
         return UpdateResult(False, f"Update failed: {exc}. Resolve git state manually; no destructive action was taken.")
     except Exception as exc:
