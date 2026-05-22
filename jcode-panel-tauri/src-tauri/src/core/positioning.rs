@@ -56,6 +56,12 @@ pub fn parse_shell_var(output: &str, key: &str) -> Option<i64> {
     })
 }
 
+pub fn parse_gdbus_int_pair(output: &str) -> Option<(i32, i32)> {
+    let re = Regex::new(r"\(?\s*(-?\d+)\s*,\s*(-?\d+)\s*,?\s*\)?").unwrap();
+    let caps = re.captures(output)?;
+    Some((caps[1].parse().ok()?, caps[2].parse().ok()?))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -74,5 +80,6 @@ mod tests {
             parse_xdotool_mouselocation("X=2657\nY=50\nSCREEN=0\nWINDOW=8388629"),
             (Some(2657), Some(50))
         );
+        assert_eq!(parse_gdbus_int_pair("(2600, 892)"), Some((2600, 892)));
     }
 }

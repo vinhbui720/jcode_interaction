@@ -173,6 +173,10 @@ fn mouse_position(window: &tauri::WebviewWindow) -> Option<(i32, i32)> {
     // wrong space for transparent overlay windows. Prefer xdotool's root-window
     // coordinates when X11 is available, then fall back to Tauri for native
     // Wayland or systems without xdotool.
+    if let Some(pos) = gnome_cursor_position() {
+        positioning::remember_cursor(pos);
+        return Some(pos);
+    }
     if std::env::var_os("DISPLAY").is_some() {
         if let Some(pos) = xdotool_mouse_position() {
             positioning::remember_cursor(pos);
@@ -198,6 +202,33 @@ fn xdotool_mouse_position() -> Option<(i32, i32)> {
     let text = String::from_utf8_lossy(&output.stdout);
     let (x, y) = positioning::parse_xdotool_mouselocation(&text);
     Some((x?, y?))
+}
+
+fn gnome_cursor_position() -> Option<(i32, i32)> {
+    if std::env::var("XDG_CURRENT_DESKTOP")
+        .map(|desktop| !desktop.to_ascii_lowercase().contains("gnome"))
+        .unwrap_or(true)
+    {
+        return None;
+    }
+    let output = Command::new("gdbus")
+        .args([
+            "call",
+            "--session",
+            "--dest",
+            "org.jcode.Panel.Cursor",
+            "--object-path",
+            "/org/jcode/Panel/Cursor",
+            "--method",
+            "org.jcode.Panel.Cursor.GetPosition",
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    positioning::parse_gdbus_int_pair(&text)
 }
 
 fn clamped_overlay_position(
