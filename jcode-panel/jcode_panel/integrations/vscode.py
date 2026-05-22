@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import shutil
 import subprocess
 import tempfile
@@ -56,10 +57,16 @@ class VSCodeIntegration(Integration):
             return
         try:
             with tempfile.TemporaryDirectory() as tmp:
+                shim = Path(tmp) / "node18-file-shim.js"
+                shim.write_text("if (typeof globalThis.File === 'undefined') globalThis.File = class File {};\n")
                 vsix = Path(tmp) / "jcode-panel-context.vsix"
+                env = dict(os.environ)
+                existing_node_options = env.get("NODE_OPTIONS", "").strip()
+                env["NODE_OPTIONS"] = f"{existing_node_options} --require {shim}".strip()
                 subprocess.run(
                     [npx, "--yes", "@vscode/vsce", "package", "--allow-missing-repository", "--out", str(vsix)],
                     cwd=str(self.source_dir),
+                    env=env,
                     check=True,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
