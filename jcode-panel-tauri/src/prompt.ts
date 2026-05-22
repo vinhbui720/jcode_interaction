@@ -134,8 +134,8 @@ export function renderPrompt(root: HTMLElement) {
     submitting = true;
     input.disabled = true;
     try {
-      await api.hidePrompt();
       await api.submitPromptAsync(value);
+      await api.hidePrompt();
       input.value = '';
       updateUi();
     } catch (error) {

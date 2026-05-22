@@ -1,21 +1,12 @@
 use crate::core::{formatting, positioning, state::TokenStats};
 use serde::Serialize;
-use std::{
-    process::Command,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Mutex,
-    },
-    thread,
-    time::Duration,
-};
+use std::{process::Command, sync::Mutex, thread, time::Duration};
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder,
 };
 
 static LAST_FEEDBACK: Mutex<Option<FeedbackPayload>> = Mutex::new(None);
-static PROMPT_FOLLOW_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FeedbackPayload {
@@ -122,37 +113,8 @@ pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
     window.show().map_err(|err| err.to_string())?;
     window.unminimize().map_err(|err| err.to_string())?;
     window.set_focus().map_err(|err| err.to_string())?;
-    start_prompt_follow(app);
     let _ = window.emit("prompt-shown", ());
     Ok(())
-}
-
-fn start_prompt_follow(app: &AppHandle) {
-    stop_prompt_follow();
-    PROMPT_FOLLOW_ACTIVE.store(true, Ordering::SeqCst);
-    let app = app.clone();
-    thread::spawn(move || {
-        while PROMPT_FOLLOW_ACTIVE.load(Ordering::SeqCst) {
-            let app_for_main = app.clone();
-            let _ = app.run_on_main_thread(move || {
-                if let Some(window) = app_for_main.get_webview_window(PanelWindow::Prompt.label()) {
-                    if window.is_visible().unwrap_or(false) {
-                        place_prompt_at_mouse_or_center(&window);
-                    } else {
-                        PROMPT_FOLLOW_ACTIVE.store(false, Ordering::SeqCst);
-                    }
-                } else {
-                    PROMPT_FOLLOW_ACTIVE.store(false, Ordering::SeqCst);
-                }
-            });
-            thread::sleep(Duration::from_millis(50));
-        }
-        PROMPT_FOLLOW_ACTIVE.store(false, Ordering::SeqCst);
-    });
-}
-
-fn stop_prompt_follow() {
-    PROMPT_FOLLOW_ACTIVE.store(false, Ordering::SeqCst);
 }
 
 #[tauri::command]
@@ -184,9 +146,22 @@ fn place_prompt_at_mouse_or_center(window: &tauri::WebviewWindow) {
 }
 
 fn mouse_position(window: &tauri::WebviewWindow) -> Option<(i32, i32)> {
+    // On XWayland, Tauri/WebKit cursor_position can report coordinates in the
+    // wrong space for transparent overlay windows. Prefer xdotool's root-window
+    // coordinates when X11 is available, then fall back to Tauri for native
+    // Wayland or systems without xdotool.
+    if std::env::var_os("DISPLAY").is_some() {
+        if let Some(pos) = xdotool_mouse_position() {
+            return Some(pos);
+        }
+    }
     if let Ok(pos) = window.cursor_position() {
         return Some((pos.x.round() as i32, pos.y.round() as i32));
     }
+    xdotool_mouse_position()
+}
+
+fn xdotool_mouse_position() -> Option<(i32, i32)> {
     let output = Command::new("xdotool")
         .arg("getmouselocation")
         .output()
@@ -201,7 +176,6 @@ fn mouse_position(window: &tauri::WebviewWindow) -> Option<(i32, i32)> {
 
 #[tauri::command]
 pub fn hide_prompt(app: AppHandle) -> Result<(), String> {
-    stop_prompt_follow();
     let result = close_window(&app, PanelWindow::Prompt);
     crate::app::reset_prompt_shortcut(&app);
     result
