@@ -11,8 +11,8 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 
 fn register_prompt_shortcut(app: &tauri::AppHandle) {
     let cfg = config::load_config();
-    let shortcut = parse_shortcut(&cfg.prompt_hotkey)
-        .unwrap_or_else(|| Shortcut::new(Some(Modifiers::empty()), Code::F8));
+    let shortcut =
+        parse_shortcut(&cfg.prompt_hotkey).unwrap_or_else(|| Shortcut::new(None, Code::F8));
     let handle = app.clone();
     let _ = app
         .global_shortcut()
@@ -106,10 +106,16 @@ fn parse_shortcut(hotkey: &str) -> Option<Shortcut> {
         "z" => Code::KeyZ,
         _ => return None,
     };
-    Some(Shortcut::new(Some(modifiers), code))
+    let modifiers = if modifiers.is_empty() {
+        None
+    } else {
+        Some(modifiers)
+    };
+    Some(Shortcut::new(modifiers, code))
 }
 
 pub fn run() {
+    std::env::set_var("GDK_BACKEND", "x11");
     if !acquire_single_instance() {
         return;
     }

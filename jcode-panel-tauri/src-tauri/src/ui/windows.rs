@@ -36,6 +36,7 @@ fn show_window(app: &AppHandle, label: &str) -> Result<(), String> {
         .get_webview_window(label)
         .ok_or_else(|| format!("missing window {label}"))?;
     window.show().map_err(|err| err.to_string())?;
+    window.unminimize().map_err(|err| err.to_string())?;
     window.set_focus().map_err(|err| err.to_string())?;
     Ok(())
 }
@@ -59,12 +60,33 @@ pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
     }
     let result = show_window(app, "prompt");
     if result.is_ok() {
+        activate_prompt_window();
         start_prompt_mouse_follow(app);
         if let Some(window) = app.get_webview_window("prompt") {
             let _ = window.emit("prompt-shown", ());
         }
     }
     result
+}
+
+fn activate_prompt_window() {
+    thread::spawn(|| {
+        for delay in [20_u64, 80, 180] {
+            thread::sleep(Duration::from_millis(delay));
+            let _ = Command::new("xdotool")
+                .args([
+                    "search",
+                    "--name",
+                    "Jcode Prompt",
+                    "windowactivate",
+                    "--sync",
+                    "windowfocus",
+                ])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
+        }
+    });
 }
 
 fn start_prompt_mouse_follow(app: &AppHandle) {

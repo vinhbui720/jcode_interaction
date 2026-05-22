@@ -22,6 +22,7 @@ npm run build
 mkdir -p "$USER_BIN" "$DESKTOP_DIR" "$AUTOSTART_DIR"
 cat > "$WRAPPER" <<EOF
 #!/usr/bin/env bash
+export GDK_BACKEND=x11
 cd "$APP_DIR" || exit 1
 exec "$BIN" "\$@"
 EOF
