@@ -140,4 +140,6 @@ export function renderFeedback(root: HTMLElement) {
       .catch(() => {});
   };
   replay();
+  const replayTimer = window.setInterval(replay, 1_000);
+  window.addEventListener('unload', () => window.clearInterval(replayTimer));
 }
