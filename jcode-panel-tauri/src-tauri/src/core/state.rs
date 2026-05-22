@@ -88,7 +88,17 @@ pub fn state_path() -> PathBuf {
 }
 
 pub fn load_state() -> AppState {
-    load_state_from_path(&state_path())
+    let path = state_path();
+    let state = normalize_runtime_state(load_state_from_path(&path));
+    let _ = save_state_to_path_preserving(&state, &path, true);
+    state
+}
+
+fn normalize_runtime_state(mut state: AppState) -> AppState {
+    if matches!(state.process_status.as_str(), "idle" | "complete" | "error") {
+        state.live_activity = None;
+    }
+    state
 }
 
 pub fn load_state_from_path(path: &PathBuf) -> AppState {
@@ -134,9 +144,6 @@ pub fn save_state_to_path_preserving(
         }
         if state.process_status.is_empty() && !existing.process_status.is_empty() {
             state.process_status = existing.process_status;
-        }
-        if state.live_activity.is_none() && existing.live_activity.is_some() {
-            state.live_activity = existing.live_activity;
         }
     }
     if let Some(parent) = path.parent() {
@@ -203,6 +210,30 @@ mod tests {
         let _ = fs::remove_file(path);
         assert_eq!(loaded.active_session.as_deref(), Some("keep-me"));
         assert_eq!(loaded.token_stats.unwrap().upload, 9);
+    }
+
+    #[test]
+    fn state_save_does_not_resurrect_cleared_live_activity() {
+        let path = std::env::temp_dir().join(format!(
+            "jcode-panel-state-live-{}.json",
+            std::process::id()
+        ));
+        let existing = AppState {
+            process_status: "sending".into(),
+            live_activity: Some(LiveActivity::new("jcode", "sending")),
+            ..AppState::default()
+        };
+        save_state_to_path(&existing, &path).unwrap();
+        let complete = AppState {
+            process_status: "complete".into(),
+            live_activity: None,
+            ..AppState::default()
+        };
+        save_state_to_path_preserving(&complete, &path, false).unwrap();
+        let loaded = load_state_from_path(&path);
+        let _ = fs::remove_file(path);
+        assert_eq!(loaded.process_status, "complete");
+        assert!(loaded.live_activity.is_none());
     }
 
     #[test]
