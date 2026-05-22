@@ -31,6 +31,7 @@ if command -v gtk-update-icon-cache >/dev/null 2>&1; then
 fi
 cat > "$WRAPPER" <<EOF
 #!/usr/bin/env bash
+export GDK_BACKEND=x11
 cd "$APP_DIR" || exit 1
 exec "$BIN" "\$@"
 EOF
@@ -38,6 +39,7 @@ chmod +x "$WRAPPER"
 cp "$WRAPPER" "$USER_BIN/jcp"
 cat > "$USER_BIN/jcp" <<EOF
 #!/usr/bin/env bash
+export GDK_BACKEND=x11
 cd "$APP_DIR" || exit 1
 exec "$BIN" --prompt "\$@"
 EOF

@@ -205,6 +205,13 @@ fn parse_shortcut(hotkey: &str) -> Option<Shortcut> {
 }
 
 pub fn run() {
+    if std::env::var_os("DISPLAY").is_some() {
+        // GNOME Wayland forbids normal apps from freely positioning windows.
+        // This panel needs cursor-following prompt/feedback overlays, so use
+        // XWayland when available. Windows are created on demand and destroyed
+        // on close, so this no longer leaves hidden laggy X11/WebKit windows.
+        std::env::set_var("GDK_BACKEND", "x11");
+    }
     let command_on_startup = startup_command();
     if !acquire_single_instance() {
         if let Some(command) = command_on_startup {
