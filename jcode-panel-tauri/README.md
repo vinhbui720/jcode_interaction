@@ -17,6 +17,15 @@ This is a real desktop app, not a browser tab. Tauri uses a native shell with em
 ./setup.sh
 ```
 
+`setup.sh` now builds the release Tauri app and installs it as the active runtime:
+
+- `~/.local/bin/jcode-panel`
+- `~/.local/bin/jcp`
+- `~/.local/share/applications/jcode-panel.desktop`
+- `~/.config/autostart/jcode-panel.desktop`
+
+It also replaces stale Python autostart behavior so boot/login uses the Rust app.
+
 If native Linux libs are missing, install:
 
 ```bash
