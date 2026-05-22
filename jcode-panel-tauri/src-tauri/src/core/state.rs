@@ -55,15 +55,36 @@ pub fn load_state_from_path(path: &PathBuf) -> AppState {
 }
 
 pub fn save_state(state: &AppState) -> anyhow::Result<()> {
-    save_state_to_path(state, &state_path())
+    save_state_to_path_preserving(state, &state_path(), false)
 }
 
 pub fn save_state_to_path(state: &AppState, path: &PathBuf) -> anyhow::Result<()> {
+    save_state_to_path_preserving(state, path, true)
+}
+
+pub fn save_state_to_path_preserving(
+    state: &AppState,
+    path: &PathBuf,
+    allow_clear_session: bool,
+) -> anyhow::Result<()> {
+    let mut state = state.clone();
+    if !allow_clear_session {
+        let existing = load_state_from_path(path);
+        if state.active_session.is_none() && existing.active_session.is_some() {
+            state.active_session = existing.active_session;
+        }
+        if state.token_stats.is_none() && existing.token_stats.is_some() {
+            state.token_stats = existing.token_stats;
+        }
+        if state.recent_messages.is_empty() && !existing.recent_messages.is_empty() {
+            state.recent_messages = existing.recent_messages;
+        }
+    }
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
     let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, serde_json::to_string_pretty(state)?)?;
+    fs::write(&tmp, serde_json::to_string_pretty(&state)?)?;
     fs::rename(tmp, path)?;
     Ok(())
 }
@@ -98,5 +119,46 @@ mod tests {
         assert_eq!(loaded.active_section, "Work");
         assert_eq!(loaded.token_stats.unwrap().download, 2);
         assert_eq!(loaded.recent_messages.len(), 1);
+    }
+
+    #[test]
+    fn state_save_preserves_existing_session_and_tokens_when_blank() {
+        let path = std::env::temp_dir().join(format!(
+            "jcode-panel-state-preserve-{}.json",
+            std::process::id()
+        ));
+        let existing = AppState {
+            active_session: Some("keep-me".into()),
+            token_stats: Some(TokenStats {
+                upload: 9,
+                download: 8,
+                cache_read: 7,
+                cache_write: 6,
+            }),
+            ..AppState::default()
+        };
+        save_state_to_path(&existing, &path).unwrap();
+        save_state_to_path_preserving(&AppState::default(), &path, false).unwrap();
+        let loaded = load_state_from_path(&path);
+        let _ = fs::remove_file(path);
+        assert_eq!(loaded.active_session.as_deref(), Some("keep-me"));
+        assert_eq!(loaded.token_stats.unwrap().upload, 9);
+    }
+
+    #[test]
+    fn state_save_can_intentionally_clear_session_for_new_section() {
+        let path = std::env::temp_dir().join(format!(
+            "jcode-panel-state-clear-{}.json",
+            std::process::id()
+        ));
+        let existing = AppState {
+            active_session: Some("clear-me".into()),
+            ..AppState::default()
+        };
+        save_state_to_path(&existing, &path).unwrap();
+        save_state_to_path_preserving(&AppState::default(), &path, true).unwrap();
+        let loaded = load_state_from_path(&path);
+        let _ = fs::remove_file(path);
+        assert_eq!(loaded.active_session, None);
     }
 }

@@ -6,12 +6,12 @@ Python source: `jcode-panel/tests/test_core.py`
 |---|---|
 | `test_default_config_roundtrip` | ported-basic |
 | `test_config_loads_backup_when_primary_missing` | ported-basic |
-| `test_context_summary_and_block` | pending-port |
+| `test_context_summary_and_block` | ported-basic |
 | `test_parse_structured_and_plain_events` | pending-port |
 | `test_conversation_preview_debug_and_status` | pending-port |
 | `test_completion_tab_cycles` | ported-basic |
-| `test_terminal_template_rendering` | pending-port |
-| `test_terminal_launch_defaults_to_home_cwd` | pending-port |
+| `test_terminal_template_rendering` | ported-basic |
+| `test_terminal_launch_defaults_to_home_cwd` | ported-basic |
 | `test_state_roundtrip_and_prompt_dedupe` | ported-basic |
 | `test_state_loads_backup_when_primary_missing` | ported-basic |
 | `test_state_save_preserves_existing_session_and_tokens_when_blank` | ported-basic |
@@ -41,12 +41,12 @@ Python source: `jcode-panel/tests/test_core.py`
 | `test_jcode_client_send_bootstraps_new_section` | pending-port |
 | `test_jcode_client_set_session_restarts_dead_same_session` | pending-port |
 | `test_protocol_parses_completion_items_and_session` | ported-basic |
-| `test_diagnostics_report_text_and_status` | pending-port |
-| `test_hotkey_status_shape` | pending-port |
+| `test_diagnostics_report_text_and_status` | ported-basic |
+| `test_hotkey_status_shape` | ported-basic |
 | `test_integration_registry_lists_browser_and_obsidian` | pending-port |
-| `test_update_result_shape` | pending-port |
-| `test_control_response_shape` | pending-port |
-| `test_shortcut_result_shape` | pending-port |
+| `test_update_result_shape` | ported-basic |
+| `test_control_response_shape` | ported-basic |
+| `test_shortcut_result_shape` | ported-basic |
 | `test_protocol_extracts_common_ndjson_text_shapes` | ported-basic |
 | `test_conversation_coalesces_text_delta_stream` | ported-basic |
 | `test_parse_xdotool_mouselocation` | pending-port |

@@ -1,8 +1,12 @@
 pub mod config;
+pub mod context;
 pub mod conversation;
+pub mod diagnostics;
+pub mod formatting;
 pub mod hotkeys;
 pub mod interaction_context;
 pub mod jcode;
 pub mod popup_context;
 pub mod protocol;
 pub mod state;
+pub mod terminal;
