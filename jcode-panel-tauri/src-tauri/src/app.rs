@@ -110,7 +110,10 @@ fn start_ipc_server(app: &tauri::AppHandle) {
             let command = command.trim().to_string();
             let app_for_main = app.clone();
             let _ = app.run_on_main_thread(move || {
-                if command == "show_settings" {
+                if matches!(
+                    command.as_str(),
+                    "show_settings" | "settings" | "--settings"
+                ) {
                     let _ = crate::ui::windows::show_settings(app_for_main.clone());
                 } else {
                     let _ = crate::ui::windows::show_prompt_window(&app_for_main);
@@ -233,7 +236,7 @@ pub fn run() {
             if let Some(command) = command_on_startup {
                 let handle = app.handle().clone();
                 let _ = app.handle().run_on_main_thread(move || {
-                    if command == "show_settings" {
+                    if matches!(command, "show_settings" | "settings" | "--settings") {
                         let _ = crate::ui::windows::show_settings(handle.clone());
                     } else {
                         let _ = crate::ui::windows::show_prompt_window(&handle);

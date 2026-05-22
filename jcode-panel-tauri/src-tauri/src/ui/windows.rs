@@ -89,6 +89,9 @@ fn ensure_window(app: &AppHandle, kind: PanelWindow) -> Result<WebviewWindow, St
 
 fn show_window(app: &AppHandle, kind: PanelWindow) -> Result<WebviewWindow, String> {
     let window = ensure_window(app, kind)?;
+    if !kind.is_overlay() {
+        let _ = window.center();
+    }
     window.show().map_err(|err| err.to_string())?;
     window.unminimize().map_err(|err| err.to_string())?;
     window.set_focus().map_err(|err| err.to_string())?;
@@ -114,16 +117,36 @@ pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
     window.unminimize().map_err(|err| err.to_string())?;
     window.set_focus().map_err(|err| err.to_string())?;
     let _ = window.emit("prompt-shown", ());
+    follow_prompt_briefly(app.clone());
     Ok(())
 }
 
 #[tauri::command]
 pub fn prompt_follow_mouse_tick(app: AppHandle) -> Result<bool, String> {
-    // Compatibility command for older loaded frontends. Actual tracking is owned by Rust.
-    Ok(app
-        .get_webview_window("prompt")
-        .and_then(|window| window.is_visible().ok())
-        .unwrap_or(false))
+    let Some(window) = app.get_webview_window("prompt") else {
+        return Ok(false);
+    };
+    let visible = window.is_visible().unwrap_or(false);
+    if visible {
+        place_prompt_at_mouse_or_center(&window);
+    }
+    Ok(visible)
+}
+
+fn follow_prompt_briefly(app: AppHandle) {
+    thread::spawn(move || {
+        for _ in 0..24 {
+            thread::sleep(Duration::from_millis(33));
+            let app_for_main = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                if let Some(window) = app_for_main.get_webview_window("prompt") {
+                    if window.is_visible().unwrap_or(false) {
+                        place_prompt_at_mouse_or_center(&window);
+                    }
+                }
+            });
+        }
+    });
 }
 
 fn smooth_step(current: f64, target: f64, alpha: f64) -> f64 {

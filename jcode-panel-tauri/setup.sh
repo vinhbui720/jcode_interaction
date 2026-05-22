@@ -41,6 +41,9 @@ cat > "$USER_BIN/jcp" <<EOF
 #!/usr/bin/env bash
 export GDK_BACKEND=x11
 cd "$APP_DIR" || exit 1
+if [[ "\${1:-}" == "settings" || "\${1:-}" == "--settings" ]]; then
+  exec "$BIN" settings
+fi
 exec "$BIN" --prompt "\$@"
 EOF
 chmod +x "$USER_BIN/jcp"
