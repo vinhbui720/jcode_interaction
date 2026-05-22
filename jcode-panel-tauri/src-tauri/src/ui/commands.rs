@@ -1,9 +1,9 @@
 use crate::{
-    core::{config, jcode, state},
+    core::{config, diagnostics, formatting, interaction_context, jcode, state},
     integrations,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
+use std::{process::Command, sync::Mutex};
 use tauri::State;
 
 pub struct RuntimeState(pub Mutex<state::AppState>);
@@ -35,7 +35,19 @@ pub fn submit_prompt(
     runtime: State<RuntimeState>,
 ) -> Result<jcode::SendResult, String> {
     let session = runtime.0.lock().expect("state lock").active_session.clone();
-    let result = jcode::send_prompt(&prompt, session.as_deref()).map_err(|err| err.to_string())?;
+    let normalized = interaction_context::normalize_interaction_tags(&prompt);
+    let expanded = interaction_context::expand_interaction_chips(&normalized)?;
+    let screenshots: Vec<String> = runtime
+        .0
+        .lock()
+        .expect("state lock")
+        .recent_messages
+        .iter()
+        .filter_map(|m| m.text.strip_prefix("screenshot: ").map(str::to_string))
+        .collect();
+    let outgoing_prompt = formatting::expand_pic_tags(&expanded, &screenshots);
+    let result =
+        jcode::send_prompt(&outgoing_prompt, session.as_deref()).map_err(|err| err.to_string())?;
     let mut state = runtime.0.lock().expect("state lock");
     let user_prompt = prompt.clone();
     state.last_prompt = prompt;
@@ -94,6 +106,66 @@ pub fn start_new_section(
 }
 
 #[tauri::command]
+pub fn normalize_prompt_text(text: String) -> serde_json::Value {
+    let normalized = interaction_context::normalize_interaction_tags(&text);
+    serde_json::json!({
+        "text": normalized,
+        "hints": interaction_context::interaction_token_hints(&text, None),
+    })
+}
+
+#[tauri::command]
+pub fn capture_screenshot(mode: String, runtime: State<RuntimeState>) -> Result<String, String> {
+    let mode = mode.trim().to_ascii_lowercase();
+    let dir = dirs::picture_dir()
+        .or_else(dirs::home_dir)
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("jcode-panel");
+    std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+    let path = dir.join(format!(
+        "screenshot-{}.png",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| err.to_string())?
+            .as_secs()
+    ));
+    let path_text = path.to_string_lossy().to_string();
+    let mut command = if Command::new("gnome-screenshot")
+        .arg("--version")
+        .output()
+        .is_ok()
+    {
+        let mut cmd = Command::new("gnome-screenshot");
+        if mode == "area" {
+            cmd.arg("-a");
+        }
+        cmd.arg("-f").arg(&path_text);
+        cmd
+    } else if Command::new("import").arg("-version").output().is_ok() {
+        let mut cmd = Command::new("import");
+        if mode != "area" {
+            cmd.arg("-window").arg("root");
+        }
+        cmd.arg(&path_text);
+        cmd
+    } else {
+        return Err("No screenshot tool found. Install gnome-screenshot or imagemagick.".into());
+    };
+    let output = command.output().map_err(|err| err.to_string())?;
+    if !output.status.success() || !path.exists() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    let tag = formatting::screenshot_tag(&path_text);
+    let mut state = runtime.0.lock().expect("state lock");
+    state.recent_messages.push(state::ConversationMessage {
+        author: "panel".into(),
+        text: format!("screenshot: {path_text}"),
+    });
+    state::save_state(&state).map_err(|err| err.to_string())?;
+    Ok(tag)
+}
+
+#[tauri::command]
 pub fn integration_status() -> serde_json::Value {
     serde_json::json!({
         "vscode": integrations::vscode::status(),
@@ -107,4 +179,35 @@ pub fn refresh_integrations() -> serde_json::Value {
         "vscode": integrations::vscode::install(),
         "obsidian": integrations::obsidian::install()
     })
+}
+
+#[tauri::command]
+pub fn diagnostics_report() -> diagnostics::DiagnosticsReport {
+    diagnostics::DiagnosticsReport {
+        checks: vec![
+            diagnostics::CheckResult {
+                name: "jcode".into(),
+                ok: jcode::jcode_available(),
+                message: if jcode::jcode_available() {
+                    "jcode command available"
+                } else {
+                    "jcode command missing"
+                }
+                .into(),
+                fix: "Install jcode and ensure it is on PATH".into(),
+            },
+            diagnostics::CheckResult {
+                name: "vscode".into(),
+                ok: integrations::vscode::status().installed,
+                message: integrations::vscode::status().message,
+                fix: "Use Refresh integrations from the panel".into(),
+            },
+            diagnostics::CheckResult {
+                name: "obsidian".into(),
+                ok: integrations::obsidian::status().installed,
+                message: integrations::obsidian::status().message,
+                fix: "Open an Obsidian vault, then refresh integrations".into(),
+            },
+        ],
+    }
 }

@@ -1,6 +1,28 @@
 use regex::Regex;
 use serde_json::Value;
-use std::path::{Path, PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+
+pub fn context_dir() -> PathBuf {
+    dirs::data_local_dir()
+        .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")))
+        .join("jcode-panel")
+        .join("contexts")
+}
+
+pub fn read_interaction_context(source: &str) -> Result<InteractionContext, String> {
+    match source.trim().to_ascii_lowercase().as_str() {
+        "vscode" => read_vscode_context(),
+        "obsidian" => read_obsidian_context(),
+        other => Err(format!("Unknown interaction source: {other}")),
+    }
+}
+
+pub fn expand_interaction_chips(text: &str) -> Result<String, String> {
+    expand_interaction_chips_with(text, |source| Ok(read_interaction_context(source)?.body))
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InteractionContext {
@@ -168,6 +190,102 @@ pub fn obsidian_context_from_json(data: &Value) -> InteractionContext {
     }
 }
 
+pub fn vscode_context_from_json(data: &Value) -> Result<InteractionContext, String> {
+    let file_path = data
+        .get("file")
+        .or_else(|| data.get("path"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    if file_path.is_empty() {
+        return Err("VS Code is not open or no active file found".into());
+    }
+    let line = data.get("line").and_then(Value::as_i64).unwrap_or(1).max(1) as usize;
+    let selection = data
+        .get("selection")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let workspace = data
+        .get("workspaceRoot")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let language = data
+        .get("languageId")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let path = PathBuf::from(file_path);
+    let mut parts = vec![
+        "Context: vscode".to_string(),
+        format!("file: {file_path}"),
+        format!("line: {line}"),
+    ];
+    if !workspace.is_empty() {
+        parts.push(format!("workspace: {workspace}"));
+    }
+    if !language.is_empty() {
+        parts.push(format!("language: {language}"));
+    }
+    if !selection.is_empty() {
+        parts.push(format!("selection:\n{}", fence(selection, language)));
+    }
+    if path.exists() {
+        parts.push(format!(
+            "surrounding code:\n{}",
+            fence(&slice_file(&path, line, 80, 80), language)
+        ));
+    } else {
+        parts.push(
+            "status: file path reported by VS Code but not readable from this machine".into(),
+        );
+    }
+    Ok(InteractionContext {
+        source: "vscode".into(),
+        title: file_path.into(),
+        body: parts.join("\n"),
+    })
+}
+
+fn read_vscode_context() -> Result<InteractionContext, String> {
+    let data = read_json_context(
+        &context_dir().join("vscode.json"),
+        "VS Code is not open or no active file found",
+    )?;
+    vscode_context_from_json(&data)
+}
+
+fn read_obsidian_context() -> Result<InteractionContext, String> {
+    let data = read_json_context(
+        &context_dir().join("obsidian.json"),
+        "Obsidian is not open or no active note found",
+    )?;
+    Ok(obsidian_context_from_json(&data))
+}
+
+fn read_json_context(path: &Path, missing: &str) -> Result<Value, String> {
+    let text = fs::read_to_string(path).map_err(|_| missing.to_string())?;
+    serde_json::from_str(&text).map_err(|err| format!("{missing}: {err}"))
+}
+
+fn slice_file(path: &Path, line: usize, before: usize, after: usize) -> String {
+    let Ok(text) = fs::read_to_string(path) else {
+        return String::new();
+    };
+    let lines: Vec<&str> = text.lines().collect();
+    if lines.is_empty() {
+        return String::new();
+    }
+    let start = line.saturating_sub(before).max(1);
+    let end = (line + after).min(lines.len());
+    let width = end.to_string().len();
+    (start..=end)
+        .map(|idx| format!("{idx:>width$}: {}", lines[idx - 1]))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn obsidian_absolute_path(path: &str, vault: &str) -> String {
     if path.is_empty() {
         return String::new();
@@ -237,5 +355,14 @@ mod tests {
         let ctx = obsidian_context_from_json(&data);
         assert!(ctx.body.contains("path: /vault/note.md"));
         assert!(ctx.body.contains("hello"));
+    }
+
+    #[test]
+    fn vscode_context_includes_selection_and_unreadable_status() {
+        let data = serde_json::json!({"file":"/missing/file.rs","line":7,"selection":"let x = 1;","workspaceRoot":"/work","languageId":"rust"});
+        let ctx = vscode_context_from_json(&data).unwrap();
+        assert!(ctx.body.contains("Context: vscode"));
+        assert!(ctx.body.contains("selection:"));
+        assert!(ctx.body.contains("not readable"));
     }
 }
