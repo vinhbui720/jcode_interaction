@@ -19,7 +19,9 @@ export async function renderPrompt(root: HTMLElement) {
     if (!input.value && chips.length) {
       input.value = `${chips.map((chip) => chip.tag).join(' ')} `;
     }
-    const summary = [ctx.app, ctx.window_title, ctx.selected_text ? 'selected text' : ''].filter(Boolean).join(' · ');
+    let browserHost = '';
+    try { browserHost = ctx.browser?.url ? new URL(ctx.browser.url).host : ''; } catch { browserHost = ctx.browser?.title ?? ''; }
+    const summary = [ctx.app || (browserHost ? 'Browser' : ''), browserHost || ctx.window_title, (ctx.browser?.selected_text || ctx.selected_text) ? 'selected text' : ''].filter(Boolean).join(' · ');
     if (summary) hint.textContent = `Context: ${summary}`;
   } catch {
     // Context capture is best-effort, keep prompt usable without X11 helpers.

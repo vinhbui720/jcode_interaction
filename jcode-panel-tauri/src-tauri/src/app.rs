@@ -1,5 +1,5 @@
 use crate::{
-    core::state,
+    core::{config, context, hotkeys, state},
     integrations,
     ui::{
         commands::{self, RuntimeState},
@@ -11,7 +11,9 @@ use tauri::Manager;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 fn register_prompt_shortcut(app: &tauri::AppHandle) {
-    let shortcut = Shortcut::new(Some(Modifiers::empty()), Code::F8);
+    let cfg = config::load_config();
+    let shortcut = parse_shortcut(&cfg.prompt_hotkey)
+        .unwrap_or_else(|| Shortcut::new(Some(Modifiers::empty()), Code::F8));
     let handle = app.clone();
     let _ = app
         .global_shortcut()
@@ -25,6 +27,65 @@ fn register_prompt_shortcut(app: &tauri::AppHandle) {
         });
 }
 
+fn parse_shortcut(hotkey: &str) -> Option<Shortcut> {
+    let (mods, key) = hotkeys::hotkey_parts(hotkey);
+    let mut modifiers = Modifiers::empty();
+    if mods.contains("ctrl") {
+        modifiers |= Modifiers::CONTROL;
+    }
+    if mods.contains("alt") {
+        modifiers |= Modifiers::ALT;
+    }
+    if mods.contains("shift") {
+        modifiers |= Modifiers::SHIFT;
+    }
+    if mods.contains("super") {
+        modifiers |= Modifiers::SUPER;
+    }
+    let code = match key.as_str() {
+        "f1" => Code::F1,
+        "f2" => Code::F2,
+        "f3" => Code::F3,
+        "f4" => Code::F4,
+        "f5" => Code::F5,
+        "f6" => Code::F6,
+        "f7" => Code::F7,
+        "f8" => Code::F8,
+        "f9" => Code::F9,
+        "f10" => Code::F10,
+        "f11" => Code::F11,
+        "f12" => Code::F12,
+        "a" => Code::KeyA,
+        "b" => Code::KeyB,
+        "c" => Code::KeyC,
+        "d" => Code::KeyD,
+        "e" => Code::KeyE,
+        "f" => Code::KeyF,
+        "g" => Code::KeyG,
+        "h" => Code::KeyH,
+        "i" => Code::KeyI,
+        "j" => Code::KeyJ,
+        "k" => Code::KeyK,
+        "l" => Code::KeyL,
+        "m" => Code::KeyM,
+        "n" => Code::KeyN,
+        "o" => Code::KeyO,
+        "p" => Code::KeyP,
+        "q" => Code::KeyQ,
+        "r" => Code::KeyR,
+        "s" => Code::KeyS,
+        "t" => Code::KeyT,
+        "u" => Code::KeyU,
+        "v" => Code::KeyV,
+        "w" => Code::KeyW,
+        "x" => Code::KeyX,
+        "y" => Code::KeyY,
+        "z" => Code::KeyZ,
+        _ => return None,
+    };
+    Some(Shortcut::new(Some(modifiers), code))
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -33,6 +94,7 @@ pub fn run() {
         .setup(|app| {
             tray::install(app)?;
             register_prompt_shortcut(app.handle());
+            context::start_browser_bridge();
             let _ = integrations::vscode::install();
             let _ = integrations::obsidian::install();
             Ok(())

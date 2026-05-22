@@ -1,5 +1,67 @@
 use serde::{Deserialize, Serialize};
-use std::process::Command;
+use std::{
+    io::{Read, Write},
+    net::TcpListener,
+    process::Command,
+    sync::{Mutex, OnceLock},
+    thread,
+};
+
+static LATEST_BROWSER: OnceLock<Mutex<BrowserContext>> = OnceLock::new();
+
+fn latest_browser() -> &'static Mutex<BrowserContext> {
+    LATEST_BROWSER.get_or_init(|| Mutex::new(BrowserContext::default()))
+}
+
+pub fn start_browser_bridge() {
+    thread::spawn(|| {
+        let Ok(listener) = TcpListener::bind("127.0.0.1:8765") else {
+            return;
+        };
+        for stream in listener.incoming().flatten() {
+            handle_browser_bridge_stream(stream);
+        }
+    });
+}
+
+fn handle_browser_bridge_stream(mut stream: std::net::TcpStream) {
+    let mut request = String::new();
+    let _ = stream.read_to_string(&mut request);
+    if request.starts_with("POST ") {
+        if let Some(body) = request.split("\r\n\r\n").nth(1) {
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(body) {
+                let mut browser = latest_browser().lock().expect("browser lock");
+                browser.title = value
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .into();
+                browser.url = value
+                    .get("url")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .into();
+                browser.selected_text = value
+                    .get("selectedText")
+                    .or_else(|| value.get("selected_text"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .into();
+            }
+        }
+        let _ = stream.write_all(b"HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 0\r\n\r\n");
+    } else {
+        let body = serde_json::to_string(&*latest_browser().lock().expect("browser lock"))
+            .unwrap_or_else(|_| "{}".into());
+        let _ = stream.write_all(
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\n\r\n{}",
+                body.len(), body
+            )
+            .as_bytes(),
+        );
+    }
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BrowserContext {
@@ -123,6 +185,7 @@ pub fn capture_active_context() -> ActiveContext {
     let clipboard_text = read_selection("clipboard").unwrap_or_default();
     let app = app.trim().to_string();
     let window_title = window_title.trim().to_string();
+    let browser = latest_browser().lock().expect("browser lock").clone();
     ActiveContext {
         app: if is_internal_shell_window(&app, &window_title) {
             String::new()
@@ -130,7 +193,10 @@ pub fn capture_active_context() -> ActiveContext {
             app
         },
         window_title,
-        browser: None,
+        browser: (!browser.title.is_empty()
+            || !browser.url.is_empty()
+            || !browser.selected_text.is_empty())
+        .then_some(browser),
         selected_text: selected_text.trim().to_string(),
         clipboard_text: if is_notification_clipboard(&clipboard_text) {
             String::new()

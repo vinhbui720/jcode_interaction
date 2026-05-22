@@ -58,7 +58,22 @@ pub fn submit_prompt(
     }
     let session = current_state.active_session.clone();
     let normalized = interaction_context::normalize_interaction_tags(&prompt);
-    let expanded = interaction_context::expand_interaction_chips(&normalized)?;
+    let ctx = crate::core::context::capture_active_context();
+    let selected_for_chip = ctx
+        .browser
+        .as_ref()
+        .and_then(|b| (!b.selected_text.trim().is_empty()).then_some(b.selected_text.as_str()))
+        .unwrap_or(&ctx.selected_text);
+    let popup_chips = popup_context::build_popup_context_chips(
+        selected_for_chip,
+        &[],
+        &ctx.app,
+        &ctx.window_title,
+        "",
+        None,
+    );
+    let with_popup_context = popup_context::expand_popup_context_chips(&normalized, &popup_chips);
+    let expanded = interaction_context::expand_interaction_chips(&with_popup_context)?;
     let screenshots: Vec<String> = runtime
         .0
         .lock()
@@ -196,8 +211,13 @@ pub fn active_context_snapshot() -> crate::core::context::ActiveContext {
 #[tauri::command]
 pub fn popup_context_chips() -> Vec<popup_context::PopupContextChip> {
     let ctx = crate::core::context::capture_active_context();
+    let selected_for_chip = ctx
+        .browser
+        .as_ref()
+        .and_then(|b| (!b.selected_text.trim().is_empty()).then_some(b.selected_text.as_str()))
+        .unwrap_or(&ctx.selected_text);
     popup_context::build_popup_context_chips(
-        &ctx.selected_text,
+        selected_for_chip,
         &[],
         &ctx.app,
         &ctx.window_title,
