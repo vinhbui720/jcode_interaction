@@ -5,6 +5,7 @@ use std::{
     process::Command,
     sync::{Mutex, OnceLock},
     thread,
+    time::Duration,
 };
 
 static LATEST_BROWSER: OnceLock<Mutex<BrowserContext>> = OnceLock::new();
@@ -25,8 +26,7 @@ pub fn start_browser_bridge() {
 }
 
 fn handle_browser_bridge_stream(mut stream: std::net::TcpStream) {
-    let mut request = String::new();
-    let _ = stream.read_to_string(&mut request);
+    let request = read_http_request(&mut stream).unwrap_or_default();
     if request.starts_with("POST ") {
         if let Some(body) = request.split("\r\n\r\n").nth(1) {
             if let Ok(value) = serde_json::from_str::<serde_json::Value>(body) {
@@ -61,6 +61,38 @@ fn handle_browser_bridge_stream(mut stream: std::net::TcpStream) {
             .as_bytes(),
         );
     }
+}
+
+fn read_http_request(stream: &mut std::net::TcpStream) -> Option<String> {
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(300)));
+    let mut bytes = Vec::new();
+    let mut buf = [0_u8; 1024];
+    loop {
+        match stream.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                bytes.extend_from_slice(&buf[..n]);
+                if let Some(header_end) = find_header_end(&bytes) {
+                    let headers =
+                        String::from_utf8_lossy(&bytes[..header_end]).to_ascii_lowercase();
+                    let content_len = headers
+                        .lines()
+                        .find_map(|line| line.strip_prefix("content-length:"))
+                        .and_then(|value| value.trim().parse::<usize>().ok())
+                        .unwrap_or(0);
+                    if bytes.len() >= header_end + 4 + content_len {
+                        break;
+                    }
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    String::from_utf8(bytes).ok()
+}
+
+fn find_header_end(bytes: &[u8]) -> Option<usize> {
+    bytes.windows(4).position(|w| w == b"\r\n\r\n")
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -239,6 +271,11 @@ mod tests {
         let block = ctx.as_prompt_block();
         assert!(block.contains("App: Code"));
         assert!(block.contains("Clipboard: clip"));
+    }
+    #[test]
+    fn finds_http_header_end_without_waiting_for_socket_close() {
+        let request = b"GET /active HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n";
+        assert_eq!(find_header_end(request), Some(request.len() - 4));
     }
     #[test]
     fn filters_shell_and_dm_clipboard() {

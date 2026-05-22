@@ -233,6 +233,7 @@ pub fn run() {
             context::start_browser_bridge();
             let _ = integrations::vscode::install();
             let _ = integrations::obsidian::install();
+            let _ = integrations::browser::install();
             if let Some(command) = command_on_startup {
                 let handle = app.handle().clone();
                 let _ = app.handle().run_on_main_thread(move || {

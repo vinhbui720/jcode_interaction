@@ -396,7 +396,8 @@ pub fn popup_context_chips() -> Vec<popup_context::PopupContextChip> {
 pub fn integration_status() -> serde_json::Value {
     serde_json::json!({
         "vscode": integrations::vscode::status(),
-        "obsidian": integrations::obsidian::status()
+        "obsidian": integrations::obsidian::status(),
+        "browser": integrations::browser::status()
     })
 }
 
@@ -404,7 +405,8 @@ pub fn integration_status() -> serde_json::Value {
 pub fn refresh_integrations() -> serde_json::Value {
     serde_json::json!({
         "vscode": integrations::vscode::install(),
-        "obsidian": integrations::obsidian::install()
+        "obsidian": integrations::obsidian::install(),
+        "browser": integrations::browser::install()
     })
 }
 
@@ -413,6 +415,7 @@ pub fn diagnostics_report() -> diagnostics::DiagnosticsReport {
     let jcode_available = jcode::jcode_available_cached();
     let vscode = integrations::vscode::status();
     let obsidian = integrations::obsidian::status();
+    let browser = integrations::browser::status();
     diagnostics::DiagnosticsReport {
         checks: vec![
             diagnostics::CheckResult {
@@ -437,6 +440,12 @@ pub fn diagnostics_report() -> diagnostics::DiagnosticsReport {
                 ok: obsidian.installed,
                 message: obsidian.message,
                 fix: "Open an Obsidian vault, then refresh integrations".into(),
+            },
+            diagnostics::CheckResult {
+                name: "browser".into(),
+                ok: browser.installed,
+                message: browser.message,
+                fix: "Refresh integrations, then restart Firefox once".into(),
             },
         ],
     }
