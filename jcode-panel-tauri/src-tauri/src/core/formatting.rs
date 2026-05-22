@@ -106,7 +106,9 @@ fn trim_float(v: f64, suffix: &str) -> String {
 }
 
 pub fn format_stream_lines(text: &str, max_lines: usize) -> String {
-    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+    let normalized = clean_feedback_text(text)
+        .replace("\r\n", "\n")
+        .replace('\r', "\n");
     let mut lines: Vec<String> = normalized.split('\n').map(str::to_string).collect();
     if lines.len() == 1 && lines[0].len() > 360 {
         lines = lines[0]
@@ -127,6 +129,40 @@ pub fn format_stream_lines(text: &str, max_lines: usize) -> String {
         .join("\n")
 }
 
+pub fn is_control_feedback_line(text: &str) -> bool {
+    matches!(
+        text.trim().to_ascii_uppercase().as_str(),
+        "COMPLETE" | "MESSAGE_END"
+    )
+}
+
+fn is_leading_noise_fragment(text: &str) -> bool {
+    let trimmed = text.trim();
+    !trimmed.is_empty()
+        && trimmed.chars().count() <= 4
+        && !trimmed.chars().any(|ch| ch.is_alphabetic())
+}
+
+pub fn clean_feedback_text(text: &str) -> String {
+    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+    let mut lines: Vec<&str> = normalized
+        .lines()
+        .filter(|line| !is_control_feedback_line(line))
+        .filter(|line| !matches!(line.trim(), "`" | "``" | "```"))
+        .collect();
+
+    if let Some(first_meaningful) = lines
+        .iter()
+        .position(|line| !line.trim().is_empty() && !is_leading_noise_fragment(line))
+    {
+        if first_meaningful > 0 {
+            lines.drain(0..first_meaningful);
+        }
+    }
+
+    coalesce_stream_deltas(&lines.join("\n"))
+}
+
 pub fn coalesce_stream_deltas(text: &str) -> String {
     let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
     let mut out = String::new();
@@ -142,7 +178,10 @@ pub fn coalesce_stream_deltas(text: &str) -> String {
         blank_count = 0;
         if out.ends_with("\n\n") || out.is_empty() {
             out.push_str(line.trim_start());
+        } else if line.starts_with(char::is_whitespace) || is_leading_noise_fragment(line) {
+            out.push_str(line);
         } else {
+            out.push('\n');
             out.push_str(line);
         }
     }
@@ -269,6 +308,10 @@ mod tests {
             "tokens: in 2, out 3"
         );
         assert_eq!(format_stream_lines("a\nb\nc", 2), "b\nc");
+        assert_eq!(
+            clean_feedback_text(":\n44\n +\n07\n`\nCurrent time:\n\n- UTC: now\nCOMPLETE"),
+            "Current time:\n\n- UTC: now"
+        );
         assert_eq!(
             coalesce_stream_deltas("What\n would\n you\n like\n?"),
             "What would you like?"

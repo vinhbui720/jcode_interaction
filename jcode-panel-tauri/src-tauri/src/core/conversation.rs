@@ -1,4 +1,7 @@
-use super::protocol::{event_preview, PanelEvent, PanelEventKind};
+use super::{
+    formatting,
+    protocol::{event_preview, PanelEvent, PanelEventKind},
+};
 
 #[derive(Debug, Clone)]
 pub struct ConversationBuffer {
@@ -20,7 +23,7 @@ impl ConversationBuffer {
         self.append("You", text);
     }
     pub fn add_event(&mut self, event: &PanelEvent) {
-        let text = event.text.trim_matches('\n');
+        let text = event.text.as_str();
         let raw_type = event
             .raw
             .as_ref()
@@ -66,16 +69,31 @@ impl ConversationBuffer {
                 self.append("jcode", &format!("Error: {text}"));
             }
             PanelEventKind::Message => {
-                if text.is_empty() {
+                if text.is_empty() || formatting::is_control_feedback_line(text) {
                     return;
                 }
                 if raw_type == "done" {
-                    if let Some((who, current)) = self.messages.last() {
-                        if who == "jcode" && (text == current || current.ends_with(text)) {
-                            self.streaming_index = None;
-                            return;
-                        }
+                    let final_text = formatting::clean_feedback_text(text);
+                    if final_text.is_empty() {
+                        self.streaming_index = None;
+                        return;
                     }
+                    if let Some(idx) = self
+                        .streaming_index
+                        .filter(|idx| *idx < self.messages.len())
+                    {
+                        self.messages[idx].1 = final_text;
+                    } else if let Some((who, current)) = self.messages.last_mut() {
+                        if who == "jcode" {
+                            *current = final_text;
+                        } else {
+                            self.append("jcode", &final_text);
+                        }
+                    } else {
+                        self.append("jcode", &final_text);
+                    }
+                    self.streaming_index = None;
+                    return;
                 }
                 if let Some(idx) = self
                     .streaming_index

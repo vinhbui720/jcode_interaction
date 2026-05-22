@@ -240,7 +240,7 @@ fn apply_event_to_parsed(parsed: &mut ParsedRunOutput, event: &protocol::PanelEv
             parsed.token_stats = Some(stats);
         }
     }
-    if !event.text.trim().is_empty() {
+    if !event.text.is_empty() {
         let raw_type = event
             .raw
             .as_ref()
@@ -248,19 +248,22 @@ fn apply_event_to_parsed(parsed: &mut ParsedRunOutput, event: &protocol::PanelEv
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_ascii_lowercase();
-        if raw_type == "done" {
-            let current = formatting::coalesce_stream_deltas(&parsed.text);
-            let final_text = event.text.trim();
-            if final_text == current
-                || final_text.ends_with(&current)
-                || current.ends_with(final_text)
-            {
-                parsed.text = final_text.to_string();
-                return;
-            }
+        if formatting::is_control_feedback_line(&event.text) {
+            return;
         }
-        parsed.text.push_str(&event.text);
-        parsed.text.push('\n');
+        if raw_type == "done" {
+            parsed.text = formatting::clean_feedback_text(&event.text);
+            return;
+        }
+        if matches!(raw_type.as_str(), "delta" | "text_delta" | "assistant") {
+            parsed.text.push_str(&event.text);
+        } else if !event.text.trim().is_empty() {
+            if !parsed.text.is_empty() && !parsed.text.ends_with('\n') {
+                parsed.text.push('\n');
+            }
+            parsed.text.push_str(event.text.trim());
+            parsed.text.push('\n');
+        }
     }
 }
 
@@ -269,7 +272,7 @@ fn finalize_parsed_text(parsed: &mut ParsedRunOutput) {
     if parsed.token_stats.is_none() {
         parsed.token_stats = token_stats_from_csv(&inline_stats);
     }
-    parsed.text = cleaned.trim().to_string();
+    parsed.text = formatting::clean_feedback_text(&cleaned);
 }
 
 fn token_stats_from_csv(stats: &str) -> Option<TokenStats> {

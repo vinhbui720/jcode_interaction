@@ -244,7 +244,7 @@ fn submit_prompt_background(app: &AppHandle, prompt: String) -> Result<(), Strin
             .iter()
             .rev()
             .find(|(who, text)| who == "jcode" && !text.trim().is_empty())
-            .map(|(_, text)| formatting::coalesce_stream_deltas(text))
+            .map(|(_, text)| formatting::clean_feedback_text(text))
             .unwrap_or_else(|| notice.clone());
         if !text.trim().is_empty() || !notice.trim().is_empty() {
             let _ = crate::ui::windows::show_feedback_window(&app_for_events, &text, &notice, None);
