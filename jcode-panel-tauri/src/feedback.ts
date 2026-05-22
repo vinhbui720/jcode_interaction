@@ -140,5 +140,4 @@ export function renderFeedback(root: HTMLElement) {
       .catch(() => {});
   };
   replay();
-  window.setInterval(replay, 1_000);
 }
