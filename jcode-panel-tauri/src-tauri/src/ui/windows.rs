@@ -1,12 +1,21 @@
 use crate::core::{formatting, positioning, state::TokenStats};
 use serde::Serialize;
-use std::{process::Command, sync::Mutex, thread, time::Duration};
+use std::{
+    process::Command,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
+    thread,
+    time::Duration,
+};
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder,
 };
 
 static LAST_FEEDBACK: Mutex<Option<FeedbackPayload>> = Mutex::new(None);
+static PROMPT_FOLLOW_RUNNING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FeedbackPayload {
@@ -117,7 +126,7 @@ pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
     window.unminimize().map_err(|err| err.to_string())?;
     window.set_focus().map_err(|err| err.to_string())?;
     let _ = window.emit("prompt-shown", ());
-    follow_prompt_briefly(app.clone());
+    follow_prompt_while_visible(app.clone());
     Ok(())
 }
 
@@ -133,20 +142,35 @@ pub fn prompt_follow_mouse_tick(app: AppHandle) -> Result<bool, String> {
     Ok(visible)
 }
 
-fn follow_prompt_briefly(app: AppHandle) {
-    thread::spawn(move || {
-        for _ in 0..24 {
-            thread::sleep(Duration::from_millis(33));
-            let app_for_main = app.clone();
-            let _ = app.run_on_main_thread(move || {
-                if let Some(window) = app_for_main.get_webview_window("prompt") {
-                    if window.is_visible().unwrap_or(false) {
-                        place_prompt_at_mouse_or_center(&window);
-                    }
+fn follow_prompt_while_visible(app: AppHandle) {
+    if PROMPT_FOLLOW_RUNNING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    thread::spawn(move || loop {
+        let app_for_main = app.clone();
+        let still_visible = app
+            .run_on_main_thread(move || {
+                let Some(window) = app_for_main.get_webview_window("prompt") else {
+                    PROMPT_FOLLOW_RUNNING.store(false, Ordering::SeqCst);
+                    return;
+                };
+                if window.is_visible().unwrap_or(false) {
+                    place_prompt_at_mouse_or_center(&window);
+                } else {
+                    PROMPT_FOLLOW_RUNNING.store(false, Ordering::SeqCst);
                 }
-            });
+            })
+            .is_ok();
+        if !still_visible || !PROMPT_FOLLOW_RUNNING.load(Ordering::SeqCst) {
+            PROMPT_FOLLOW_RUNNING.store(false, Ordering::SeqCst);
+            break;
         }
+        thread::sleep(Duration::from_millis(33));
     });
+}
+
+pub fn stop_prompt_follow() {
+    PROMPT_FOLLOW_RUNNING.store(false, Ordering::SeqCst);
 }
 
 fn smooth_step(current: f64, target: f64, alpha: f64) -> f64 {
@@ -256,6 +280,7 @@ fn clamped_overlay_position(
 
 #[tauri::command]
 pub fn hide_prompt(app: AppHandle) -> Result<(), String> {
+    stop_prompt_follow();
     let result = close_window(&app, PanelWindow::Prompt);
     crate::app::reset_prompt_shortcut(&app);
     result
