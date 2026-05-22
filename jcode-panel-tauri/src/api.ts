@@ -13,7 +13,7 @@ export type ActiveContext = { app: string; window_title: string; selected_text: 
 
 export const api = {
   snapshot: () => invoke<Snapshot>('snapshot'),
-  submitPrompt: (prompt: string) => invoke('submit_prompt', { prompt }),
+  submitPrompt: (prompt: string) => invoke<{ ok: boolean; output: string; token_stats?: { upload: number; download: number; cache_read: number; cache_write: number } | null }>('submit_prompt', { prompt }),
   normalizePromptText: (text: string) => invoke<{ text: string; hints: string[] }>('normalize_prompt_text', { text }),
   captureScreenshot: (mode: string) => invoke<string>('capture_screenshot', { mode }),
   activeContextSnapshot: () => invoke<ActiveContext>('active_context_snapshot'),
@@ -25,6 +25,10 @@ export const api = {
   integrationStatus: () => invoke('integration_status'),
   diagnosticsReport: () => invoke<DiagnosticsReport>('diagnostics_report'),
   launchTerminal: (command?: string) => invoke('launch_terminal', { command }),
+  showPrompt: () => invoke('show_prompt'),
+  showDropdown: () => invoke('show_dropdown'),
   showSettings: () => invoke('show_settings'),
+  showFeedback: (text: string, notice?: string, stats?: { upload: number; download: number; cache_read: number; cache_write: number } | null) => invoke('show_feedback', { text, notice, stats }),
+  hideFeedback: () => invoke('hide_feedback'),
   hidePrompt: () => invoke('hide_prompt'),
 };

@@ -143,6 +143,8 @@ pub fn run() {
             crate::ui::windows::show_dropdown,
             crate::ui::windows::show_settings,
             crate::ui::windows::hide_prompt,
+            crate::ui::windows::show_feedback,
+            crate::ui::windows::hide_feedback,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run jcode-panel tauri app");

@@ -45,6 +45,20 @@
         "visible": false,
         "decorations": true,
         "resizable": true
+      },
+      {
+        "label": "feedback",
+        "title": "Jcode Feedback",
+        "url": "index.html?window=feedback",
+        "width": 540,
+        "height": 300,
+        "visible": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "resizable": false,
+        "skipTaskbar": true
       }
     ]
   },
