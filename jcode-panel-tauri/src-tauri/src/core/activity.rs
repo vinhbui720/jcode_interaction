@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub const IDLE_STATUS: &str = "idle";
+pub const READY_STATUS: &str = "jcode Ready";
 pub const SENDING_STATUS: &str = "sending";
 pub const ANSWERING_STATUS: &str = "answering";
 pub const COMPLETE_STATUS: &str = "complete";
@@ -58,8 +59,8 @@ pub fn header_status_at(
         ));
     }
     let status = process_status.trim();
-    if status.is_empty() {
-        IDLE_STATUS.to_string()
+    if status.is_empty() || status == IDLE_STATUS {
+        READY_STATUS.to_string()
     } else {
         truncate_header_label(status)
     }
@@ -81,7 +82,8 @@ mod tests {
 
     #[test]
     fn idle_status_defaults_when_blank() {
-        assert_eq!(header_status("", None), "idle");
+        assert_eq!(header_status("", None), "jcode Ready");
+        assert_eq!(header_status("idle", None), "jcode Ready");
     }
 
     #[test]

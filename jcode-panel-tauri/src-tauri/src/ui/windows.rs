@@ -294,7 +294,9 @@ pub fn current_feedback() -> Option<FeedbackPayload> {
 
 #[tauri::command]
 pub fn hide_feedback(app: AppHandle) -> Result<(), String> {
-    hide_window(&app, "feedback")
+    hide_window(&app, "feedback")?;
+    crate::ui::status::set_process_status(&app, crate::core::activity::IDLE_STATUS)?;
+    Ok(())
 }
 
 fn move_feedback_to_mouse_screen(window: &tauri::WebviewWindow) {

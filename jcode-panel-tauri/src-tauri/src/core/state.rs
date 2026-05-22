@@ -1,4 +1,4 @@
-use crate::core::activity::LiveActivity;
+use crate::core::activity::{self, LiveActivity};
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 
@@ -96,6 +96,7 @@ pub fn load_state() -> AppState {
 
 fn normalize_runtime_state(mut state: AppState) -> AppState {
     if matches!(state.process_status.as_str(), "idle" | "complete" | "error") {
+        state.process_status = activity::IDLE_STATUS.into();
         state.live_activity = None;
     }
     state
