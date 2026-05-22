@@ -1,7 +1,7 @@
 use crate::core::{formatting, positioning, state::TokenStats};
 use serde::Serialize;
 use std::{process::Command, sync::Mutex};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition};
 
 static PROMPT_TRACKING: Mutex<PromptTrackingState> = Mutex::new(PromptTrackingState {
     current_x: None,
@@ -30,7 +30,10 @@ fn show_window(app: &AppHandle, label: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn hide_window(window: WebviewWindow) -> Result<(), String> {
+fn hide_window(app: &AppHandle, label: &str) -> Result<(), String> {
+    let window = app
+        .get_webview_window(label)
+        .ok_or_else(|| format!("missing window {label}"))?;
     window.hide().map_err(|err| err.to_string())
 }
 
@@ -44,7 +47,13 @@ pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("prompt") {
         place_prompt_at_mouse_or_center(&window);
     }
-    show_window(app, "prompt")
+    let result = show_window(app, "prompt");
+    if result.is_ok() {
+        if let Some(window) = app.get_webview_window("prompt") {
+            let _ = window.emit("prompt-shown", ());
+        }
+    }
+    result
 }
 
 #[tauri::command]
@@ -103,7 +112,7 @@ fn smooth_step(current: f64, target: f64, alpha: f64) -> f64 {
     }
 }
 
-fn place_prompt_at_mouse_or_center(window: &WebviewWindow) {
+fn place_prompt_at_mouse_or_center(window: &tauri::WebviewWindow) {
     if let Some((x, y)) = mouse_position() {
         if x > 2 || y > 2 {
             let _ = window.set_position(PhysicalPosition::new((x + 20).max(0), (y + 24).max(0)));
@@ -127,9 +136,9 @@ fn mouse_position() -> Option<(i32, i32)> {
 }
 
 #[tauri::command]
-pub fn hide_prompt(window: WebviewWindow) -> Result<(), String> {
+pub fn hide_prompt(app: AppHandle) -> Result<(), String> {
     reset_prompt_tracking();
-    hide_window(window)
+    hide_window(&app, "prompt")
 }
 
 #[tauri::command]
@@ -173,11 +182,11 @@ pub fn show_feedback_window(
 }
 
 #[tauri::command]
-pub fn hide_feedback(window: WebviewWindow) -> Result<(), String> {
-    hide_window(window)
+pub fn hide_feedback(app: AppHandle) -> Result<(), String> {
+    hide_window(&app, "feedback")
 }
 
-fn move_feedback_to_corner(window: &WebviewWindow) {
+fn move_feedback_to_corner(window: &tauri::WebviewWindow) {
     if let Some(monitor) = window.current_monitor().ok().flatten() {
         let pos = monitor.position();
         let size = monitor.size();

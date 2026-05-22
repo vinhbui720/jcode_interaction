@@ -1,3 +1,4 @@
+import { listen } from '@tauri-apps/api/event';
 import { api } from './api';
 
 export async function renderPrompt(root: HTMLElement) {
@@ -17,23 +18,34 @@ export async function renderPrompt(root: HTMLElement) {
   const send = root.querySelector<HTMLButtonElement>('#send')!;
   let submitting = false;
   let followTimer: number | undefined;
+  let followBusy = false;
 
   const stopFollowing = () => {
     if (followTimer) window.clearInterval(followTimer);
     followTimer = undefined;
+    followBusy = false;
   };
   const startFollowing = () => {
+    if (submitting) return;
     stopFollowing();
+    input.disabled = false;
+    send.disabled = false;
+    setTimeout(() => input.focus(), 10);
     followTimer = window.setInterval(async () => {
+      if (followBusy) return;
+      followBusy = true;
       try {
         const keepGoing = await api.promptFollowMouseTick();
         if (!keepGoing) stopFollowing();
       } catch {
         stopFollowing();
+      } finally {
+        followBusy = false;
       }
     }, 16);
   };
   startFollowing();
+  await listen('prompt-shown', () => startFollowing());
 
   try {
     const [ctx, chips] = await Promise.all([api.activeContextSnapshot(), api.popupContextChips()]);
@@ -62,16 +74,17 @@ export async function renderPrompt(root: HTMLElement) {
     input.disabled = true;
     send.disabled = true;
     try {
+      await api.hidePrompt();
       await api.showFeedback('Sending prompt to jcode...', 'Working');
       const result = await api.submitPrompt(value);
       await api.showFeedback(result.output || 'Done.', result.ok ? 'jcode response complete' : 'jcode returned an error', result.token_stats ?? null);
       input.value = '';
-      await api.hidePrompt();
     } catch (error) {
       await api.showFeedback(String(error || 'Prompt failed'), 'Error');
       input.disabled = false;
       send.disabled = false;
       input.focus();
+    } finally {
       submitting = false;
     }
   };
