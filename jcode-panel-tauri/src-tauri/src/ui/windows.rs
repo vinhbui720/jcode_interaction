@@ -9,7 +9,7 @@ use std::{
     thread,
     time::Duration,
 };
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize};
 
 static PROMPT_TRACKING: Mutex<PromptTrackingState> = Mutex::new(PromptTrackingState {
     current_x: None,
@@ -253,24 +253,37 @@ pub fn show_feedback_window(
     if let Ok(mut last) = LAST_FEEDBACK.lock() {
         *last = Some(payload.clone());
     }
-    if let Some(window) = app.get_webview_window("feedback") {
-        move_feedback_to_corner(&window);
-        window.show().map_err(|err| err.to_string())?;
-        let _ = window.emit("feedback-update", payload.clone());
-        let app = app.clone();
-        thread::spawn(move || {
-            for delay in [120_u64, 350, 800] {
-                thread::sleep(Duration::from_millis(delay));
-                let app_for_main = app.clone();
-                let payload_for_main = payload.clone();
-                let _ = app.run_on_main_thread(move || {
-                    if let Some(window) = app_for_main.get_webview_window("feedback") {
-                        let _ = window.emit("feedback-update", payload_for_main);
-                    }
-                });
+    let app_for_main = app.clone();
+    let payload_for_main = payload.clone();
+    app.run_on_main_thread(move || {
+        if let Some(window) = app_for_main.get_webview_window("feedback") {
+            let was_visible = window.is_visible().unwrap_or(false);
+            if !was_visible {
+                move_feedback_to_mouse_screen(&window);
+                let _ = window.show();
             }
-        });
-    }
+            let _ = window.emit("feedback-update", payload_for_main);
+        }
+    })
+    .map_err(|err| err.to_string())?;
+
+    // Webviews can still be loading when the first streaming status arrives.
+    // Replay on the main thread a few times, but never touch GTK/WebKit from the
+    // worker thread that is reading the jcode stream. Calling show/set_position
+    // off the UI thread can crash X11 with xcb_xlib_threads_sequence_lost.
+    let app = app.clone();
+    thread::spawn(move || {
+        for delay in [120_u64, 350, 800] {
+            thread::sleep(Duration::from_millis(delay));
+            let app_for_main = app.clone();
+            let payload_for_main = payload.clone();
+            let _ = app.run_on_main_thread(move || {
+                if let Some(window) = app_for_main.get_webview_window("feedback") {
+                    let _ = window.emit("feedback-update", payload_for_main);
+                }
+            });
+        }
+    });
     Ok(())
 }
 
@@ -284,20 +297,35 @@ pub fn hide_feedback(app: AppHandle) -> Result<(), String> {
     hide_window(&app, "feedback")
 }
 
-fn move_feedback_to_corner(window: &tauri::WebviewWindow) {
-    if let Some(monitor) = window.current_monitor().ok().flatten() {
+fn move_feedback_to_mouse_screen(window: &tauri::WebviewWindow) {
+    let monitor = monitor_at_mouse(window).or_else(|| window.current_monitor().ok().flatten());
+    if let Some(monitor) = monitor {
         let pos = monitor.position();
         let size = monitor.size();
-        let scale = monitor.scale_factor();
-        let window_size = window.outer_size().ok();
-        let width = window_size.map(|s| s.width as f64 / scale).unwrap_or(540.0) as i32;
-        let height = window_size
-            .map(|s| s.height as f64 / scale)
-            .unwrap_or(300.0) as i32;
-        let x = pos.x + size.width as i32 - width - 24;
-        let y = pos.y + size.height as i32 - height - 48;
-        let _ = window.set_position(PhysicalPosition::new(x.max(0), y.max(0)));
+        let window_size = window
+            .outer_size()
+            .ok()
+            .unwrap_or_else(|| PhysicalSize::new(540_u32, 300_u32));
+        let x = pos.x + size.width as i32 - window_size.width as i32 - 24;
+        let y = pos.y + size.height as i32 - window_size.height as i32 - 48;
+        let _ = window.set_position(PhysicalPosition::new(x, y));
     }
+}
+
+fn monitor_at_mouse(window: &tauri::WebviewWindow) -> Option<tauri::Monitor> {
+    let (mouse_x, mouse_y) = mouse_position()?;
+    window
+        .available_monitors()
+        .ok()?
+        .into_iter()
+        .find(|monitor| {
+            let pos = monitor.position();
+            let size = monitor.size();
+            mouse_x >= pos.x
+                && mouse_y >= pos.y
+                && mouse_x < pos.x + size.width as i32
+                && mouse_y < pos.y + size.height as i32
+        })
 }
 
 #[cfg(test)]
