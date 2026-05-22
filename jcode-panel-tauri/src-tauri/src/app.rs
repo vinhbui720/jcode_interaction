@@ -135,6 +135,7 @@ pub fn run() {
             commands::snapshot,
             commands::save_settings,
             commands::submit_prompt,
+            commands::submit_prompt_async,
             commands::switch_session,
             commands::start_new_section,
             commands::normalize_prompt_text,

@@ -15,6 +15,7 @@ export type FeedbackPayload = { text: string; notice?: string; stats?: { upload:
 export const api = {
   snapshot: () => invoke<Snapshot>('snapshot'),
   submitPrompt: (prompt: string) => invoke<{ ok: boolean; output: string; token_stats?: { upload: number; download: number; cache_read: number; cache_write: number } | null }>('submit_prompt', { prompt }),
+  submitPromptAsync: (prompt: string) => invoke<void>('submit_prompt_async', { prompt }),
   normalizePromptText: (text: string) => invoke<{ text: string; hints: string[] }>('normalize_prompt_text', { text }),
   captureScreenshot: (mode: string) => invoke<string>('capture_screenshot', { mode }),
   activeContextSnapshot: () => invoke<ActiveContext>('active_context_snapshot'),

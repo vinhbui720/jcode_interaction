@@ -45,9 +45,7 @@ export function renderPrompt(root: HTMLElement) {
     send.disabled = true;
     try {
       await api.hidePrompt();
-      await api.showFeedback('Sending prompt to jcode...', 'Working');
-      const result = await api.submitPrompt(value);
-      await api.showFeedback(result.output || 'Done.', result.ok ? 'jcode response complete' : 'jcode returned an error', result.token_stats ?? null);
+      await api.submitPromptAsync(value);
       input.value = '';
     } catch (error) {
       await api.showFeedback(String(error || 'Prompt failed'), 'Error');

@@ -6,8 +6,8 @@ use crate::{
     integrations,
 };
 use serde::{Deserialize, Serialize};
-use std::{process::Command, sync::Mutex};
-use tauri::State;
+use std::{process::Command, sync::Mutex, thread};
+use tauri::{AppHandle, Manager, State};
 
 pub struct RuntimeState(pub Mutex<state::AppState>);
 
@@ -106,6 +106,113 @@ pub fn submit_prompt(
     }
     state::save_state(&state).map_err(|err| err.to_string())?;
     Ok(result)
+}
+
+#[tauri::command]
+pub fn submit_prompt_async(prompt: String, app: AppHandle) -> Result<(), String> {
+    let current_state = app
+        .state::<RuntimeState>()
+        .0
+        .lock()
+        .expect("state lock")
+        .clone();
+    let controller = controller::AppController::new(config::load_config(), current_state.clone());
+    if prompt.chars().count() > controller.max_prompt_chars() {
+        return Err(format!(
+            "Prompt is longer than configured limit of {} characters",
+            controller.max_prompt_chars()
+        ));
+    }
+    let notice = if current_state
+        .active_session
+        .as_deref()
+        .unwrap_or("")
+        .is_empty()
+    {
+        "Creating new jcode session..."
+    } else {
+        "Sending prompt to persistent jcode client..."
+    };
+    let _ = crate::ui::windows::show_feedback_window(&app, notice, "Working", None);
+    let app_for_worker = app.clone();
+    thread::spawn(move || {
+        let result = submit_prompt_background(&app_for_worker, prompt);
+        if let Err(error) = result {
+            let _ =
+                crate::ui::windows::show_feedback_window(&app_for_worker, &error, "Error", None);
+        }
+    });
+    Ok(())
+}
+
+fn submit_prompt_background(app: &AppHandle, prompt: String) -> Result<(), String> {
+    let current_state = app
+        .state::<RuntimeState>()
+        .0
+        .lock()
+        .expect("state lock")
+        .clone();
+    let controller = controller::AppController::new(config::load_config(), current_state.clone());
+    let session = current_state.active_session.clone();
+    let normalized = interaction_context::normalize_interaction_tags(&prompt);
+    let ctx = crate::core::context::capture_active_context();
+    let selected_for_chip = ctx
+        .browser
+        .as_ref()
+        .and_then(|b| (!b.selected_text.trim().is_empty()).then_some(b.selected_text.as_str()))
+        .unwrap_or(&ctx.selected_text);
+    let popup_chips = popup_context::build_popup_context_chips(
+        selected_for_chip,
+        &[],
+        &ctx.app,
+        &ctx.window_title,
+        "",
+        None,
+    );
+    let with_popup_context = popup_context::expand_popup_context_chips(&normalized, &popup_chips);
+    let expanded = interaction_context::expand_interaction_chips(&with_popup_context)?;
+    let screenshots: Vec<String> = app
+        .state::<RuntimeState>()
+        .0
+        .lock()
+        .expect("state lock")
+        .recent_messages
+        .iter()
+        .filter_map(|m| m.text.strip_prefix("screenshot: ").map(str::to_string))
+        .collect();
+    let outgoing_prompt = formatting::expand_pic_tags(&expanded, &screenshots);
+    let (outgoing_prompt, _) = controller.build_prompt(&outgoing_prompt, None, true, false);
+    let result =
+        jcode::send_prompt(&outgoing_prompt, session.as_deref()).map_err(|err| err.to_string())?;
+    let runtime = app.state::<RuntimeState>();
+    let mut state = runtime.0.lock().expect("state lock");
+    let user_prompt = prompt.clone();
+    state.last_prompt = prompt;
+    state.remember_prompt(&user_prompt);
+    state.recent_messages.push(state::ConversationMessage {
+        author: "You".into(),
+        text: user_prompt,
+    });
+    state.recent_messages.push(state::ConversationMessage {
+        author: "jcode".into(),
+        text: result.output.clone(),
+    });
+    if let Some(session_id) = &result.session_id {
+        state.active_session = Some(session_id.clone());
+    }
+    if let Some(token_stats) = &result.token_stats {
+        state.token_stats = Some(token_stats.clone());
+    }
+    state::save_state(&state).map_err(|err| err.to_string())?;
+    drop(state);
+    let notice = if result.ok {
+        "jcode response complete"
+    } else {
+        "jcode returned an error"
+    };
+    let _ =
+        crate::ui::windows::show_feedback_window(app, &result.output, notice, result.token_stats);
+    Ok(())
 }
 
 #[tauri::command]
