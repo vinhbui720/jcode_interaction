@@ -115,6 +115,18 @@ mod tests {
     }
 
     #[test]
+    fn parse_run_output_deduplicates_done_after_deltas() {
+        let parsed = parse_run_output(
+            r#"{"type":"delta","delta":"still"}
+{"type":"delta","delta":" here"}
+{"type":"delta","delta":" and"}
+{"type":"delta","delta":" ready"}
+{"type":"done","text":"still here and ready"}"#,
+        );
+        assert_eq!(parsed.text, "still here and ready");
+    }
+
+    #[test]
     fn parses_inline_token_stats_from_plain_output() {
         let parsed = parse_run_output(
             "done [Tokens] upload: 10 download: 20 cache_read: 30 cache_write: 40",
@@ -229,6 +241,24 @@ fn apply_event_to_parsed(parsed: &mut ParsedRunOutput, event: &protocol::PanelEv
         }
     }
     if !event.text.trim().is_empty() {
+        let raw_type = event
+            .raw
+            .as_ref()
+            .and_then(|v| v.get("type").or_else(|| v.get("kind")))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if raw_type == "done" {
+            let current = formatting::coalesce_stream_deltas(&parsed.text);
+            let final_text = event.text.trim();
+            if final_text == current
+                || final_text.ends_with(&current)
+                || current.ends_with(final_text)
+            {
+                parsed.text = final_text.to_string();
+                return;
+            }
+        }
         parsed.text.push_str(&event.text);
         parsed.text.push('\n');
     }

@@ -233,20 +233,19 @@ fn submit_prompt_background(app: &AppHandle, prompt: String) -> Result<(), Strin
         .collect();
     let outgoing_prompt = formatting::expand_pic_tags(&expanded, &screenshots);
     let (outgoing_prompt, _) = controller.build_prompt(&outgoing_prompt, None, true, false);
-    let mut live_feedback = String::new();
+    let mut live_feedback = conversation::ConversationBuffer::new(20);
     let app_for_events = app.clone();
     let result = jcode::send_prompt_streaming(&outgoing_prompt, session.as_deref(), move |event| {
         let _ = status::record_stream_event(&app_for_events, &event);
         let notice = protocol::event_preview(&event, false);
-        if matches!(event.kind, protocol::PanelEventKind::Message) && !event.text.trim().is_empty()
-        {
-            live_feedback.push_str(&event.text);
-        }
-        let text = if live_feedback.trim().is_empty() {
-            notice.clone()
-        } else {
-            formatting::coalesce_stream_deltas(&live_feedback)
-        };
+        live_feedback.add_event(&event);
+        let text = live_feedback
+            .messages
+            .iter()
+            .rev()
+            .find(|(who, text)| who == "jcode" && !text.trim().is_empty())
+            .map(|(_, text)| formatting::coalesce_stream_deltas(text))
+            .unwrap_or_else(|| notice.clone());
         if !text.trim().is_empty() || !notice.trim().is_empty() {
             let _ = crate::ui::windows::show_feedback_window(&app_for_events, &text, &notice, None);
         }
