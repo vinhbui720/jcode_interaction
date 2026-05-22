@@ -19,8 +19,14 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 
 pub fn register_prompt_shortcut(app: &tauri::AppHandle) {
     let cfg = config::load_config();
-    let shortcut =
-        parse_shortcut(&cfg.prompt_hotkey).unwrap_or_else(|| Shortcut::new(None, Code::F8));
+    let hotkey = if cfg.prompt_hotkey.trim().is_empty() {
+        "F8"
+    } else {
+        cfg.prompt_hotkey.trim()
+    };
+    let Some(shortcut) = parse_shortcut(hotkey) else {
+        return;
+    };
     let handle = app.clone();
     let _ = app
         .global_shortcut()

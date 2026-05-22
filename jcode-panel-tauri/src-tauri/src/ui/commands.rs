@@ -83,7 +83,12 @@ fn gnome_binding(hotkey: &str) -> Option<String> {
     if mods.contains("super") {
         out.push_str("<Super>");
     }
-    out.push_str(&key);
+    if let Some(mouse) = key.strip_prefix("mouse") {
+        out.push_str("Button");
+        out.push_str(mouse);
+    } else {
+        out.push_str(&key);
+    }
     Some(out)
 }
 

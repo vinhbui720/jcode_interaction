@@ -24,6 +24,24 @@ function hotkeyFromEvent(event: KeyboardEvent) {
   return parts.join('+');
 }
 
+function mouseButtonName(button: number) {
+  // DOM button 3/4 are the common browser Back/Forward side buttons,
+  // matching X11 button map 8/9 on typical mice.
+  if (button === 3) return 'Mouse8';
+  if (button === 4) return 'Mouse9';
+  return `Mouse${button + 1}`;
+}
+
+function hotkeyFromMouseEvent(event: MouseEvent) {
+  const parts: string[] = [];
+  if (event.ctrlKey) parts.push('Ctrl');
+  if (event.altKey) parts.push('Alt');
+  if (event.shiftKey) parts.push('Shift');
+  if (event.metaKey) parts.push('Super');
+  parts.push(mouseButtonName(event.button));
+  return parts.join('+');
+}
+
 function installHotkeyCapture(root: HTMLElement, inputId: string, buttonId: string) {
   const input = root.querySelector<HTMLInputElement>(`#${inputId}`)!;
   const button = root.querySelector<HTMLButtonElement>(`#${buttonId}`)!;
@@ -55,6 +73,20 @@ function installHotkeyCapture(root: HTMLElement, inputId: string, buttonId: stri
     input.value = hotkey;
     if (!['Control', 'Shift', 'Alt', 'Meta', 'Super'].includes(event.key)) stopCapture();
   });
+
+  const captureMouse = (event: MouseEvent) => {
+    if (!capturing) return;
+    event.preventDefault();
+    event.stopPropagation();
+    input.value = hotkeyFromMouseEvent(event);
+    stopCapture();
+  };
+  input.addEventListener('mousedown', captureMouse);
+  button.addEventListener('mousedown', captureMouse);
+  input.addEventListener('auxclick', captureMouse);
+  button.addEventListener('auxclick', captureMouse);
+  input.addEventListener('contextmenu', (event) => { if (capturing) event.preventDefault(); });
+  button.addEventListener('contextmenu', (event) => { if (capturing) event.preventDefault(); });
 
   input.addEventListener('blur', () => {
     if (capturing) window.setTimeout(stopCapture, 150);

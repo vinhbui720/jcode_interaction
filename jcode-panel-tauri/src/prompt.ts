@@ -161,13 +161,13 @@ export function renderPrompt(root: HTMLElement) {
       void hide();
       return;
     }
-    if (event.key === 'ArrowRight' && currentSuggestions.length) {
+    if (event.key === 'ArrowRight' && event.altKey && currentSuggestions.length) {
       event.preventDefault();
       selectedSuggestion = (selectedSuggestion + 1) % currentSuggestions.length;
       renderSuggestions();
       return;
     }
-    if (event.key === 'ArrowLeft' && currentSuggestions.length) {
+    if (event.key === 'ArrowLeft' && event.altKey && currentSuggestions.length) {
       event.preventDefault();
       selectedSuggestion = (selectedSuggestion - 1 + currentSuggestions.length) % currentSuggestions.length;
       renderSuggestions();
