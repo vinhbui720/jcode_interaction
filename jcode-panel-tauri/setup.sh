@@ -18,7 +18,7 @@ fi
 rustup component add rustfmt clippy
 npm install
 
-npm run build
+npx tauri build --no-bundle
 
 mkdir -p "$USER_BIN" "$DESKTOP_DIR" "$AUTOSTART_DIR" "$ICON_DIR"
 if [[ -f "$APP_DIR/../jcode-panel/assets/icon.svg" ]]; then
