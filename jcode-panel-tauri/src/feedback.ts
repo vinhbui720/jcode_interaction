@@ -51,13 +51,15 @@ export function renderFeedback(root: HTMLElement) {
           <div class="toast-title">jcode feedback</div>
           <div id="toast-stats" class="toast-stats"></div>
         </div>
-        <div class="toast-scroll"><div id="toast-text" class="toast-text" tabindex="0">Waiting for feedback...</div></div>
+        <div class="toast-scroll">
+          <div id="toast-text" class="toast-text" tabindex="0">Waiting for feedback...</div>
+          <button id="toast-jump" class="toast-jump" title="Back to latest feedback" hidden>↓</button>
+        </div>
         <div class="toast-statusbar">
           <span id="toast-status" class="toast-status">idle</span>
           <span id="toast-notice" class="toast-notice"></span>
         </div>
         <div class="toast-actions">
-          <button id="toast-jump" class="toast-jump" title="Back to latest feedback" hidden>Back to latest feedback</button>
           <button id="toast-open" title="Open conversation">Open</button>
           <button id="toast-reply" title="Reply">Reply</button>
           <button id="toast-close" title="Dismiss">Dismiss</button>

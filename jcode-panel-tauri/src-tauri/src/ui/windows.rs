@@ -308,7 +308,7 @@ fn move_feedback_to_mouse_screen(window: &tauri::WebviewWindow) {
             .outer_size()
             .ok()
             .unwrap_or_else(|| PhysicalSize::new(540_u32, 300_u32));
-        let x = pos.x + size.width as i32 - window_size.width as i32 - 24;
+        let x = pos.x + 24;
         let y = pos.y + size.height as i32 - window_size.height as i32 - 48;
         let _ = window.set_position(PhysicalPosition::new(x, y));
     }

@@ -4,7 +4,7 @@
   color: #0f172a;
   background: transparent;
 }
-html, body, #app { margin: 0; background: transparent; }
+html, body, #app { margin: 0; background: transparent; overflow: hidden; }
 button, input { font: inherit; }
 .prompt-shell { padding: 12px; background: transparent; }
 .prompt-card {
@@ -55,9 +55,9 @@ p { margin: 4px 0; }
 .diagnostics .fail { color: #b91c1c; }
 footer { display: flex; gap: 10px; margin-top: 16px; }
 footer button, .settings-shell button { border: 0; border-radius: 12px; padding: 10px 14px; background: #2563eb; color: white; }
-.toast-shell { padding: 12px; background: transparent; box-sizing: border-box; min-height: 100vh; }
+.toast-shell { padding: 12px; background: transparent; box-sizing: border-box; height: 100vh; overflow: hidden; }
 .toast-card {
-  box-sizing: border-box; width: 100%; min-height: 276px; padding: 14px;
+  box-sizing: border-box; width: 100%; height: 100%; padding: 14px;
   border-radius: 24px; background: rgba(255,255,255,.78); backdrop-filter: blur(22px) saturate(1.2);
   box-shadow: 0 18px 45px rgba(15,23,42,.24), 0 0 0 1px rgba(15,23,42,.08);
   display: flex; flex-direction: column; gap: 8px;
@@ -65,7 +65,7 @@ footer button, .settings-shell button { border: 0; border-radius: 12px; padding:
 .toast-topline { display: flex; align-items: start; justify-content: space-between; gap: 10px; }
 .toast-title { color: #64748b; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
 .toast-stats { display: flex; gap: 8px; color: #2563eb; font-size: 12px; font-weight: 800; white-space: nowrap; }
-.toast-scroll { flex: 1; max-height: 170px; overflow: hidden; padding-right: 4px; }
+.toast-scroll { flex: 1; min-height: 0; overflow: hidden; padding-right: 4px; position: relative; }
 .toast-card:hover .toast-scroll, .toast-scroll:focus-within { overflow-y: auto; }
 .toast-text { white-space: pre-wrap; color: #0f172a; line-height: 1.35; font-size: 14px; outline: none; user-select: text; }
 .toast-text code { color: #0f766e; background: #ecfeff; border-radius: 6px; padding: 1px 4px; }
@@ -80,8 +80,8 @@ footer button, .settings-shell button { border: 0; border-radius: 12px; padding:
 .toast-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .toast-actions button { border: 0; border-radius: 999px; padding: 7px 11px; background: rgba(15,23,42,.08); color: #0f172a; font-weight: 700; }
 .toast-actions button:last-child { background: #0f172a; color: white; }
-.toast-actions .toast-jump { background: #dbeafe; color: #1d4ed8; margin-right: auto; }
-.toast-actions .toast-jump[hidden] { display: none; }
+.toast-jump { position: sticky; left: calc(100% - 42px); bottom: 8px; width: 32px; height: 32px; border: 0; border-radius: 999px; background: #2563eb; color: white; box-shadow: 0 10px 25px rgba(37,99,235,.35); font-size: 18px; font-weight: 900; }
+.toast-jump[hidden] { display: none; }
 .settings-shell { display: grid; gap: 14px; align-content: start; }
 .settings-shell label { display: grid; gap: 6px; font-weight: 700; }
 .settings-shell input, .settings-shell select { border: 1px solid #cbd5e1; border-radius: 12px; padding: 10px; background: white; color: #0f172a; }

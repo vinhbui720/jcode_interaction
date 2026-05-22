@@ -70,6 +70,12 @@ impl AppState {
         let section = self.active_section.trim();
         if !section.is_empty() && section != "Fresh Panel" {
             section.to_string()
+        } else if let Some(name) = self
+            .active_session
+            .as_deref()
+            .and_then(client_name_from_session_id)
+        {
+            name
         } else {
             "jcode".into()
         }
@@ -86,6 +92,14 @@ impl AppState {
         if overflow > 0 {
             self.prompt_history.drain(0..overflow);
         }
+    }
+}
+
+fn client_name_from_session_id(session_id: &str) -> Option<String> {
+    let mut parts = session_id.split('_');
+    match (parts.next(), parts.next()) {
+        (Some("session"), Some(name)) if !name.trim().is_empty() => Some(name.to_string()),
+        _ => None,
     }
 }
 
