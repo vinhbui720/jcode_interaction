@@ -41,6 +41,8 @@ pub fn run() {
             commands::snapshot,
             commands::save_settings,
             commands::submit_prompt,
+            commands::switch_session,
+            commands::start_new_section,
             commands::integration_status,
             commands::refresh_integrations,
             crate::ui::windows::show_prompt,

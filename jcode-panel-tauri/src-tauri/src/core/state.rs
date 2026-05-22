@@ -11,11 +11,22 @@ pub struct TokenStats {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppState {
+    #[serde(default)]
     pub active_session: Option<String>,
+    #[serde(default = "default_active_section")]
     pub active_section: String,
+    #[serde(default)]
     pub last_prompt: String,
+    #[serde(default)]
     pub token_stats: Option<TokenStats>,
+    #[serde(default)]
     pub recent_messages: Vec<ConversationMessage>,
+    #[serde(default)]
+    pub prompt_history: Vec<String>,
+    #[serde(default)]
+    pub last_context_summary: String,
+    #[serde(default)]
+    pub browser_bridge_seen: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,6 +43,28 @@ impl Default for AppState {
             last_prompt: String::new(),
             token_stats: None,
             recent_messages: vec![],
+            prompt_history: vec![],
+            last_context_summary: String::new(),
+            browser_bridge_seen: false,
+        }
+    }
+}
+
+fn default_active_section() -> String {
+    "Fresh Panel".into()
+}
+
+impl AppState {
+    pub fn remember_prompt(&mut self, prompt: &str) {
+        let prompt = prompt.trim();
+        if prompt.is_empty() {
+            return;
+        }
+        self.prompt_history.retain(|item| item != prompt);
+        self.prompt_history.push(prompt.to_string());
+        let overflow = self.prompt_history.len().saturating_sub(100);
+        if overflow > 0 {
+            self.prompt_history.drain(0..overflow);
         }
     }
 }
@@ -79,6 +112,15 @@ pub fn save_state_to_path_preserving(
         if state.recent_messages.is_empty() && !existing.recent_messages.is_empty() {
             state.recent_messages = existing.recent_messages;
         }
+        if state.prompt_history.is_empty() && !existing.prompt_history.is_empty() {
+            state.prompt_history = existing.prompt_history;
+        }
+        if state.last_context_summary.is_empty() && !existing.last_context_summary.is_empty() {
+            state.last_context_summary = existing.last_context_summary;
+        }
+        if !state.browser_bridge_seen && existing.browser_bridge_seen {
+            state.browser_bridge_seen = true;
+        }
     }
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -111,6 +153,7 @@ mod tests {
                 author: "jcode".into(),
                 text: "ok".into(),
             }],
+            ..AppState::default()
         };
         save_state_to_path(&state, &path).unwrap();
         let loaded = load_state_from_path(&path);

@@ -24,10 +24,16 @@ p { margin: 4px 0; }
 .badge { border-radius: 999px; padding: 6px 10px; background: #dbeafe; color: #1d4ed8; font-size: 12px; font-weight: 700; }
 .muted { color: #64748b; }
 .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 18px 0; }
-.status-grid > div, .message { background: white; border: 1px solid #e2e8f0; border-radius: 16px; padding: 12px; }
+.status-grid > div, .message, .session-tools, .history { background: white; border: 1px solid #e2e8f0; border-radius: 16px; padding: 12px; }
 .status-grid span { display: block; color: #64748b; font-size: 12px; }
+.session-tools { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; margin-bottom: 12px; }
+.session-tools input { min-width: 0; border: 1px solid #cbd5e1; border-radius: 12px; padding: 9px; }
+.session-tools button { border: 0; border-radius: 12px; padding: 9px 12px; background: #0f172a; color: white; }
 .conversation { display: grid; gap: 10px; }
 .message p { white-space: pre-wrap; color: #334155; }
+.history { margin-top: 12px; }
+.history h2 { margin: 0 0 8px; font-size: 14px; }
+.history ul { margin: 0; padding-left: 18px; color: #475569; font-size: 13px; }
 footer { display: flex; gap: 10px; margin-top: 16px; }
 footer button, .settings-shell button { border: 0; border-radius: 12px; padding: 10px 14px; background: #2563eb; color: white; }
 .settings-shell { display: grid; gap: 14px; align-content: start; }

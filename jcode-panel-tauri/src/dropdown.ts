@@ -10,6 +10,7 @@ export async function renderDropdown(root: HTMLElement) {
   const snapshot = await api.snapshot();
   const messages = snapshot.state.recent_messages.slice(-8).map((m) => `
     <article class="message"><strong>${m.author}</strong><p>${m.text}</p></article>`).join('') || '<p class="muted">No messages yet.</p>';
+  const history = snapshot.state.prompt_history.slice(-6).reverse().map((item) => `<li>${item}</li>`).join('') || '<li class="muted">No prompt history yet.</li>';
   root.innerHTML = `
     <main class="panel-shell">
       <header class="panel-header">
@@ -20,7 +21,13 @@ export async function renderDropdown(root: HTMLElement) {
         <div><span>jcode</span><strong>${snapshot.jcode_available ? 'ready' : 'missing'}</strong></div>
         <div><span>session</span><strong>${snapshot.state.active_session ?? 'new'}</strong></div>
       </section>
+      <section class="session-tools">
+        <input id="sessionId" placeholder="Resume session id" value="${snapshot.state.active_session ?? ''}" />
+        <button id="resume">Resume</button>
+        <button id="newSection">New section</button>
+      </section>
       <section class="conversation">${messages}</section>
+      <section class="history"><h2>Prompt history</h2><ul>${history}</ul></section>
       <footer>
         <button id="refresh">Refresh integrations</button>
         <button id="settings">Settings</button>
@@ -28,4 +35,14 @@ export async function renderDropdown(root: HTMLElement) {
     </main>`;
   root.querySelector<HTMLButtonElement>('#refresh')!.onclick = async () => { await api.refreshIntegrations(); renderDropdown(root); };
   root.querySelector<HTMLButtonElement>('#settings')!.onclick = () => api.showSettings();
+  root.querySelector<HTMLButtonElement>('#resume')!.onclick = async () => {
+    const session = root.querySelector<HTMLInputElement>('#sessionId')!.value.trim();
+    if (!session) return;
+    await api.switchSession(session, session);
+    renderDropdown(root);
+  };
+  root.querySelector<HTMLButtonElement>('#newSection')!.onclick = async () => {
+    await api.startNewSection(`jcode-panel ${new Date().toLocaleString()}`);
+    renderDropdown(root);
+  };
 }
