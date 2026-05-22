@@ -29,7 +29,10 @@ def self_update(root: Path | None = None) -> UpdateResult:
         repo = root if (root / ".git").exists() else root.parent
     try:
         before = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True, timeout=5).strip()
-        subprocess.check_call(["git", "fetch", "--ff-only", "origin"], cwd=repo, timeout=30)
+        # `--ff-only` is a pull/merge option, not a fetch option. Fetch is
+        # non-destructive by default; the following pull enforces fast-forward
+        # only so local work is never overwritten.
+        subprocess.check_call(["git", "fetch", "origin"], cwd=repo, timeout=30)
         branch = subprocess.check_output(["git", "branch", "--show-current"], cwd=repo, text=True, timeout=5).strip() or "main"
         subprocess.check_call(["git", "pull", "--ff-only", "origin", branch], cwd=repo, timeout=60)
         after = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True, timeout=5).strip()
