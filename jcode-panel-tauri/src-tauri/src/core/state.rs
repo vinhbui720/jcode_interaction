@@ -66,6 +66,15 @@ fn default_process_status() -> String {
 }
 
 impl AppState {
+    pub fn ready_client_name(&self) -> String {
+        let section = self.active_section.trim();
+        if !section.is_empty() && section != "Fresh Panel" {
+            section.to_string()
+        } else {
+            "jcode".into()
+        }
+    }
+
     pub fn remember_prompt(&mut self, prompt: &str) {
         let prompt = prompt.trim();
         if prompt.is_empty() {

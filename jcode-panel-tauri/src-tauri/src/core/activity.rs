@@ -45,6 +45,12 @@ pub fn header_status(process_status: &str, activity: Option<&LiveActivity>) -> S
     header_status_at(process_status, activity, now_ms())
 }
 
+pub fn ready_status(client_name: &str) -> String {
+    let name = client_name.trim();
+    let name = if name.is_empty() { "jcode" } else { name };
+    truncate_header_label(&format!("{name} Ready"))
+}
+
 pub fn header_status_at(
     process_status: &str,
     activity: Option<&LiveActivity>,

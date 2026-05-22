@@ -12,14 +12,16 @@ pub fn set_process_status(app: &AppHandle, process_status: &str) -> Result<(), S
     } else {
         status
     };
-    {
+    let header = {
         let runtime = app.state::<RuntimeState>();
         let mut state = runtime.0.lock().expect("state lock");
         state.process_status = status.to_string();
         state.live_activity = None;
+        let header = header_for_state(&state);
         state::save_state(&state).map_err(|err| err.to_string())?;
-    }
-    set_header_status(app, status)
+        header
+    };
+    set_header_status(app, &header)
 }
 
 pub fn start_activity(app: &AppHandle, process_status: &str, label: &str) -> Result<(), String> {
@@ -61,7 +63,7 @@ fn start_header_ticker(app: &AppHandle) {
         if !still_active {
             break;
         }
-        let header = activity::header_status(&state.process_status, state.live_activity.as_ref());
+        let header = header_for_state(&state);
         let app_for_main = app.clone();
         let _ = app.run_on_main_thread(move || {
             let _ = set_header_status(&app_for_main, &header);
@@ -76,8 +78,24 @@ pub fn refresh_header_status(app: &AppHandle) -> Result<(), String> {
         .lock()
         .expect("state lock")
         .clone();
-    let header = activity::header_status(&state.process_status, state.live_activity.as_ref());
+    let header = header_for_state(&state);
     set_header_status(app, &header)
+}
+
+pub fn header_for_state(state: &state::AppState) -> String {
+    if state
+        .live_activity
+        .as_ref()
+        .map(|a| a.active)
+        .unwrap_or(false)
+    {
+        return activity::header_status(&state.process_status, state.live_activity.as_ref());
+    }
+    if state.process_status.trim().is_empty() || state.process_status == activity::IDLE_STATUS {
+        activity::ready_status(&state.ready_client_name())
+    } else {
+        activity::header_status(&state.process_status, None)
+    }
 }
 
 pub fn set_header_status(app: &AppHandle, label: &str) -> Result<(), String> {
