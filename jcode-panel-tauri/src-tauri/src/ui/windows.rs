@@ -156,6 +156,7 @@ fn follow_prompt_while_visible(app: AppHandle) {
                 };
                 if window.is_visible().unwrap_or(false) {
                     place_prompt_at_mouse_or_center(&window);
+                    let _ = window.set_focus();
                 } else {
                     PROMPT_FOLLOW_RUNNING.store(false, Ordering::SeqCst);
                 }

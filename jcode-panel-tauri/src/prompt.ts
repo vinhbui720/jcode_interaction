@@ -221,7 +221,7 @@ export function renderPrompt(root: HTMLElement) {
   window.addEventListener('blur', () => {
     window.setTimeout(() => {
       if (document.visibilityState === 'visible' && document.activeElement !== input) {
-        void hide();
+        focusInput();
       }
     }, 80);
   });
