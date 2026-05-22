@@ -1,4 +1,5 @@
 use crate::ui::windows;
+use std::process::Command;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -6,14 +7,15 @@ use tauri::{
 };
 
 pub fn install(app: &mut App) -> tauri::Result<()> {
+    let open = MenuItem::with_id(app, "dropdown", "Open", true, None::<&str>)?;
     let prompt = MenuItem::with_id(app, "prompt", "Prompt", true, None::<&str>)?;
-    let dropdown = MenuItem::with_id(app, "dropdown", "Open Panel", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&prompt, &dropdown, &settings, &quit])?;
+    let menu = Menu::with_items(app, &[&open, &prompt, &settings, &quit])?;
 
-    TrayIconBuilder::with_id("jcode-panel")
+    let mut builder = TrayIconBuilder::with_id("jcode-panel")
         .tooltip("Jcode Interaction")
+        .title("jcode")
         .menu(&menu)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "prompt" => {
@@ -44,7 +46,22 @@ pub fn install(app: &mut App) -> tauri::Result<()> {
                 let app = tray.app_handle();
                 let _ = windows::show_prompt_window(&app);
             }
-        })
-        .build(app)?;
+        });
+
+    if let Some(icon) = app.default_window_icon() {
+        builder = builder.icon(icon.clone());
+    }
+
+    builder.build(app)?;
+    notify_startup();
     Ok(())
+}
+
+fn notify_startup() {
+    let _ = Command::new("notify-send")
+        .arg("-a")
+        .arg("jcode-panel")
+        .arg("jcode-panel is running")
+        .arg("Use the top-bar icon, jcode-panel, or jcp to open it.")
+        .spawn();
 }
