@@ -10,7 +10,7 @@ export type Snapshot = {
 export type DiagnosticsReport = { checks: { name: string; ok: boolean; message: string; fix: string }[] };
 export type PopupContextChip = { tag: string; body: string; kind: string };
 export type ActiveContext = { app: string; window_title: string; selected_text: string; clipboard_text: string; browser?: { title: string; url: string; selected_text: string } | null };
-export type FeedbackPayload = { text: string; notice?: string; stats?: { upload: number; download: number; cache_read: number; cache_write: number } | null };
+export type FeedbackPayload = { text: string; notice?: string; status?: string; stats?: { upload: number; download: number; cache_read: number; cache_write: number } | null };
 
 export const api = {
   snapshot: () => invoke<Snapshot>('snapshot'),

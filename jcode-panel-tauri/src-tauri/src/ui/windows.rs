@@ -28,6 +28,7 @@ struct PromptTrackingState {
 pub struct FeedbackPayload {
     pub text: String,
     pub notice: String,
+    pub status: String,
     pub stats: Option<TokenStats>,
 }
 
@@ -231,9 +232,22 @@ pub fn show_feedback_window(
     stats: Option<TokenStats>,
 ) -> Result<(), String> {
     let text = formatting::format_stream_lines(text, 9);
+    let status = app
+        .state::<crate::ui::commands::RuntimeState>()
+        .0
+        .lock()
+        .ok()
+        .map(|state| {
+            crate::core::activity::header_status(
+                &state.process_status,
+                state.live_activity.as_ref(),
+            )
+        })
+        .unwrap_or_else(|| "idle".into());
     let payload = FeedbackPayload {
         text,
         notice: notice.trim().to_string(),
+        status,
         stats,
     };
     if let Ok(mut last) = LAST_FEEDBACK.lock() {
@@ -245,13 +259,16 @@ pub fn show_feedback_window(
         let _ = window.emit("feedback-update", payload.clone());
         let app = app.clone();
         thread::spawn(move || {
-            thread::sleep(Duration::from_millis(120));
-            let app_for_main = app.clone();
-            let _ = app.run_on_main_thread(move || {
-                if let Some(window) = app_for_main.get_webview_window("feedback") {
-                    let _ = window.emit("feedback-update", payload);
-                }
-            });
+            for delay in [120_u64, 350, 800] {
+                thread::sleep(Duration::from_millis(delay));
+                let app_for_main = app.clone();
+                let payload_for_main = payload.clone();
+                let _ = app.run_on_main_thread(move || {
+                    if let Some(window) = app_for_main.get_webview_window("feedback") {
+                        let _ = window.emit("feedback-update", payload_for_main);
+                    }
+                });
+            }
         });
     }
     Ok(())

@@ -51,8 +51,11 @@ export function renderFeedback(root: HTMLElement) {
           <div class="toast-title">jcode feedback</div>
           <div id="toast-stats" class="toast-stats"></div>
         </div>
-        <div id="toast-text" class="toast-text" tabindex="0">Waiting for feedback...</div>
-        <div id="toast-notice" class="toast-notice"></div>
+        <div class="toast-scroll"><div id="toast-text" class="toast-text" tabindex="0">Waiting for feedback...</div></div>
+        <div class="toast-statusbar">
+          <span id="toast-status" class="toast-status">idle</span>
+          <span id="toast-notice" class="toast-notice"></span>
+        </div>
         <div class="toast-actions">
           <button id="toast-jump" class="toast-jump" title="Back to latest feedback" hidden>Back to latest feedback</button>
           <button id="toast-open" title="Open conversation">Open</button>
@@ -63,15 +66,17 @@ export function renderFeedback(root: HTMLElement) {
     </main>`;
 
   const textEl = root.querySelector<HTMLDivElement>('#toast-text')!;
+  const scrollEl = root.querySelector<HTMLDivElement>('.toast-scroll')!;
   const noticeEl = root.querySelector<HTMLDivElement>('#toast-notice')!;
+  const statusEl = root.querySelector<HTMLSpanElement>('#toast-status')!;
   const statsEl = root.querySelector<HTMLDivElement>('#toast-stats')!;
   const jumpButton = root.querySelector<HTMLButtonElement>('#toast-jump')!;
   let hideTimer: number | undefined;
   let userPinnedScroll = false;
 
-  const isAtBottom = () => textEl.scrollHeight - textEl.scrollTop - textEl.clientHeight < 8;
+  const isAtBottom = () => scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 8;
   const scrollLatest = () => {
-    textEl.scrollTop = textEl.scrollHeight;
+    scrollEl.scrollTop = scrollEl.scrollHeight;
     userPinnedScroll = false;
     jumpButton.hidden = true;
   };
@@ -81,25 +86,27 @@ export function renderFeedback(root: HTMLElement) {
     hideTimer = window.setTimeout(() => api.hideFeedback(), 60_000);
   };
 
-  const apply = (payload: FeedbackPayload) => {
+  const apply = (payload: FeedbackPayload, resetHideTimer = true) => {
     const shouldStickToLatest = !userPinnedScroll && isAtBottom();
-    const oldScrollTop = textEl.scrollTop;
+    const oldScrollTop = scrollEl.scrollTop;
     textEl.innerHTML = renderMarkdown(payload.text || 'No feedback text.');
     noticeEl.textContent = payload.notice || '';
     noticeEl.hidden = !payload.notice;
+    statusEl.textContent = payload.status || 'idle';
+    statusEl.className = `toast-status toast-status-${(payload.status || 'idle').replace(/[^a-z0-9_-]/gi, '').toLowerCase()}`;
     statsEl.innerHTML = renderStats(payload.stats);
     statsEl.hidden = !payload.stats;
     if (shouldStickToLatest) {
       window.requestAnimationFrame(scrollLatest);
     } else {
-      textEl.scrollTop = oldScrollTop;
+      scrollEl.scrollTop = oldScrollTop;
       jumpButton.hidden = isAtBottom();
     }
-    scheduleHide();
+    if (resetHideTimer) scheduleHide();
   };
 
   jumpButton.onclick = scrollLatest;
-  textEl.addEventListener('scroll', () => {
+  scrollEl.addEventListener('scroll', () => {
     userPinnedScroll = !isAtBottom();
     jumpButton.hidden = !userPinnedScroll;
   });
@@ -114,5 +121,21 @@ export function renderFeedback(root: HTMLElement) {
   });
 
   void listen<FeedbackPayload>('feedback-update', (event) => apply(event.payload));
-  void api.currentFeedback().then((payload) => { if (payload) apply(payload); }).catch(() => {});
+  const replay = () => {
+    void api.currentFeedback()
+      .then((payload) => {
+        if (payload) apply(payload, false);
+        return api.snapshot();
+      })
+      .then((snapshot) => {
+        statusEl.textContent = snapshot.state.process_status || 'idle';
+        if (!statsEl.innerHTML && snapshot.state.token_stats) {
+          statsEl.innerHTML = renderStats(snapshot.state.token_stats);
+          statsEl.hidden = false;
+        }
+      })
+      .catch(() => {});
+  };
+  replay();
+  window.setInterval(replay, 1_000);
 }
