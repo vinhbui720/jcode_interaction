@@ -1,7 +1,7 @@
 use crate::{
     core::{
         config, controller, conversation, diagnostics, formatting, interaction_context, jcode,
-        state, terminal,
+        popup_context, state, terminal,
     },
     integrations,
 };
@@ -186,6 +186,24 @@ pub fn capture_screenshot(mode: String, runtime: State<RuntimeState>) -> Result<
     });
     state::save_state(&state).map_err(|err| err.to_string())?;
     Ok(tag)
+}
+
+#[tauri::command]
+pub fn active_context_snapshot() -> crate::core::context::ActiveContext {
+    crate::core::context::capture_active_context()
+}
+
+#[tauri::command]
+pub fn popup_context_chips() -> Vec<popup_context::PopupContextChip> {
+    let ctx = crate::core::context::capture_active_context();
+    popup_context::build_popup_context_chips(
+        &ctx.selected_text,
+        &[],
+        &ctx.app,
+        &ctx.window_title,
+        "",
+        None,
+    )
 }
 
 #[tauri::command]

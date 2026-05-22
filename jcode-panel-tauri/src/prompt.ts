@@ -1,6 +1,6 @@
 import { api } from './api';
 
-export function renderPrompt(root: HTMLElement) {
+export async function renderPrompt(root: HTMLElement) {
   root.innerHTML = `
     <main class="prompt-shell">
       <div class="prompt-card">
@@ -14,6 +14,16 @@ export function renderPrompt(root: HTMLElement) {
     </main>`;
   const input = root.querySelector<HTMLInputElement>('#prompt-input')!;
   const hint = root.querySelector<HTMLDivElement>('#prompt-hint')!;
+  try {
+    const [ctx, chips] = await Promise.all([api.activeContextSnapshot(), api.popupContextChips()]);
+    if (!input.value && chips.length) {
+      input.value = `${chips.map((chip) => chip.tag).join(' ')} `;
+    }
+    const summary = [ctx.app, ctx.window_title, ctx.selected_text ? 'selected text' : ''].filter(Boolean).join(' · ');
+    if (summary) hint.textContent = `Context: ${summary}`;
+  } catch {
+    // Context capture is best-effort, keep prompt usable without X11 helpers.
+  }
   root.querySelector<HTMLButtonElement>('#close')!.onclick = () => api.hidePrompt();
   root.querySelector<HTMLButtonElement>('#shot')!.onclick = async () => {
     hint.textContent = 'Capturing screenshot...';

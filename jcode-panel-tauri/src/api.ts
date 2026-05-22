@@ -8,12 +8,16 @@ export type Snapshot = {
 };
 
 export type DiagnosticsReport = { checks: { name: string; ok: boolean; message: string; fix: string }[] };
+export type PopupContextChip = { tag: string; body: string; kind: string };
+export type ActiveContext = { app: string; window_title: string; selected_text: string; clipboard_text: string; browser?: { title: string; url: string; selected_text: string } | null };
 
 export const api = {
   snapshot: () => invoke<Snapshot>('snapshot'),
   submitPrompt: (prompt: string) => invoke('submit_prompt', { prompt }),
   normalizePromptText: (text: string) => invoke<{ text: string; hints: string[] }>('normalize_prompt_text', { text }),
   captureScreenshot: (mode: string) => invoke<string>('capture_screenshot', { mode }),
+  activeContextSnapshot: () => invoke<ActiveContext>('active_context_snapshot'),
+  popupContextChips: () => invoke<PopupContextChip[]>('popup_context_chips'),
   switchSession: (session: string, name?: string) => invoke('switch_session', { session, name }),
   startNewSection: (name?: string) => invoke('start_new_section', { name }),
   saveSettings: (newConfig: Snapshot['config']) => invoke('save_settings', { newConfig }),

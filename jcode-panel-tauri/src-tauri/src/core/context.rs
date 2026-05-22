@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::process::Command;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BrowserContext {
@@ -106,6 +107,56 @@ pub fn is_notification_clipboard(text: &str) -> bool {
     stripped.starts_with("✉ DM from ") || stripped.starts_with("DM from ")
 }
 
+pub fn capture_active_context() -> ActiveContext {
+    let window_id = run_text("xdotool", &["getactivewindow"]).unwrap_or_default();
+    let window_title = if window_id.trim().is_empty() {
+        String::new()
+    } else {
+        run_text("xdotool", &["getwindowname", window_id.trim()]).unwrap_or_default()
+    };
+    let app = if window_id.trim().is_empty() {
+        String::new()
+    } else {
+        run_text("xdotool", &["getwindowclassname", window_id.trim()]).unwrap_or_default()
+    };
+    let selected_text = read_selection("primary").unwrap_or_default();
+    let clipboard_text = read_selection("clipboard").unwrap_or_default();
+    let app = app.trim().to_string();
+    let window_title = window_title.trim().to_string();
+    ActiveContext {
+        app: if is_internal_shell_window(&app, &window_title) {
+            String::new()
+        } else {
+            app
+        },
+        window_title,
+        browser: None,
+        selected_text: selected_text.trim().to_string(),
+        clipboard_text: if is_notification_clipboard(&clipboard_text) {
+            String::new()
+        } else {
+            clipboard_text.trim().to_string()
+        },
+    }
+}
+
+fn read_selection(selection: &str) -> Option<String> {
+    run_text("xclip", &["-selection", selection, "-o"]).or_else(|| {
+        run_text(
+            "xsel",
+            &[if selection == "primary" { "-op" } else { "-ob" }],
+        )
+    })
+}
+
+fn run_text(program: &str, args: &[&str]) -> Option<String> {
+    let output = Command::new(program).args(args).output().ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -127,5 +178,11 @@ mod tests {
     fn filters_shell_and_dm_clipboard() {
         assert!(is_internal_shell_window("gjs", "@!0,0;BDHF"));
         assert!(is_notification_clipboard("DM from bob"));
+    }
+
+    #[test]
+    fn context_capture_falls_back_without_x_tools() {
+        let ctx = capture_active_context();
+        assert!(ctx.summary().len() > 0);
     }
 }

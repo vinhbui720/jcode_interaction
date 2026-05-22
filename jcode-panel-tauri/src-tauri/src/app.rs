@@ -45,6 +45,8 @@ pub fn run() {
             commands::start_new_section,
             commands::normalize_prompt_text,
             commands::capture_screenshot,
+            commands::active_context_snapshot,
+            commands::popup_context_chips,
             commands::diagnostics_report,
             commands::launch_terminal,
             commands::integration_status,
