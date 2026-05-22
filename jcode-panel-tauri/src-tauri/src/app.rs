@@ -145,6 +145,7 @@ pub fn run() {
             crate::ui::windows::hide_prompt,
             crate::ui::windows::prompt_follow_mouse_tick,
             crate::ui::windows::show_feedback,
+            crate::ui::windows::current_feedback,
             crate::ui::windows::hide_feedback,
         ])
         .run(tauri::generate_context!())

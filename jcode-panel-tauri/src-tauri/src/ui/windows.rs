@@ -1,12 +1,22 @@
 use crate::core::{formatting, positioning, state::TokenStats};
 use serde::Serialize;
-use std::{process::Command, sync::Mutex};
+use std::{
+    process::Command,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
+    thread,
+    time::Duration,
+};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition};
 
 static PROMPT_TRACKING: Mutex<PromptTrackingState> = Mutex::new(PromptTrackingState {
     current_x: None,
     current_y: None,
 });
+static PROMPT_TRACKING_ACTIVE: AtomicBool = AtomicBool::new(false);
+static LAST_FEEDBACK: Mutex<Option<FeedbackPayload>> = Mutex::new(None);
 
 #[derive(Debug, Clone, Copy)]
 struct PromptTrackingState {
@@ -49,6 +59,7 @@ pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
     }
     let result = show_window(app, "prompt");
     if result.is_ok() {
+        start_prompt_mouse_follow(app);
         if let Some(window) = app.get_webview_window("prompt") {
             let _ = window.emit("prompt-shown", ());
         }
@@ -56,44 +67,71 @@ pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
     result
 }
 
+fn start_prompt_mouse_follow(app: &AppHandle) {
+    stop_prompt_mouse_follow();
+    PROMPT_TRACKING_ACTIVE.store(true, Ordering::SeqCst);
+    let app = app.clone();
+    thread::spawn(move || {
+        while PROMPT_TRACKING_ACTIVE.load(Ordering::SeqCst) {
+            let Some((x, y)) = mouse_position() else {
+                thread::sleep(Duration::from_millis(16));
+                continue;
+            };
+            if x <= 2 && y <= 2 {
+                thread::sleep(Duration::from_millis(16));
+                continue;
+            }
+            let target = ((x + 20).max(0) as f64, (y + 24).max(0) as f64);
+            let next = next_prompt_position(target).unwrap_or(target);
+            let app_for_main = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                let Some(window) = app_for_main.get_webview_window("prompt") else {
+                    PROMPT_TRACKING_ACTIVE.store(false, Ordering::SeqCst);
+                    return;
+                };
+                if !window.is_visible().unwrap_or(false) {
+                    PROMPT_TRACKING_ACTIVE.store(false, Ordering::SeqCst);
+                    reset_prompt_tracking();
+                    return;
+                }
+                let _ = window.set_position(PhysicalPosition::new(next.0 as i32, next.1 as i32));
+            });
+            thread::sleep(Duration::from_millis(16));
+        }
+        reset_prompt_tracking();
+    });
+}
+
+fn stop_prompt_mouse_follow() {
+    PROMPT_TRACKING_ACTIVE.store(false, Ordering::SeqCst);
+}
+
 #[tauri::command]
 pub fn prompt_follow_mouse_tick(app: AppHandle) -> Result<bool, String> {
-    let Some(window) = app.get_webview_window("prompt") else {
-        return Ok(false);
+    // Compatibility command for older loaded frontends. Actual tracking is owned by Rust.
+    Ok(app
+        .get_webview_window("prompt")
+        .and_then(|window| window.is_visible().ok())
+        .unwrap_or(false))
+}
+
+fn next_prompt_position(target: (f64, f64)) -> Result<(f64, f64), String> {
+    let mut tracking = PROMPT_TRACKING
+        .lock()
+        .map_err(|_| "prompt tracking lock poisoned".to_string())?;
+    let next = match (tracking.current_x, tracking.current_y) {
+        (Some(cx), Some(cy)) => {
+            let alpha = 0.55;
+            (
+                smooth_step(cx, target.0, alpha),
+                smooth_step(cy, target.1, alpha),
+            )
+        }
+        _ => target,
     };
-    if !window.is_visible().unwrap_or(false) {
-        reset_prompt_tracking();
-        return Ok(false);
-    }
-    let Some((x, y)) = mouse_position() else {
-        return Ok(true);
-    };
-    if x <= 2 && y <= 2 {
-        return Ok(true);
-    }
-    let target = ((x + 20).max(0) as f64, (y + 24).max(0) as f64);
-    let next = {
-        let mut tracking = PROMPT_TRACKING
-            .lock()
-            .map_err(|_| "prompt tracking lock poisoned".to_string())?;
-        let next = match (tracking.current_x, tracking.current_y) {
-            (Some(cx), Some(cy)) => {
-                let alpha = 0.55;
-                (
-                    smooth_step(cx, target.0, alpha),
-                    smooth_step(cy, target.1, alpha),
-                )
-            }
-            _ => target,
-        };
-        tracking.current_x = Some(next.0);
-        tracking.current_y = Some(next.1);
-        next
-    };
-    window
-        .set_position(PhysicalPosition::new(next.0 as i32, next.1 as i32))
-        .map_err(|err| err.to_string())?;
-    Ok(true)
+    tracking.current_x = Some(next.0);
+    tracking.current_y = Some(next.1);
+    Ok(next)
 }
 
 fn reset_prompt_tracking() {
@@ -137,6 +175,7 @@ fn mouse_position() -> Option<(i32, i32)> {
 
 #[tauri::command]
 pub fn hide_prompt(app: AppHandle) -> Result<(), String> {
+    stop_prompt_mouse_follow();
     reset_prompt_tracking();
     hide_window(&app, "prompt")
 }
@@ -173,12 +212,30 @@ pub fn show_feedback_window(
         notice: notice.trim().to_string(),
         stats,
     };
+    if let Ok(mut last) = LAST_FEEDBACK.lock() {
+        *last = Some(payload.clone());
+    }
     if let Some(window) = app.get_webview_window("feedback") {
         move_feedback_to_corner(&window);
         window.show().map_err(|err| err.to_string())?;
-        let _ = window.emit("feedback-update", payload);
+        let _ = window.emit("feedback-update", payload.clone());
+        let app = app.clone();
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(120));
+            let app_for_main = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                if let Some(window) = app_for_main.get_webview_window("feedback") {
+                    let _ = window.emit("feedback-update", payload);
+                }
+            });
+        });
     }
     Ok(())
+}
+
+#[tauri::command]
+pub fn current_feedback() -> Option<FeedbackPayload> {
+    LAST_FEEDBACK.lock().ok().and_then(|last| last.clone())
 }
 
 #[tauri::command]

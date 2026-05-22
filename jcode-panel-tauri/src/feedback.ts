@@ -1,8 +1,7 @@
 import { listen } from '@tauri-apps/api/event';
-import { api } from './api';
+import { api, type FeedbackPayload } from './api';
 
 type TokenStats = { upload: number; download: number; cache_read: number; cache_write: number };
-type FeedbackPayload = { text: string; notice?: string; stats?: TokenStats | null };
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]!));
@@ -37,7 +36,7 @@ function renderStats(stats?: TokenStats | null) {
   return `<span>⬆ ${compact(stats.upload)}</span><span>⬇ ${compact(stats.download)}</span><span>◌ ${compact(stats.cache_read)}</span><span>✎ ${compact(stats.cache_write)}</span>`;
 }
 
-export async function renderFeedback(root: HTMLElement) {
+export function renderFeedback(root: HTMLElement) {
   root.innerHTML = `
     <main class="toast-shell">
       <section class="toast-card">
@@ -81,5 +80,6 @@ export async function renderFeedback(root: HTMLElement) {
   root.addEventListener('mouseenter', () => { if (hideTimer) window.clearTimeout(hideTimer); });
   root.addEventListener('mouseleave', scheduleHide);
 
-  await listen<FeedbackPayload>('feedback-update', (event) => apply(event.payload));
+  void listen<FeedbackPayload>('feedback-update', (event) => apply(event.payload));
+  void api.currentFeedback().then((payload) => { if (payload) apply(payload); }).catch(() => {});
 }
