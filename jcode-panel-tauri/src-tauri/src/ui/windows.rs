@@ -16,6 +16,7 @@ static PROMPT_TRACKING: Mutex<PromptTrackingState> = Mutex::new(PromptTrackingSt
     current_y: None,
 });
 static PROMPT_TRACKING_ACTIVE: AtomicBool = AtomicBool::new(false);
+static PROMPT_FOCUS_ACTIVE: AtomicBool = AtomicBool::new(false);
 static LAST_FEEDBACK: Mutex<Option<FeedbackPayload>> = Mutex::new(None);
 
 #[derive(Debug, Clone, Copy)]
@@ -62,6 +63,7 @@ pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
     let result = show_window(app, "prompt");
     if result.is_ok() {
         activate_prompt_window();
+        start_prompt_focus_guard(app);
         start_prompt_mouse_follow(app);
         if let Some(window) = app.get_webview_window("prompt") {
             let _ = window.emit("prompt-shown", ());
@@ -88,6 +90,46 @@ fn activate_prompt_window() {
                 .status();
         }
     });
+}
+
+fn start_prompt_focus_guard(app: &AppHandle) {
+    stop_prompt_focus_guard();
+    PROMPT_FOCUS_ACTIVE.store(true, Ordering::SeqCst);
+    let app = app.clone();
+    thread::spawn(move || {
+        while PROMPT_FOCUS_ACTIVE.load(Ordering::SeqCst) {
+            let visible = app
+                .get_webview_window("prompt")
+                .and_then(|window| window.is_visible().ok())
+                .unwrap_or(false);
+            if !visible {
+                PROMPT_FOCUS_ACTIVE.store(false, Ordering::SeqCst);
+                break;
+            }
+            activate_prompt_once();
+            thread::sleep(Duration::from_millis(120));
+        }
+    });
+}
+
+fn stop_prompt_focus_guard() {
+    PROMPT_FOCUS_ACTIVE.store(false, Ordering::SeqCst);
+}
+
+fn activate_prompt_once() {
+    let _ = Command::new("xdotool")
+        .args([
+            "search",
+            "--name",
+            "Jcode Prompt",
+            "windowactivate",
+            "--sync",
+            "windowfocus",
+            "--sync",
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
 }
 
 fn start_prompt_mouse_follow(app: &AppHandle) {
@@ -198,6 +240,7 @@ fn mouse_position() -> Option<(i32, i32)> {
 
 #[tauri::command]
 pub fn hide_prompt(app: AppHandle) -> Result<(), String> {
+    stop_prompt_focus_guard();
     stop_prompt_mouse_follow();
     reset_prompt_tracking();
     let result = hide_window(&app, "prompt");
