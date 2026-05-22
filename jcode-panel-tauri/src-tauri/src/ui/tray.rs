@@ -13,7 +13,7 @@ pub fn install(app: &mut App) -> tauri::Result<()> {
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &prompt, &settings, &quit])?;
 
-    let mut builder = TrayIconBuilder::with_id("jcode-panel")
+    let builder = TrayIconBuilder::with_id("jcode-panel")
         .tooltip("Jcode Interaction")
         .title("jcode")
         .menu(&menu)
@@ -47,10 +47,6 @@ pub fn install(app: &mut App) -> tauri::Result<()> {
                 let _ = windows::show_prompt_window(&app);
             }
         });
-
-    builder = builder
-        .icon(tauri::include_image!("icons/32x32.png").clone())
-        .icon_as_template(false);
 
     builder.build(app)?;
     let _ = status::refresh_header_status(app.handle());

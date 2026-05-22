@@ -64,6 +64,7 @@ pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
     if result.is_ok() {
         activate_prompt_window();
         start_prompt_focus_guard(app);
+        start_prompt_mouse_follow(app);
         if let Some(window) = app.get_webview_window("prompt") {
             let _ = window.emit("prompt-shown", ());
         }
@@ -135,6 +136,43 @@ fn activate_prompt_once() {
         .status();
 }
 
+fn start_prompt_mouse_follow(app: &AppHandle) {
+    stop_prompt_mouse_follow();
+    PROMPT_TRACKING_ACTIVE.store(true, Ordering::SeqCst);
+    let app = app.clone();
+    thread::spawn(move || {
+        while PROMPT_TRACKING_ACTIVE.load(Ordering::SeqCst) {
+            let visible = app
+                .get_webview_window("prompt")
+                .and_then(|window| window.is_visible().ok())
+                .unwrap_or(false);
+            if !visible {
+                PROMPT_TRACKING_ACTIVE.store(false, Ordering::SeqCst);
+                reset_prompt_tracking();
+                break;
+            }
+            if let Some((x, y)) = mouse_position().filter(|(x, y)| *x > 2 || *y > 2) {
+                let target = ((x + 20).max(0) as f64, (y + 24).max(0) as f64);
+                if let Ok(Some(next)) = next_prompt_position_if_changed(target) {
+                    let app_for_main = app.clone();
+                    let _ = app.run_on_main_thread(move || {
+                        if let Some(window) = app_for_main.get_webview_window("prompt") {
+                            if window.is_visible().unwrap_or(false) {
+                                let _ = window.set_position(PhysicalPosition::new(
+                                    next.0 as i32,
+                                    next.1 as i32,
+                                ));
+                            }
+                        }
+                    });
+                }
+            }
+            thread::sleep(Duration::from_millis(120));
+        }
+        reset_prompt_tracking();
+    });
+}
+
 fn stop_prompt_mouse_follow() {
     PROMPT_TRACKING_ACTIVE.store(false, Ordering::SeqCst);
 }
@@ -153,6 +191,27 @@ fn reset_prompt_tracking() {
         tracking.current_x = None;
         tracking.current_y = None;
     }
+}
+
+fn next_prompt_position_if_changed(target: (f64, f64)) -> Result<Option<(f64, f64)>, String> {
+    let mut tracking = PROMPT_TRACKING
+        .lock()
+        .map_err(|_| "prompt tracking lock poisoned".to_string())?;
+    let next = match (tracking.current_x, tracking.current_y) {
+        (Some(cx), Some(cy)) => {
+            if (target.0 - cx).abs() < 10.0 && (target.1 - cy).abs() < 10.0 {
+                return Ok(None);
+            }
+            (
+                smooth_step(cx, target.0, 0.45),
+                smooth_step(cy, target.1, 0.45),
+            )
+        }
+        _ => target,
+    };
+    tracking.current_x = Some(next.0);
+    tracking.current_y = Some(next.1);
+    Ok(Some(next))
 }
 
 fn smooth_step(current: f64, target: f64, alpha: f64) -> f64 {
