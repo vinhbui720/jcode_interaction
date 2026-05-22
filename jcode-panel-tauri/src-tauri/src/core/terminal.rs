@@ -1,9 +1,3 @@
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TerminalAdapter {
-    pub name: String,
-    pub template: String,
-}
-
 pub fn render_command(template: &str, command: &str) -> Vec<String> {
     shell_words::split(
         &template

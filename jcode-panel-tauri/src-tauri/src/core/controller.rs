@@ -50,6 +50,10 @@ impl AppController {
         }
     }
 
+    pub fn max_prompt_chars(&self) -> usize {
+        self.config.max_prompt_chars
+    }
+
     pub fn build_prompt(
         &self,
         text: &str,

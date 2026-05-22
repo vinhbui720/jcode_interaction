@@ -46,6 +46,7 @@ pub fn run() {
             commands::normalize_prompt_text,
             commands::capture_screenshot,
             commands::diagnostics_report,
+            commands::launch_terminal,
             commands::integration_status,
             commands::refresh_integrations,
             crate::ui::windows::show_prompt,

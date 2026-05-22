@@ -1,5 +1,8 @@
 use crate::{
-    core::{config, diagnostics, formatting, interaction_context, jcode, state},
+    core::{
+        config, controller, conversation, diagnostics, formatting, interaction_context, jcode,
+        state, terminal,
+    },
     integrations,
 };
 use serde::{Deserialize, Serialize};
@@ -13,14 +16,25 @@ pub struct AppSnapshot {
     pub config: config::AppConfig,
     pub state: state::AppState,
     pub jcode_available: bool,
+    pub conversation_preview: String,
 }
 
 #[tauri::command]
 pub fn snapshot(runtime: State<RuntimeState>) -> AppSnapshot {
+    let state = runtime.0.lock().expect("state lock").clone();
+    let mut buffer = conversation::ConversationBuffer::new(100);
+    for msg in &state.recent_messages {
+        if msg.author == "You" {
+            buffer.add_user(&msg.text);
+        } else {
+            buffer.messages.push((msg.author.clone(), msg.text.clone()));
+        }
+    }
     AppSnapshot {
         config: config::load_config(),
-        state: runtime.0.lock().expect("state lock").clone(),
+        state,
         jcode_available: jcode::jcode_available(),
+        conversation_preview: buffer.latest_preview(false),
     }
 }
 
@@ -34,7 +48,15 @@ pub fn submit_prompt(
     prompt: String,
     runtime: State<RuntimeState>,
 ) -> Result<jcode::SendResult, String> {
-    let session = runtime.0.lock().expect("state lock").active_session.clone();
+    let current_state = runtime.0.lock().expect("state lock").clone();
+    let controller = controller::AppController::new(config::load_config(), current_state.clone());
+    if prompt.chars().count() > controller.max_prompt_chars() {
+        return Err(format!(
+            "Prompt is longer than configured limit of {} characters",
+            controller.max_prompt_chars()
+        ));
+    }
+    let session = current_state.active_session.clone();
     let normalized = interaction_context::normalize_interaction_tags(&prompt);
     let expanded = interaction_context::expand_interaction_chips(&normalized)?;
     let screenshots: Vec<String> = runtime
@@ -46,6 +68,7 @@ pub fn submit_prompt(
         .filter_map(|m| m.text.strip_prefix("screenshot: ").map(str::to_string))
         .collect();
     let outgoing_prompt = formatting::expand_pic_tags(&expanded, &screenshots);
+    let (outgoing_prompt, _) = controller.build_prompt(&outgoing_prompt, None, true, false);
     let result =
         jcode::send_prompt(&outgoing_prompt, session.as_deref()).map_err(|err| err.to_string())?;
     let mut state = runtime.0.lock().expect("state lock");
@@ -54,7 +77,7 @@ pub fn submit_prompt(
     state.remember_prompt(&user_prompt);
     state.recent_messages.push(state::ConversationMessage {
         author: "You".into(),
-        text: user_prompt,
+        text: user_prompt.clone(),
     });
     state.recent_messages.push(state::ConversationMessage {
         author: "jcode".into(),
@@ -210,4 +233,29 @@ pub fn diagnostics_report() -> diagnostics::DiagnosticsReport {
             },
         ],
     }
+}
+
+#[tauri::command]
+pub fn launch_terminal(command: Option<String>) -> Result<(), String> {
+    let cfg = config::load_config();
+    let command = command.unwrap_or_else(|| "jcode repl".into());
+    let args = if cfg.terminal.contains("{cmd}") || cfg.terminal.contains("{quoted_cmd}") {
+        terminal::render_command(&cfg.terminal, &command)
+    } else {
+        vec![
+            cfg.terminal,
+            "--".into(),
+            "sh".into(),
+            "-lc".into(),
+            command,
+        ]
+    };
+    let Some((program, rest)) = args.split_first() else {
+        return Err("No terminal command configured".into());
+    };
+    Command::new(program)
+        .args(rest)
+        .spawn()
+        .map_err(|err| err.to_string())?;
+    Ok(())
 }
