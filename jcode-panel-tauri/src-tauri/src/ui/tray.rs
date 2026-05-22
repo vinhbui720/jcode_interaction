@@ -1,5 +1,5 @@
 use crate::ui::windows;
-use std::process::Command;
+use std::{path::PathBuf, process::Command};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -53,15 +53,38 @@ pub fn install(app: &mut App) -> tauri::Result<()> {
     }
 
     builder.build(app)?;
-    notify_startup();
+    notify_startup(app);
     Ok(())
 }
 
-fn notify_startup() {
-    let _ = Command::new("notify-send")
+fn notify_startup(app: &App) {
+    let mut command = Command::new("notify-send");
+    command
         .arg("-a")
         .arg("jcode-panel")
+        .arg("-u")
+        .arg("normal")
+        .arg("-t")
+        .arg("5000");
+    if let Some(icon) = notification_icon_path(app) {
+        command.arg("-i").arg(icon);
+    }
+    let _ = command
         .arg("jcode-panel is running")
         .arg("Use the top-bar icon, jcode-panel, or jcp to open it.")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .spawn();
+}
+
+fn notification_icon_path(_app: &App) -> Option<PathBuf> {
+    let candidates = [
+        std::env::current_dir()
+            .ok()
+            .map(|dir| dir.join("src-tauri/icons/128x128.png")),
+        std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(|dir| dir.join("icons/128x128.png"))),
+    ];
+    candidates.into_iter().flatten().find(|path| path.exists())
 }
