@@ -1,4 +1,6 @@
-use tauri::{AppHandle, Manager, WebviewWindow};
+use crate::core::positioning;
+use std::process::Command;
+use tauri::{AppHandle, Manager, PhysicalPosition, WebviewWindow};
 
 fn show_window(app: &AppHandle, label: &str) -> Result<(), String> {
     let window = app
@@ -15,7 +17,25 @@ fn hide_window(window: WebviewWindow) -> Result<(), String> {
 
 #[tauri::command]
 pub fn show_prompt(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("prompt") {
+        if let Some((x, y)) = mouse_position() {
+            let _ = window.set_position(PhysicalPosition::new((x + 20).max(0), (y + 24).max(0)));
+        }
+    }
     show_window(&app, "prompt")
+}
+
+fn mouse_position() -> Option<(i32, i32)> {
+    let output = Command::new("xdotool")
+        .arg("getmouselocation")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let (x, y) = positioning::parse_xdotool_mouselocation(&text);
+    Some((x?, y?))
 }
 
 #[tauri::command]

@@ -33,7 +33,7 @@ pub fn snapshot(runtime: State<RuntimeState>) -> AppSnapshot {
     AppSnapshot {
         config: config::load_config(),
         state,
-        jcode_available: jcode::jcode_available(),
+        jcode_available: jcode::jcode_available_cached(),
         conversation_preview: buffer.latest_preview(false),
     }
 }
@@ -244,12 +244,15 @@ pub fn refresh_integrations() -> serde_json::Value {
 
 #[tauri::command]
 pub fn diagnostics_report() -> diagnostics::DiagnosticsReport {
+    let jcode_available = jcode::jcode_available_cached();
+    let vscode = integrations::vscode::status();
+    let obsidian = integrations::obsidian::status();
     diagnostics::DiagnosticsReport {
         checks: vec![
             diagnostics::CheckResult {
                 name: "jcode".into(),
-                ok: jcode::jcode_available(),
-                message: if jcode::jcode_available() {
+                ok: jcode_available,
+                message: if jcode_available {
                     "jcode command available"
                 } else {
                     "jcode command missing"
@@ -259,14 +262,14 @@ pub fn diagnostics_report() -> diagnostics::DiagnosticsReport {
             },
             diagnostics::CheckResult {
                 name: "vscode".into(),
-                ok: integrations::vscode::status().installed,
-                message: integrations::vscode::status().message,
+                ok: vscode.installed,
+                message: vscode.message,
                 fix: "Use Refresh integrations from the panel".into(),
             },
             diagnostics::CheckResult {
                 name: "obsidian".into(),
-                ok: integrations::obsidian::status().installed,
-                message: integrations::obsidian::status().message,
+                ok: obsidian.installed,
+                message: obsidian.message,
                 fix: "Open an Obsidian vault, then refresh integrations".into(),
             },
         ],

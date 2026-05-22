@@ -1,6 +1,12 @@
 use crate::core::{formatting, protocol, state::TokenStats};
 use serde::{Deserialize, Serialize};
-use std::process::Command;
+use std::{
+    process::Command,
+    sync::{Mutex, OnceLock},
+    time::{Duration, Instant},
+};
+
+static JCODE_AVAILABLE_CACHE: OnceLock<Mutex<Option<(Instant, bool)>>> = OnceLock::new();
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct JcodeClientSpec {
@@ -121,6 +127,19 @@ mod tests {
 
 pub fn jcode_available() -> bool {
     Command::new("jcode").arg("--version").output().is_ok()
+}
+
+pub fn jcode_available_cached() -> bool {
+    let cache = JCODE_AVAILABLE_CACHE.get_or_init(|| Mutex::new(None));
+    let mut guard = cache.lock().expect("jcode cache lock");
+    if let Some((checked_at, available)) = *guard {
+        if checked_at.elapsed() < Duration::from_secs(10) {
+            return available;
+        }
+    }
+    let available = jcode_available();
+    *guard = Some((Instant::now(), available));
+    available
 }
 
 pub fn send_prompt(prompt: &str, session_id: Option<&str>) -> anyhow::Result<SendResult> {
