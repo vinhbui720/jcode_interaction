@@ -6,8 +6,7 @@ use crate::{
         tray,
     },
 };
-use std::sync::Mutex;
-use tauri::Manager;
+use std::{fs, path::PathBuf, process, sync::Mutex};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 fn register_prompt_shortcut(app: &tauri::AppHandle) {
@@ -19,12 +18,36 @@ fn register_prompt_shortcut(app: &tauri::AppHandle) {
         .global_shortcut()
         .on_shortcut(shortcut, move |_app, _shortcut, event| {
             if event.state() == ShortcutState::Pressed {
-                if let Some(window) = handle.get_webview_window("prompt") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
+                let _ = crate::ui::windows::show_prompt_window(&handle);
             }
         });
+}
+
+fn lock_path() -> PathBuf {
+    dirs::runtime_dir()
+        .or_else(dirs::data_local_dir)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("jcode-panel-tauri.pid")
+}
+
+fn pid_running(pid: u32) -> bool {
+    PathBuf::from(format!("/proc/{pid}")).exists()
+}
+
+fn acquire_single_instance() -> bool {
+    let path = lock_path();
+    if let Ok(text) = fs::read_to_string(&path) {
+        if let Ok(pid) = text.trim().parse::<u32>() {
+            if pid != process::id() && pid_running(pid) {
+                return false;
+            }
+        }
+    }
+    let _ = fs::create_dir_all(
+        path.parent()
+            .unwrap_or_else(|| std::path::Path::new("/tmp")),
+    );
+    fs::write(path, process::id().to_string()).is_ok()
 }
 
 fn parse_shortcut(hotkey: &str) -> Option<Shortcut> {
@@ -87,6 +110,9 @@ fn parse_shortcut(hotkey: &str) -> Option<Shortcut> {
 }
 
 pub fn run() {
+    if !acquire_single_instance() {
+        return;
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())

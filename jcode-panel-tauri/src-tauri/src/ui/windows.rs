@@ -17,12 +17,23 @@ fn hide_window(window: WebviewWindow) -> Result<(), String> {
 
 #[tauri::command]
 pub fn show_prompt(app: AppHandle) -> Result<(), String> {
+    show_prompt_window(&app)
+}
+
+pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("prompt") {
         if let Some((x, y)) = mouse_position() {
-            let _ = window.set_position(PhysicalPosition::new((x + 20).max(0), (y + 24).max(0)));
+            if x > 2 || y > 2 {
+                let _ =
+                    window.set_position(PhysicalPosition::new((x + 20).max(0), (y + 24).max(0)));
+            } else {
+                let _ = window.center();
+            }
+        } else {
+            let _ = window.center();
         }
     }
-    show_window(&app, "prompt")
+    show_window(app, "prompt")
 }
 
 fn mouse_position() -> Option<(i32, i32)> {

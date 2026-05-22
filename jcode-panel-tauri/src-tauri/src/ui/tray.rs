@@ -1,3 +1,4 @@
+use crate::ui::windows;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -16,10 +17,7 @@ pub fn install(app: &mut App) -> tauri::Result<()> {
         .menu(&menu)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "prompt" => {
-                let _ = app.get_webview_window("prompt").map(|w| {
-                    let _ = w.show();
-                    let _ = w.set_focus();
-                });
+                let _ = windows::show_prompt_window(app);
             }
             "dropdown" => {
                 let _ = app.get_webview_window("dropdown").map(|w| {
@@ -44,10 +42,7 @@ pub fn install(app: &mut App) -> tauri::Result<()> {
             } = event
             {
                 let app = tray.app_handle();
-                let _ = app.get_webview_window("prompt").map(|w| {
-                    let _ = w.show();
-                    let _ = w.set_focus();
-                });
+                let _ = windows::show_prompt_window(&app);
             }
         })
         .build(app)?;
