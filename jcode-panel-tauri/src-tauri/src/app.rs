@@ -6,7 +6,15 @@ use crate::{
         tray,
     },
 };
-use std::{fs, path::PathBuf, process, sync::Mutex};
+use std::{
+    fs,
+    io::Write,
+    os::unix::net::{UnixListener, UnixStream},
+    path::PathBuf,
+    process,
+    sync::Mutex,
+    thread,
+};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 pub fn register_prompt_shortcut(app: &tauri::AppHandle) {
@@ -38,6 +46,49 @@ fn lock_path() -> PathBuf {
         .or_else(dirs::data_local_dir)
         .unwrap_or_else(std::env::temp_dir)
         .join("jcode-panel-tauri.pid")
+}
+
+fn socket_path() -> PathBuf {
+    dirs::runtime_dir()
+        .or_else(dirs::data_local_dir)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("jcode-panel-tauri.sock")
+}
+
+fn cli_wants_prompt() -> bool {
+    std::env::args()
+        .skip(1)
+        .any(|arg| arg == "--prompt" || arg == "prompt" || arg == "--show")
+}
+
+fn send_prompt_request_to_running_instance() -> bool {
+    let Ok(mut stream) = UnixStream::connect(socket_path()) else {
+        return false;
+    };
+    stream.write_all(b"show_prompt\n").is_ok()
+}
+
+fn start_ipc_server(app: &tauri::AppHandle) {
+    let path = socket_path();
+    let _ = fs::remove_file(&path);
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let Ok(listener) = UnixListener::bind(&path) else {
+        return;
+    };
+    let app = app.clone();
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(_stream) = stream else {
+                continue;
+            };
+            let app_for_main = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                let _ = crate::ui::windows::show_prompt_window(&app_for_main);
+            });
+        }
+    });
 }
 
 fn pid_running(pid: u32) -> bool {
@@ -126,19 +177,30 @@ fn parse_shortcut(hotkey: &str) -> Option<Shortcut> {
 
 pub fn run() {
     std::env::set_var("GDK_BACKEND", "x11");
+    let show_prompt_on_startup = cli_wants_prompt();
     if !acquire_single_instance() {
+        if show_prompt_on_startup {
+            let _ = send_prompt_request_to_running_instance();
+        }
         return;
     }
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(RuntimeState(Mutex::new(state::load_state())))
-        .setup(|app| {
+        .setup(move |app| {
             tray::install(app)?;
+            start_ipc_server(app.handle());
             register_prompt_shortcut(app.handle());
             context::start_browser_bridge();
             let _ = integrations::vscode::install();
             let _ = integrations::obsidian::install();
+            if show_prompt_on_startup {
+                let handle = app.handle().clone();
+                let _ = app.handle().run_on_main_thread(move || {
+                    let _ = crate::ui::windows::show_prompt_window(&handle);
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
