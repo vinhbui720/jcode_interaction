@@ -16,27 +16,27 @@ Python source: `jcode-panel/tests/test_core.py`
 | `test_state_loads_backup_when_primary_missing` | ported-basic |
 | `test_state_save_preserves_existing_session_and_tokens_when_blank` | ported-basic |
 | `test_state_save_can_intentionally_clear_session_for_new_section` | ported-basic |
-| `test_prompt_builder_sends_direct_text_without_context_or_metadata` | pending-port |
+| `test_prompt_builder_sends_direct_text_without_context_or_metadata` | ported-basic |
 | `test_app_controller_active_session_prefers_state` | ported-basic |
-| `test_app_controller_section_switch_and_new_section` | pending-port |
+| `test_app_controller_section_switch_and_new_section` | ported-basic |
 | `test_protocol_parses_panel_events_and_preview` | ported-basic |
 | `test_protocol_activity_helpers_prefer_command_and_state` | ported-basic |
-| `test_protocol_activity_helpers_detect_terminal_events` | pending-port |
-| `test_protocol_backend_chat_status_drives_live_activity` | pending-port |
-| `test_protocol_backend_chat_status_can_finish_activity` | pending-port |
-| `test_protocol_backend_chat_status_current_drives_live_activity` | pending-port |
-| `test_protocol_backend_chat_status_current_can_finish_activity` | pending-port |
-| `test_protocol_backend_chat_status_prefers_current_over_activity` | pending-port |
-| `test_protocol_backend_chat_status_preview_uses_current_when_text_empty` | pending-port |
-| `test_conversation_status_uses_current_preview_when_text_empty` | pending-port |
+| `test_protocol_activity_helpers_detect_terminal_events` | ported-basic |
+| `test_protocol_backend_chat_status_drives_live_activity` | ported-basic |
+| `test_protocol_backend_chat_status_can_finish_activity` | ported-basic |
+| `test_protocol_backend_chat_status_current_drives_live_activity` | ported-basic |
+| `test_protocol_backend_chat_status_current_can_finish_activity` | ported-basic |
+| `test_protocol_backend_chat_status_prefers_current_over_activity` | ported-basic |
+| `test_protocol_backend_chat_status_preview_uses_current_when_text_empty` | ported-basic |
+| `test_conversation_status_uses_current_preview_when_text_empty` | ported-basic |
 | `test_conversation_transcription_becomes_user_turn` | pending-port |
 | `test_conversation_ignores_noisy_sending_status` | pending-port |
-| `test_protocol_backend_chat_status_extracts_feedback_text` | pending-port |
-| `test_protocol_backend_chat_status_extracts_answer_text` | pending-port |
-| `test_protocol_backend_chat_status_nested_status_current` | pending-port |
-| `test_protocol_activity_helpers_keep_streaming_message_active` | pending-port |
-| `test_jcode_client_repl_args_and_adopt_session` | pending-port |
-| `test_jcode_client_model_repl_args_and_slash_fallback` | pending-port |
+| `test_protocol_backend_chat_status_extracts_feedback_text` | ported-basic |
+| `test_protocol_backend_chat_status_extracts_answer_text` | ported-basic |
+| `test_protocol_backend_chat_status_nested_status_current` | ported-basic |
+| `test_protocol_activity_helpers_keep_streaming_message_active` | ported-basic |
+| `test_jcode_client_repl_args_and_adopt_session` | ported-basic |
+| `test_jcode_client_model_repl_args_and_slash_fallback` | ported-basic |
 | `test_jcode_client_new_section_waits_for_bootstrap_session` | pending-port |
 | `test_jcode_client_send_bootstraps_new_section` | pending-port |
 | `test_jcode_client_set_session_restarts_dead_same_session` | pending-port |
@@ -73,7 +73,7 @@ Python source: `jcode-panel/tests/test_core.py`
 | `test_interaction_tag_normalization_and_sources` | ported-basic |
 | `test_interaction_context_expands_each_chip` | pending-port |
 | `test_interaction_context_missing_app_blocks_send` | pending-port |
-| `test_jcode_repl_wire_prompt_is_single_physical_line` | pending-port |
+| `test_jcode_repl_wire_prompt_is_single_physical_line` | ported-basic |
 | `test_obsidian_context_uses_absolute_path_and_limited_excerpt` | pending-port |
 | `test_interaction_partial_completion` | ported-basic |
 | `test_popup_context_chips_selected_text_expand` | ported-basic |
@@ -81,4 +81,4 @@ Python source: `jcode-panel/tests/test_core.py`
 | `test_popup_context_chips_ignore_clipboard_arguments` | ported-basic |
 | `test_popup_context_chips_limit_selected_text` | ported-basic |
 
-Current Tauri Rust tests: 9 passing. This ledger is intentionally conservative: `ported-basic` means a Rust unit test covers the same pure/domain behavior family, not necessarily full GUI/runtime parity.
+Current Tauri Rust tests: 28 passing. This ledger is intentionally conservative: `ported-basic` means a Rust unit test covers the same pure/domain behavior family, not necessarily full GUI/runtime parity.

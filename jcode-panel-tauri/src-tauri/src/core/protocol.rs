@@ -235,10 +235,157 @@ pub fn event_preview(event: &PanelEvent, debug: bool) -> String {
         .chars()
         .take(160)
         .collect(),
+        PanelEventKind::Status => {
+            let text = if event.text.is_empty() {
+                activity_label(event.raw.as_ref(), "")
+            } else {
+                event.text.clone()
+            };
+            text.chars().take(160).collect()
+        }
         PanelEventKind::Session if !event.session_id.is_empty() => {
             format!("Session: {}", event.session_id)
         }
         _ => event.text.chars().take(160).collect(),
+    }
+}
+
+pub fn activity_label(raw: Option<&Value>, fallback: &str) -> String {
+    let Some(raw) = raw.and_then(Value::as_object) else {
+        return fallback.trim().into();
+    };
+    for nested in nested_activity_values(raw) {
+        let label = activity_label(Some(nested), "");
+        if !label.is_empty() {
+            return label;
+        }
+    }
+    for key in [
+        "command",
+        "cmd",
+        "args",
+        "argv",
+        "input",
+        "tool_input",
+        "tool_name",
+        "tool",
+        "name",
+        "title",
+        "label",
+        "operation",
+        "description",
+        "target",
+        "text",
+        "message",
+        "phase",
+        "detail",
+        "current",
+    ] {
+        if let Some(value) = raw
+            .get(key)
+            .and_then(Value::as_str)
+            .filter(|s| !s.trim().is_empty())
+        {
+            return compact_activity(value);
+        }
+    }
+    fallback.trim().into()
+}
+
+pub fn activity_state(raw: Option<&Value>, fallback: &str) -> String {
+    let Some(raw) = raw.and_then(Value::as_object) else {
+        return fallback.trim().to_ascii_lowercase().replace('_', " ");
+    };
+    for nested in nested_activity_values(raw) {
+        let state = activity_state(Some(nested), "");
+        if !state.is_empty() {
+            return state;
+        }
+    }
+    for key in ["state", "status", "phase", "event", "action"] {
+        if let Some(value) = raw
+            .get(key)
+            .and_then(Value::as_str)
+            .filter(|s| !s.trim().is_empty())
+        {
+            return value.trim().to_ascii_lowercase().replace('_', " ");
+        }
+    }
+    fallback.trim().to_ascii_lowercase().replace('_', " ")
+}
+
+pub fn activity_is_terminal(event: &PanelEvent) -> bool {
+    if event.kind == PanelEventKind::Error {
+        return true;
+    }
+    let Some(raw) = event.raw.as_ref() else {
+        return false;
+    };
+    let typ = raw
+        .get("type")
+        .or_else(|| raw.get("kind"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let state = activity_state(Some(raw), &event.text);
+    if let Some(active) = raw.get("active").and_then(Value::as_bool) {
+        return !active;
+    }
+    if let Some(active) = nested_active(raw) {
+        return !active;
+    }
+    let terminal_terms = [
+        "done",
+        "end",
+        "complete",
+        "completed",
+        "finished",
+        "success",
+        "failed",
+        "error",
+        "cancel",
+    ];
+    terminal_terms
+        .iter()
+        .any(|term| typ.contains(term) || state.contains(term))
+}
+
+fn nested_activity_values(raw: &serde_json::Map<String, Value>) -> Vec<&Value> {
+    [
+        "current",
+        "activity",
+        "current_tool",
+        "tool_call",
+        "command",
+        "bash",
+        "status",
+        "ui",
+        "feedback",
+    ]
+    .into_iter()
+    .filter_map(|key| raw.get(key).filter(|v| v.is_object()))
+    .collect()
+}
+
+fn nested_active(raw: &Value) -> Option<bool> {
+    let raw = raw.as_object()?;
+    for nested in nested_activity_values(raw) {
+        if let Some(active) = nested.get("active").and_then(Value::as_bool) {
+            return Some(active);
+        }
+        if let Some(active) = nested_active(nested) {
+            return Some(active);
+        }
+    }
+    None
+}
+
+fn compact_activity(value: &str) -> String {
+    let value = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    if value.starts_with('{') && value.len() > 80 {
+        "tool".into()
+    } else {
+        value
     }
 }
 
@@ -273,5 +420,63 @@ mod tests {
             parse_panel_event(r#"{"type":"message","content":[{"text":"a"},{"text":"b"}]}"#).text,
             "ab"
         );
+    }
+
+    #[test]
+    fn activity_helpers_prefer_command_and_state() {
+        let event = parse_panel_event(
+            r#"{"type":"tool_start","tool_name":"bash","command":"pytest -q","state":"running"}"#,
+        );
+        assert_eq!(event.kind, PanelEventKind::Tool);
+        assert_eq!(activity_label(event.raw.as_ref(), &event.text), "pytest -q");
+        assert_eq!(activity_state(event.raw.as_ref(), &event.text), "running");
+        assert!(!activity_is_terminal(&event));
+    }
+
+    #[test]
+    fn activity_helpers_detect_terminal_events() {
+        let event =
+            parse_panel_event(r#"{"type":"tool_end","tool_name":"read","status":"completed"}"#);
+        assert_eq!(event.kind, PanelEventKind::Tool);
+        assert_eq!(activity_label(event.raw.as_ref(), &event.text), "read");
+        assert!(activity_is_terminal(&event));
+    }
+
+    #[test]
+    fn backend_chat_status_drives_live_activity() {
+        let event = parse_panel_event(
+            r#"{"type":"backend/chat/status","activity":{"tool_name":"bash","command":"pytest -q","state":"running","active":true}}"#,
+        );
+        assert_eq!(event.kind, PanelEventKind::Status);
+        assert_eq!(activity_label(event.raw.as_ref(), &event.text), "pytest -q");
+        assert_eq!(activity_state(event.raw.as_ref(), &event.text), "running");
+        assert!(!activity_is_terminal(&event));
+    }
+
+    #[test]
+    fn backend_chat_status_current_can_finish_and_prefer_current() {
+        let event = parse_panel_event(
+            r#"{"type":"backend/chat/status","activity":{"tool_name":"bash","command":"stale pytest","state":"running","active":true},"current":{"tool_name":"read","target":"README.md","state":"completed","active":false}}"#,
+        );
+        assert_eq!(activity_label(event.raw.as_ref(), &event.text), "read");
+        assert_eq!(activity_state(event.raw.as_ref(), &event.text), "completed");
+        assert!(activity_is_terminal(&event));
+    }
+
+    #[test]
+    fn backend_chat_status_preview_uses_current_when_text_empty() {
+        let event = parse_panel_event(
+            r#"{"type":"backend/chat/status","current":{"tool_name":"bash","command":"pytest -q","state":"running","active":true}}"#,
+        );
+        assert_eq!(event_preview(&event, false), "pytest -q");
+    }
+
+    #[test]
+    fn backend_chat_status_keeps_feedback_text_but_activity_label() {
+        let event = parse_panel_event(
+            r#"{"type":"backend/chat/status","current":{"command":"pytest -q","state":"running","active":true},"feedback":"Running regression tests"}"#,
+        );
+        assert_eq!(event.text, "Running regression tests");
+        assert_eq!(activity_label(event.raw.as_ref(), &event.text), "pytest -q");
     }
 }

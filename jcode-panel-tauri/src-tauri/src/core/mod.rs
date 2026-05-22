@@ -1,5 +1,6 @@
 pub mod config;
 pub mod context;
+pub mod controller;
 pub mod conversation;
 pub mod diagnostics;
 pub mod formatting;
