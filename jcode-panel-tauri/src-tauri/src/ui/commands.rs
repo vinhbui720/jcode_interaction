@@ -506,20 +506,95 @@ pub fn active_context_snapshot() -> crate::core::context::ActiveContext {
 #[tauri::command]
 pub fn popup_context_chips() -> Vec<popup_context::PopupContextChip> {
     let ctx = crate::core::context::capture_active_context();
-    let selected_for_chip = ctx
-        .browser
-        .as_ref()
-        .and_then(|b| (!b.selected_text.trim().is_empty()).then_some(b.selected_text.as_str()))
-        .unwrap_or(&ctx.selected_text);
-    let chips = popup_context::build_popup_context_chips(
-        selected_for_chip,
-        &[],
-        &ctx.app,
-        &ctx.window_title,
-        "",
-        None,
-    );
+    let chips = build_selected_context_chips(&ctx);
     store_popup_context_chips(chips)
+}
+
+fn build_selected_context_chips(
+    ctx: &crate::core::context::ActiveContext,
+) -> Vec<popup_context::PopupContextChip> {
+    let mut chips = vec![];
+    let mut seq = 1;
+    let app_lower = ctx.app.to_ascii_lowercase();
+    let focused_browser = ["firefox", "chrome", "chromium", "brave", "edge", "browser"]
+        .iter()
+        .any(|name| app_lower.contains(name));
+    if focused_browser {
+        if let Some(browser) = &ctx.browser {
+            if !browser.selected_text.trim().is_empty() {
+                chips.push(selected_text_chip(
+                    seq,
+                    &browser.selected_text,
+                    &ctx.app,
+                    &ctx.window_title,
+                    Some((&browser.title, &browser.url)),
+                ));
+                return chips;
+            }
+        }
+    }
+    for path in selected_file_paths(&ctx.selected_text) {
+        chips.push(popup_context::PopupContextChip {
+            tag: format!("[selected{seq}]"),
+            body: format!("Context: selected file\npath: {path}"),
+            kind: "selected-file".into(),
+        });
+        seq += 1;
+    }
+    let selected_text = ctx.selected_text.trim();
+    if !selected_text.is_empty() && chips.is_empty() {
+        chips.push(selected_text_chip(
+            seq,
+            selected_text,
+            &ctx.app,
+            &ctx.window_title,
+            None,
+        ));
+    }
+    chips
+}
+
+fn selected_text_chip(
+    seq: usize,
+    text: &str,
+    app: &str,
+    window_title: &str,
+    browser: Option<(&str, &str)>,
+) -> popup_context::PopupContextChip {
+    let mut parts = vec!["Context: selected text".to_string()];
+    if !app.trim().is_empty() {
+        parts.push(format!("app: {}", app.trim()));
+    }
+    if !window_title.trim().is_empty() {
+        parts.push(format!("window: {}", window_title.trim()));
+    }
+    if let Some((title, url)) = browser {
+        if !title.trim().is_empty() {
+            parts.push(format!("tab: {}", title.trim()));
+        }
+        if !url.trim().is_empty() {
+            parts.push(format!("url: {}", url.trim()));
+        }
+    }
+    parts.push("selected text:".into());
+    parts.push(text.trim().into());
+    popup_context::PopupContextChip {
+        tag: format!("[selected{seq}]"),
+        body: parts.join("\n"),
+        kind: "selected-text".into(),
+    }
+}
+
+fn selected_file_paths(text: &str) -> Vec<String> {
+    text.lines()
+        .filter_map(|line| {
+            let raw = line.trim().trim_matches(['\'', '"']);
+            let raw = raw.strip_prefix("file://").unwrap_or(raw);
+            let raw = raw.replace("%20", " ");
+            let path = std::path::Path::new(&raw);
+            (path.is_absolute() && path.exists()).then_some(raw)
+        })
+        .collect()
 }
 
 #[tauri::command]

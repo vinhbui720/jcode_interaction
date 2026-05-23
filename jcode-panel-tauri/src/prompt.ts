@@ -86,6 +86,7 @@ export function renderPrompt(root: HTMLElement) {
   let selectedSuggestion = 0;
   let clipboardSeq = 0;
   const clipboardPastes = new Map<string, string>();
+  const selectedChips = new Map<string, string>();
   let picSeq = 0;
   const picTags = new Map<string, string>();
   const picPreviews = new Map<string, string>();
@@ -93,6 +94,9 @@ export function renderPrompt(root: HTMLElement) {
   const expandClipboardTags = (text: string) => {
     let expanded = text;
     for (const [tag, body] of clipboardPastes) {
+      expanded = expanded.split(tag).join(body);
+    }
+    for (const [tag, body] of selectedChips) {
       expanded = expanded.split(tag).join(body);
     }
     for (const [tag, body] of picTags) {
@@ -113,7 +117,7 @@ export function renderPrompt(root: HTMLElement) {
 
   const screenshotPathFromTag = (tag: string) => tag.match(/^\[screenshot:(.*)\]$/)?.[1] || '';
 
-  const allKnownChips = () => [...clipboardPastes.keys(), ...picTags.keys()];
+  const allKnownChips = () => [...clipboardPastes.keys(), ...selectedChips.keys(), ...picTags.keys()];
 
   const chipAroundCursor = (direction: 'backward' | 'forward') => {
     const start = input.selectionStart ?? input.value.length;
@@ -179,6 +183,8 @@ export function renderPrompt(root: HTMLElement) {
     try {
       const chips = await api.popupContextChips();
       if (!input.value.trim() && chips.length) {
+        selectedChips.clear();
+        chips.forEach((chip) => selectedChips.set(chip.tag, chip.body));
         input.value = `${chips.map((chip) => chip.tag).join(' ')} `;
         input.setSelectionRange(input.value.length, input.value.length);
       }
@@ -200,6 +206,10 @@ export function renderPrompt(root: HTMLElement) {
     if (submitting) return;
     const value = expandClipboardTags(input.value).trim();
     if (!value) return;
+    if (value.length > maxChars) {
+      await api.showFeedback(`Prompt is ${value.length}/${maxChars} characters after expanding chips. Shorten or remove a [selected#]/[clipboard#] chip before sending.`, 'Prompt too long');
+      return;
+    }
     const screenshotMatch = value.match(/^\/(?:screen-shot|screenshot)(?:\s+(.*))?$/i);
     if (screenshotMatch) {
       input.disabled = true;
