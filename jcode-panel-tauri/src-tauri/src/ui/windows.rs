@@ -18,7 +18,7 @@ static LAST_FEEDBACK: Mutex<Option<FeedbackPayload>> = Mutex::new(None);
 static PROMPT_FOLLOW_RUNNING: AtomicBool = AtomicBool::new(false);
 const PROMPT_INPUT_FOCUS_SCRIPT: &str =
     "document.querySelector('#prompt-input')?.focus({preventScroll:true});";
-const PROMPT_REFOCUS_DELAYS_MS: [u64; 5] = [40, 120, 260, 520, 900];
+const PROMPT_REFOCUS_DELAYS_MS: [u64; 7] = [40, 120, 260, 520, 900, 1_400, 2_000];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PromptToggleAction {
@@ -150,6 +150,7 @@ pub fn toggle_prompt(app: AppHandle) -> Result<(), String> {
 pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
     let window = ensure_window(app, PanelWindow::Prompt)?;
     place_prompt_at_mouse_or_center(&window);
+    let _ = window.set_focusable(true);
     window.show().map_err(|err| err.to_string())?;
     let _ = window.set_always_on_top(true);
     window.unminimize().map_err(|err| err.to_string())?;
@@ -364,7 +365,14 @@ fn clamped_overlay_position(
 #[tauri::command]
 pub fn hide_prompt(app: AppHandle) -> Result<(), String> {
     stop_prompt_follow();
-    let result = close_window(&app, PanelWindow::Prompt);
+    let result = if let Some(window) = app.get_webview_window(PanelWindow::Prompt.label()) {
+        // Keep the prompt webview alive between toggles. Closing and rebuilding
+        // the transparent WebKit window can race frontend listener setup, so a
+        // repeated open may appear without the input owning keyboard focus.
+        window.hide().map_err(|err| err.to_string())
+    } else {
+        Ok(())
+    };
     crate::app::reset_prompt_shortcut(&app);
     result
 }
@@ -526,7 +534,10 @@ mod tests {
 
     #[test]
     fn prompt_refocus_targets_prompt_input_repeatedly_after_show() {
-        assert_eq!(PROMPT_REFOCUS_DELAYS_MS, [40, 120, 260, 520, 900]);
+        assert_eq!(
+            PROMPT_REFOCUS_DELAYS_MS,
+            [40, 120, 260, 520, 900, 1_400, 2_000]
+        );
         assert!(PROMPT_INPUT_FOCUS_SCRIPT.contains("#prompt-input"));
         assert!(PROMPT_INPUT_FOCUS_SCRIPT.contains("preventScroll:true"));
     }
