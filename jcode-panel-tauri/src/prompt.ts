@@ -1,5 +1,4 @@
 import { listen } from '@tauri-apps/api/event';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
 import { api } from './api';
 
@@ -67,12 +66,12 @@ function applyCompletion(input: HTMLInputElement, suggestion: Suggestion) {
 export function renderPrompt(root: HTMLElement) {
   root.innerHTML = `
     <main class="prompt-shell">
+      <div id="prompt-preview" class="prompt-preview" hidden></div>
       <div class="prompt-card">
         <span class="prompt-logo">JI</span>
         <input id="prompt-input" placeholder="Ask jcode..." autofocus />
         <span id="prompt-count" class="prompt-count">0/4000</span>
       </div>
-      <div id="prompt-preview" class="prompt-preview" hidden></div>
       <div id="prompt-suggestions" class="prompt-suggestions"></div>
     </main>`;
 
@@ -89,6 +88,7 @@ export function renderPrompt(root: HTMLElement) {
   const clipboardPastes = new Map<string, string>();
   let picSeq = 0;
   const picTags = new Map<string, string>();
+  const picPreviews = new Map<string, string>();
 
   const expandClipboardTags = (text: string) => {
     let expanded = text;
@@ -113,6 +113,28 @@ export function renderPrompt(root: HTMLElement) {
 
   const screenshotPathFromTag = (tag: string) => tag.match(/^\[screenshot:(.*)\]$/)?.[1] || '';
 
+  const allKnownChips = () => [...clipboardPastes.keys(), ...picTags.keys()];
+
+  const chipAroundCursor = (direction: 'backward' | 'forward') => {
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? start;
+    if (start !== end) return null;
+    for (const chip of allKnownChips()) {
+      let index = input.value.indexOf(chip);
+      while (index !== -1) {
+        const chipEnd = index + chip.length;
+        const cursorInChip = start > index && start < chipEnd;
+        const cursorAtEdge = direction === 'backward' ? start === chipEnd : start === index;
+        const cursorAfterSpace = direction === 'backward' && start === chipEnd + 1 && input.value[chipEnd] === ' ';
+        if (cursorInChip || cursorAtEdge || cursorAfterSpace) {
+          return { start: index, end: cursorAfterSpace ? chipEnd + 1 : chipEnd };
+        }
+        index = input.value.indexOf(chip, chipEnd);
+      }
+    }
+    return null;
+  };
+
   const resizePromptWindow = (hasPreview: boolean) => {
     const height = hasPreview ? 238 : 112;
     void getCurrentWindow().setSize(new LogicalSize(720, height)).catch(() => {});
@@ -124,7 +146,13 @@ export function renderPrompt(root: HTMLElement) {
     resizePromptWindow(activePics.length > 0);
     previewEl.innerHTML = activePics.map(([tag, fullTag]) => {
       const path = screenshotPathFromTag(fullTag);
-      const src = path ? convertFileSrc(path) : '';
+      const src = picPreviews.get(tag) || '';
+      if (!src && path) {
+        void api.imageDataUrl(path).then((url) => {
+          picPreviews.set(tag, url);
+          updatePreview();
+        }).catch(() => {});
+      }
       return `
         <figure class="prompt-shot">
           <img src="${src}" alt="${tag}" />
@@ -181,6 +209,11 @@ export function renderPrompt(root: HTMLElement) {
         picSeq += 1;
         const picTag = `[pic${picSeq}]`;
         picTags.set(picTag, tag);
+        const path = screenshotPathFromTag(tag);
+        if (path) void api.imageDataUrl(path).then((url) => {
+          picPreviews.set(picTag, url);
+          updatePreview();
+        }).catch(() => {});
         input.value = rest ? `${picTag} ${rest}` : `${picTag} `;
         updateUi();
       } catch (error) {
@@ -250,6 +283,16 @@ export function renderPrompt(root: HTMLElement) {
 
   input.addEventListener('keydown', (event) => {
     if (handleEscape(event)) return;
+    if (event.key === 'Backspace' || event.key === 'Delete') {
+      const hit = chipAroundCursor(event.key === 'Backspace' ? 'backward' : 'forward');
+      if (hit) {
+        event.preventDefault();
+        input.value = `${input.value.slice(0, hit.start)}${input.value.slice(hit.end)}`;
+        input.setSelectionRange(hit.start, hit.start);
+        updateUi();
+        return;
+      }
+    }
     if (event.key === 'ArrowRight' && event.altKey && currentSuggestions.length) {
       event.preventDefault();
       selectedSuggestion = (selectedSuggestion + 1) % currentSuggestions.length;

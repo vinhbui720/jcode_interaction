@@ -19,6 +19,7 @@ export const api = {
   submitPromptAsync: (prompt: string) => invoke<void>('submit_prompt_async', { prompt }),
   normalizePromptText: (text: string) => invoke<{ text: string; hints: string[] }>('normalize_prompt_text', { text }),
   captureScreenshot: (mode: string) => invoke<string>('capture_screenshot', { mode }),
+  imageDataUrl: (path: string) => invoke<string>('image_data_url', { path }),
   activeContextSnapshot: () => invoke<ActiveContext>('active_context_snapshot'),
   popupContextChips: () => invoke<PopupContextChip[]>('popup_context_chips'),
   switchSession: (session: string, name?: string) => invoke('switch_session', { session, name }),

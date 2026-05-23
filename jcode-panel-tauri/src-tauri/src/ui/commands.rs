@@ -6,6 +6,7 @@ use crate::{
     integrations,
     ui::status,
 };
+use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::{process::Command, sync::Mutex, thread};
 use tauri::{AppHandle, Manager, State};
@@ -416,6 +417,27 @@ pub fn capture_screenshot(
         let _ = crate::ui::windows::show_prompt_window(&app);
     }
     result
+}
+
+#[tauri::command]
+pub fn image_data_url(path: String) -> Result<String, String> {
+    let path = std::path::PathBuf::from(path);
+    let bytes = std::fs::read(&path).map_err(|err| err.to_string())?;
+    let mime = match path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        _ => "image/png",
+    };
+    Ok(format!(
+        "data:{mime};base64,{}",
+        general_purpose::STANDARD.encode(bytes)
+    ))
 }
 
 fn capture_screenshot_inner(mode: &str, runtime: State<RuntimeState>) -> Result<String, String> {
