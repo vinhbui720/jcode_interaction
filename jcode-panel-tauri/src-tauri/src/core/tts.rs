@@ -15,11 +15,21 @@ static ACTIVE_TTS: OnceLock<Mutex<Option<Child>>> = OnceLock::new();
 static TTS_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 pub fn speak_feedback_async(config: AppConfig, text: String) {
+    speak_feedback_async_with_done(config, text, || {});
+}
+
+pub fn speak_feedback_async_with_done(
+    config: AppConfig,
+    text: String,
+    on_done: impl FnOnce() + Send + 'static,
+) {
     if !config.tts_enabled {
+        on_done();
         return;
     }
     let text = clean_feedback_text(&text);
     if text.trim().is_empty() {
+        on_done();
         return;
     }
     let generation = TTS_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
@@ -30,6 +40,9 @@ pub fn speak_feedback_async(config: AppConfig, text: String) {
         }
         stop_active_tts();
         let _ = speak_feedback(&config, &text);
+        if TTS_GENERATION.load(Ordering::SeqCst) == generation {
+            on_done();
+        }
     });
 }
 

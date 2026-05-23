@@ -548,7 +548,19 @@ pub fn show_feedback_window(
     if let Ok(mut last) = LAST_FEEDBACK.lock() {
         *last = Some(payload.clone());
     }
-    crate::core::tts::speak_feedback_async(crate::core::config::load_config(), text.clone());
+    let app_for_tts = app.clone();
+    crate::core::tts::speak_feedback_async_with_done(
+        crate::core::config::load_config(),
+        text.clone(),
+        move || {
+            let app_for_main = app_for_tts.clone();
+            let _ = app_for_tts.run_on_main_thread(move || {
+                if let Some(window) = app_for_main.get_webview_window("feedback") {
+                    let _ = window.emit("feedback-tts-finished", ());
+                }
+            });
+        },
+    );
     let app_for_main = app.clone();
     let payload_for_main = payload.clone();
     app.run_on_main_thread(move || {

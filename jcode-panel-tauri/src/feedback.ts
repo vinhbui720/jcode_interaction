@@ -85,7 +85,8 @@ export function renderFeedback(root: HTMLElement) {
   let hideTimer: number | undefined;
   let speakTimer: number | undefined;
   let hovering = false;
-  let clicked = false;
+  let focused = false;
+  let ttsFinished = false;
   let soundEnabled = false;
   let soundLoaded = false;
   let lastSpokenText = '';
@@ -99,10 +100,12 @@ export function renderFeedback(root: HTMLElement) {
     jumpButton.hidden = true;
   };
 
-  const scheduleHide = () => {
+  const interacting = () => hovering || focused;
+
+  const scheduleHide = (delayMs = ttsFinished ? 2_000 : 5_000) => {
     if (hideTimer) window.clearTimeout(hideTimer);
-    if (hovering || clicked) return;
-    hideTimer = window.setTimeout(() => api.hideFeedback(), 5_000);
+    if (interacting()) return;
+    hideTimer = window.setTimeout(() => api.hideFeedback(), delayMs);
   };
 
   const updateSoundButton = () => {
@@ -138,6 +141,7 @@ export function renderFeedback(root: HTMLElement) {
   };
 
   const apply = (payload: FeedbackPayload, resetHideTimer = true, allowSpeak = false) => {
+    if (resetHideTimer) ttsFinished = false;
     const shouldStickToLatest = !userPinnedScroll && isAtBottom();
     const oldScrollTop = scrollEl.scrollTop;
     textEl.innerHTML = renderMarkdown(payload.text || 'No feedback text.');
@@ -183,9 +187,15 @@ export function renderFeedback(root: HTMLElement) {
     hovering = true;
     if (hideTimer) window.clearTimeout(hideTimer);
   });
-  root.addEventListener('pointerdown', () => {
-    clicked = true;
+  root.addEventListener('focusin', () => {
+    focused = true;
     if (hideTimer) window.clearTimeout(hideTimer);
+  });
+  root.addEventListener('focusout', () => {
+    window.setTimeout(() => {
+      focused = root.contains(document.activeElement);
+      scheduleHide();
+    }, 0);
   });
   root.addEventListener('mouseleave', () => {
     hovering = false;
@@ -196,6 +206,10 @@ export function renderFeedback(root: HTMLElement) {
   });
 
   void listen<FeedbackPayload>('feedback-update', (event) => apply(event.payload, true, false));
+  void listen('feedback-tts-finished', () => {
+    ttsFinished = true;
+    scheduleHide(2_000);
+  });
   const replay = () => {
     void api.currentFeedback()
       .then((payload) => {
