@@ -156,6 +156,15 @@ export async function renderSettingsForm(root: HTMLElement, options: { embedded?
       </label>
       <label>Max prompt chars <input id="maxPromptChars" type="number" min="100" value="${cfg.max_prompt_chars}" /></label>
       <label class="row"><input id="sendContext" type="checkbox" ${cfg.send_context_default ? 'checked' : ''} /> Send context by default</label>
+      <fieldset class="settings-group">
+        <legend>Feedback voice</legend>
+        <label class="row"><input id="ttsEnabled" type="checkbox" ${cfg.tts_enabled ? 'checked' : ''} /> Speak feedback popups</label>
+        <label>TTS API URL <input id="ttsApiUrl" value="${escapeAttr(cfg.tts_api_url)}" placeholder="Optional: http://localhost:9876/tts" /></label>
+        <label>Local TTS command
+          <textarea id="ttsCommand" rows="4" spellcheck="false" placeholder="Command template with {text}">${escapeAttr(cfg.tts_command)}</textarea>
+        </label>
+        <p class="settings-hint">Default uses local Supertonic. If API URL is set, the app POSTs { text } there instead. Failures are ignored so feedback never breaks.</p>
+      </fieldset>
       <button id="save">Save settings</button>
       <pre id="status"></pre>
     </${shellTag}>`;
@@ -186,6 +195,9 @@ export async function renderSettingsForm(root: HTMLElement, options: { embedded?
       terminal,
       max_prompt_chars: Number(root.querySelector<HTMLInputElement>('#maxPromptChars')!.value || 4000),
       send_context_default: root.querySelector<HTMLInputElement>('#sendContext')!.checked,
+      tts_enabled: root.querySelector<HTMLInputElement>('#ttsEnabled')!.checked,
+      tts_api_url: root.querySelector<HTMLInputElement>('#ttsApiUrl')!.value.trim(),
+      tts_command: root.querySelector<HTMLTextAreaElement>('#ttsCommand')!.value.trim(),
     };
     const status = root.querySelector<HTMLPreElement>('#status')!;
     try {

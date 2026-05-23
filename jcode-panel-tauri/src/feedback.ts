@@ -60,6 +60,7 @@ export function renderFeedback(root: HTMLElement) {
           <span id="toast-notice" class="toast-notice"></span>
         </div>
         <div class="toast-actions">
+          <button id="toast-sound" title="Speak feedback" aria-pressed="false">Sound off</button>
           <button id="toast-open" title="Open conversation">Open</button>
           <button id="toast-reply" title="Reply">Reply</button>
           <button id="toast-close" title="Dismiss">Dismiss</button>
@@ -73,7 +74,11 @@ export function renderFeedback(root: HTMLElement) {
   const statusEl = root.querySelector<HTMLSpanElement>('#toast-status')!;
   const statsEl = root.querySelector<HTMLDivElement>('#toast-stats')!;
   const jumpButton = root.querySelector<HTMLButtonElement>('#toast-jump')!;
+  const soundButton = root.querySelector<HTMLButtonElement>('#toast-sound')!;
   let hideTimer: number | undefined;
+  let speakTimer: number | undefined;
+  let soundEnabled = false;
+  let lastSpokenText = '';
   let userPinnedScroll = false;
 
   const isAtBottom = () => scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 8;
@@ -86,6 +91,23 @@ export function renderFeedback(root: HTMLElement) {
   const scheduleHide = () => {
     if (hideTimer) window.clearTimeout(hideTimer);
     hideTimer = window.setTimeout(() => api.hideFeedback(), 60_000);
+  };
+
+  const updateSoundButton = () => {
+    soundButton.textContent = soundEnabled ? 'Sound on' : 'Sound off';
+    soundButton.classList.toggle('active', soundEnabled);
+    soundButton.setAttribute('aria-pressed', String(soundEnabled));
+  };
+
+  const scheduleSpeak = (text: string) => {
+    if (!soundEnabled) return;
+    const trimmed = text.trim();
+    if (!trimmed || trimmed === lastSpokenText) return;
+    if (speakTimer) window.clearTimeout(speakTimer);
+    speakTimer = window.setTimeout(() => {
+      lastSpokenText = trimmed;
+      void api.speakFeedbackText(trimmed).catch(() => {});
+    }, 900);
   };
 
   const apply = (payload: FeedbackPayload, resetHideTimer = true) => {
@@ -104,6 +126,7 @@ export function renderFeedback(root: HTMLElement) {
       scrollEl.scrollTop = oldScrollTop;
       jumpButton.hidden = isAtBottom();
     }
+    scheduleSpeak(payload.text || '');
     if (resetHideTimer) scheduleHide();
   };
 
@@ -115,6 +138,19 @@ export function renderFeedback(root: HTMLElement) {
   root.querySelector<HTMLButtonElement>('#toast-close')!.onclick = () => api.hideFeedback();
   root.querySelector<HTMLButtonElement>('#toast-reply')!.onclick = () => api.hideFeedback().finally(() => api.showPrompt());
   root.querySelector<HTMLButtonElement>('#toast-open')!.onclick = () => api.hideFeedback().finally(() => api.showDropdown());
+  soundButton.onclick = async () => {
+    soundEnabled = !soundEnabled;
+    updateSoundButton();
+    try {
+      const cfg = await api.setTtsEnabled(soundEnabled);
+      soundEnabled = cfg.tts_enabled;
+      updateSoundButton();
+      if (soundEnabled) void api.currentFeedback().then((payload) => payload && scheduleSpeak(payload.text));
+    } catch {
+      soundEnabled = !soundEnabled;
+      updateSoundButton();
+    }
+  };
 
   root.addEventListener('mouseenter', () => { if (hideTimer) window.clearTimeout(hideTimer); });
   root.addEventListener('mouseleave', scheduleHide);
@@ -136,6 +172,8 @@ export function renderFeedback(root: HTMLElement) {
           statsEl.innerHTML = renderStats(snapshot.state.token_stats);
           statsEl.hidden = false;
         }
+        soundEnabled = !!snapshot.config.tts_enabled;
+        updateSoundButton();
       })
       .catch(() => {});
   };

@@ -1,7 +1,7 @@
 use crate::{
     core::{
         config, controller, conversation, diagnostics, formatting, interaction_context, jcode,
-        popup_context, protocol, state, terminal,
+        popup_context, protocol, state, terminal, tts,
     },
     integrations,
     ui::status,
@@ -71,6 +71,22 @@ pub fn save_settings(new_config: config::AppConfig, app: AppHandle) -> Result<()
     config::save_config(&new_config).map_err(|err| err.to_string())?;
     sync_gnome_prompt_shortcut(&new_config.prompt_hotkey);
     crate::app::reset_prompt_shortcut(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_tts_enabled(enabled: bool, app: AppHandle) -> Result<config::AppConfig, String> {
+    let mut cfg = config::load_config();
+    cfg.tts_enabled = enabled;
+    config::save_config(&cfg).map_err(|err| err.to_string())?;
+    crate::app::reset_prompt_shortcut(&app);
+    Ok(cfg)
+}
+
+#[tauri::command]
+pub fn speak_feedback_text(text: String) -> Result<(), String> {
+    let cfg = config::load_config();
+    tts::speak_feedback_async(cfg, text);
     Ok(())
 }
 

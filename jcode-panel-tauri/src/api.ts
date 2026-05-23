@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 export type Snapshot = {
-  config: { prompt_hotkey: string; screenshot_hotkey: string; terminal: string; send_context_default: boolean; max_prompt_chars: number };
+  config: { prompt_hotkey: string; screenshot_hotkey: string; terminal: string; send_context_default: boolean; max_prompt_chars: number; tts_enabled: boolean; tts_api_url: string; tts_command: string };
   state: { active_session?: string | null; active_section: string; last_prompt: string; token_stats?: { upload: number; download: number; cache_read: number; cache_write: number } | null; recent_messages: { author: string; text: string }[]; prompt_history: string[]; last_context_summary: string; browser_bridge_seen: boolean; process_status: string; live_activity?: { label: string; state: string; started_at_ms: number; active: boolean } | null };
   jcode_available: boolean;
   conversation_preview: string;
@@ -24,6 +24,8 @@ export const api = {
   switchSession: (session: string, name?: string) => invoke('switch_session', { session, name }),
   startNewSection: (name?: string) => invoke('start_new_section', { name }),
   saveSettings: (newConfig: Snapshot['config']) => invoke('save_settings', { newConfig }),
+  setTtsEnabled: (enabled: boolean) => invoke<Snapshot['config']>('set_tts_enabled', { enabled }),
+  speakFeedbackText: (text: string) => invoke('speak_feedback_text', { text }),
   suspendPromptHotkey: () => invoke('suspend_prompt_hotkey'),
   resumePromptHotkey: () => invoke('resume_prompt_hotkey'),
   quitApp: () => invoke('quit_app'),

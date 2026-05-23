@@ -290,6 +290,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::snapshot,
             commands::save_settings,
+            commands::set_tts_enabled,
+            commands::speak_feedback_text,
             commands::suspend_prompt_hotkey,
             commands::resume_prompt_hotkey,
             commands::quit_app,

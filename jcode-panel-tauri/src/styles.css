@@ -115,6 +115,7 @@ footer button, .settings-shell button { border: 0; border-radius: 12px; padding:
 .toast-notice { color: #64748b; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toast-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .toast-actions button { border: 0; border-radius: 999px; padding: 7px 11px; background: rgba(15,23,42,.08); color: #0f172a; font-weight: 700; }
+.toast-actions button.active { background: #dcfce7; color: #166534; }
 .toast-actions button:last-child { background: #0f172a; color: white; }
 .toast-jump { position: sticky; left: calc(100% - 42px); bottom: 8px; width: 32px; height: 32px; border: 0; border-radius: 999px; background: #2563eb; color: white; box-shadow: 0 10px 25px rgba(37,99,235,.35); font-size: 18px; font-weight: 900; }
 .toast-jump[hidden] { display: none; }
@@ -123,8 +124,12 @@ footer button, .settings-shell button { border: 0; border-radius: 12px; padding:
 .settings-shell-embedded h1 { font-size: 18px; }
 .settings-shell-embedded pre { margin: 0; white-space: pre-wrap; color: #475569; }
 .settings-shell label { display: grid; gap: 6px; font-weight: 700; }
-.settings-shell input, .settings-shell select { border: 1px solid #cbd5e1; border-radius: 12px; padding: 10px; background: white; color: #0f172a; }
+.settings-shell input, .settings-shell select, .settings-shell textarea { border: 1px solid #cbd5e1; border-radius: 12px; padding: 10px; background: white; color: #0f172a; }
+.settings-shell textarea { min-height: 82px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; }
 .settings-shell .row { display: flex; align-items: center; }
 .settings-inline { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
 .settings-inline button.recording { background: #dc2626; color: white; }
 .settings-shell input[readonly] { cursor: pointer; background: #f8fafc; font-weight: 800; letter-spacing: .03em; }
+.settings-group { display: grid; gap: 10px; margin: 0; padding: 12px; border: 1px solid rgba(226,232,240,.95); border-radius: 16px; background: rgba(255,255,255,.62); }
+.settings-group legend { padding: 0 6px; color: #475569; font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; }
+.settings-hint { color: #64748b; font-size: 12px; line-height: 1.35; }
