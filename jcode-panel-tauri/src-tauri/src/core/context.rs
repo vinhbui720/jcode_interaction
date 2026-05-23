@@ -47,6 +47,17 @@ fn handle_browser_bridge_stream(mut stream: std::net::TcpStream) {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .into();
+                browser.selection_line = value
+                    .get("selectionLine")
+                    .or_else(|| value.get("selection_line"))
+                    .and_then(|v| v.as_u64())
+                    .and_then(|v| u32::try_from(v).ok());
+                browser.selection_context = value
+                    .get("selectionContext")
+                    .or_else(|| value.get("selection_context"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .into();
             }
         }
         let _ = stream.write_all(b"HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 0\r\n\r\n");
@@ -100,6 +111,8 @@ pub struct BrowserContext {
     pub title: String,
     pub url: String,
     pub selected_text: String,
+    pub selection_line: Option<u32>,
+    pub selection_context: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

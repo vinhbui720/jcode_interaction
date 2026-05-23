@@ -528,6 +528,14 @@ fn build_selected_context_chips(
     let focused_browser = ["firefox", "chrome", "chromium", "brave", "edge", "browser"]
         .iter()
         .any(|name| app_lower.contains(name) || title_lower.contains(name));
+    let browser_selection_matches = ctx
+        .browser
+        .as_ref()
+        .map(|browser| {
+            !browser.selected_text.trim().is_empty()
+                && normalized_selection_eq(&browser.selected_text, &ctx.selected_text)
+        })
+        .unwrap_or(false);
     if focused_browser || ctx.app.trim().is_empty() {
         if let Some(browser) = &ctx.browser {
             if !browser.selected_text.trim().is_empty() {
@@ -536,7 +544,7 @@ fn build_selected_context_chips(
                     &browser.selected_text,
                     &ctx.app,
                     &ctx.window_title,
-                    Some((&browser.title, &browser.url)),
+                    Some(browser),
                 ));
                 return chips;
             }
@@ -557,10 +565,17 @@ fn build_selected_context_chips(
             selected_text,
             &ctx.app,
             &ctx.window_title,
-            None,
+            ctx.browser.as_ref().filter(|_| browser_selection_matches),
         ));
     }
     chips
+}
+
+fn normalized_selection_eq(left: &str, right: &str) -> bool {
+    let normalize = |value: &str| value.split_whitespace().collect::<Vec<_>>().join(" ");
+    let left = normalize(left);
+    let right = normalize(right);
+    !left.is_empty() && left == right
 }
 
 fn selected_text_chip(
@@ -568,7 +583,7 @@ fn selected_text_chip(
     text: &str,
     app: &str,
     window_title: &str,
-    browser: Option<(&str, &str)>,
+    browser: Option<&crate::core::context::BrowserContext>,
 ) -> popup_context::PopupContextChip {
     let mut parts = vec!["Context: selected text".to_string()];
     if !app.trim().is_empty() {
@@ -577,12 +592,18 @@ fn selected_text_chip(
     if !window_title.trim().is_empty() {
         parts.push(format!("window: {}", window_title.trim()));
     }
-    if let Some((title, url)) = browser {
-        if !title.trim().is_empty() {
-            parts.push(format!("tab: {}", title.trim()));
+    if let Some(browser) = browser {
+        if !browser.title.trim().is_empty() {
+            parts.push(format!("tab: {}", browser.title.trim()));
         }
-        if !url.trim().is_empty() {
-            parts.push(format!("url: {}", url.trim()));
+        if !browser.url.trim().is_empty() {
+            parts.push(format!("url: {}", browser.url.trim()));
+        }
+        if let Some(line) = browser.selection_line {
+            parts.push(format!("line: {line}"));
+        }
+        if !browser.selection_context.trim().is_empty() {
+            parts.push(format!("near: {}", browser.selection_context.trim()));
         }
     }
     parts.push("selected text:".into());
@@ -712,5 +733,53 @@ mod tests {
         assert!(prompt_hotkey_supported("Super+Z"));
         assert!(prompt_hotkey_supported("Mouse9"));
         assert!(prompt_hotkey_supported("Super+Mouse8"));
+    }
+
+    #[test]
+    fn selected_browser_context_includes_tab_url_line_and_nearby_text() {
+        let ctx = crate::core::context::ActiveContext {
+            app: "firefox".into(),
+            window_title: "Example page".into(),
+            browser: Some(crate::core::context::BrowserContext {
+                title: "Docs tab".into(),
+                url: "https://example.test/docs".into(),
+                selected_text: "selected phrase".into(),
+                selection_line: Some(42),
+                selection_context: "Some nearby selected phrase context".into(),
+            }),
+            selected_text: "selected phrase".into(),
+            clipboard_text: String::new(),
+        };
+        let chips = build_selected_context_chips(&ctx);
+        assert_eq!(chips.len(), 1);
+        let body = &chips[0].body;
+        assert!(body.contains("app: firefox"));
+        assert!(body.contains("window: Example page"));
+        assert!(body.contains("tab: Docs tab"));
+        assert!(body.contains("url: https://example.test/docs"));
+        assert!(body.contains("line: 42"));
+        assert!(body.contains("near: Some nearby selected phrase context"));
+        assert!(body.contains("selected text:\nselected phrase"));
+    }
+
+    #[test]
+    fn selected_primary_text_reuses_matching_browser_source_metadata() {
+        let ctx = crate::core::context::ActiveContext {
+            app: "unknown-app".into(),
+            window_title: "Unknown".into(),
+            browser: Some(crate::core::context::BrowserContext {
+                title: "Browser tab".into(),
+                url: "https://example.test/page".into(),
+                selected_text: "same text".into(),
+                selection_line: Some(7),
+                selection_context: "same text inside a paragraph".into(),
+            }),
+            selected_text: "same\ntext".into(),
+            clipboard_text: String::new(),
+        };
+        let chips = build_selected_context_chips(&ctx);
+        let body = &chips[0].body;
+        assert!(body.contains("url: https://example.test/page"));
+        assert!(body.contains("line: 7"));
     }
 }
