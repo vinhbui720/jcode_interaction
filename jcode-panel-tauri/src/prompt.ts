@@ -1,6 +1,6 @@
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
-import { api } from './api';
+import { api, type PopupContextChip } from './api';
 
 type Suggestion = { value: string; label: string; detail: string };
 
@@ -90,6 +90,7 @@ export function renderPrompt(root: HTMLElement) {
   let picSeq = 0;
   const picTags = new Map<string, string>();
   const picPreviews = new Map<string, string>();
+  let contextSignature = '';
 
   const expandClipboardTags = (text: string) => {
     let expanded = text;
@@ -179,15 +180,30 @@ export function renderPrompt(root: HTMLElement) {
     }
   };
 
+  const applySelectedContextChips = (chips: PopupContextChip[]) => {
+    const selected = chips.filter((chip) => chip.tag.startsWith('[selected'));
+    const signature = selected.map((chip) => `${chip.tag}:${chip.body}`).join('\n---\n');
+    if (!selected.length || signature === contextSignature) return;
+    contextSignature = signature;
+    selectedChips.clear();
+    selected.forEach((chip) => selectedChips.set(chip.tag, chip.body));
+    const tags = `${selected.map((chip) => chip.tag).join(' ')} `;
+    const knownSelected = /^\s*(?:\[selected\d+\]\s*)+/.exec(input.value);
+    if (knownSelected) {
+      input.value = `${tags}${input.value.slice(knownSelected[0].length)}`;
+    } else if (!input.value.trim()) {
+      input.value = tags;
+    } else {
+      input.value = `${tags}${input.value}`;
+    }
+    input.setSelectionRange(input.value.length, input.value.length);
+    updateUi();
+  };
+
   const loadPromptContext = async () => {
     try {
       const chips = await api.popupContextChips();
-      if (!input.value.trim() && chips.length) {
-        selectedChips.clear();
-        chips.forEach((chip) => selectedChips.set(chip.tag, chip.body));
-        input.value = `${chips.map((chip) => chip.tag).join(' ')} `;
-        input.setSelectionRange(input.value.length, input.value.length);
-      }
+      applySelectedContextChips(chips);
       if (chips.length) {
         const summary = chips.map((chip) => chip.kind).join(' · ');
         currentSuggestions = [{ value: '', label: 'context', detail: summary }];
@@ -377,6 +393,10 @@ export function renderPrompt(root: HTMLElement) {
   void listen('prompt-shown', () => {
     focusInput();
     void loadPromptContext();
+  });
+  void listen<PopupContextChip[]>('prompt-context-chips', (event) => {
+    applySelectedContextChips(event.payload || []);
+    focusInput();
   });
 
   void api.snapshot().then((snapshot) => {
