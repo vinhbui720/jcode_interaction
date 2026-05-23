@@ -81,6 +81,26 @@ export function renderPrompt(root: HTMLElement) {
   let screenshotHotkey = 'screenshot hotkey';
   let currentSuggestions: Suggestion[] = [];
   let selectedSuggestion = 0;
+  let clipboardSeq = 0;
+  const clipboardPastes = new Map<string, string>();
+
+  const expandClipboardTags = (text: string) => {
+    let expanded = text;
+    for (const [tag, body] of clipboardPastes) {
+      expanded = expanded.split(tag).join(body);
+    }
+    return expanded;
+  };
+
+  const promptLength = () => expandClipboardTags(input.value).length;
+
+  const insertTextAtCursor = (text: string) => {
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? start;
+    input.value = `${input.value.slice(0, start)}${text}${input.value.slice(end)}`;
+    const next = start + text.length;
+    input.setSelectionRange(next, next);
+  };
 
   const focusInput = () => {
     input.disabled = false;
@@ -119,13 +139,15 @@ export function renderPrompt(root: HTMLElement) {
 
   const submit = async () => {
     if (submitting) return;
-    const value = input.value.trim();
+    const value = expandClipboardTags(input.value).trim();
     if (!value) return;
-    if (value === '/screen-shot' || value === '/screenshot') {
+    const screenshotMatch = value.match(/^\/(?:screen-shot|screenshot)(?:\s+(.*))?$/i);
+    if (screenshotMatch) {
       input.disabled = true;
       try {
         const tag = await api.captureScreenshot('area');
-        input.value = `${tag} `;
+        const rest = screenshotMatch[1]?.trim();
+        input.value = rest ? `${tag} ${rest}` : `${tag} `;
         updateUi();
       } catch (error) {
         await api.showFeedback(String(error || 'Screenshot failed'), 'Error');
@@ -167,8 +189,9 @@ export function renderPrompt(root: HTMLElement) {
   };
 
   const updateUi = () => {
-    count.textContent = `${input.value.length}/${maxChars}`;
-    count.classList.toggle('over', input.value.length > maxChars);
+    const length = promptLength();
+    count.textContent = `${length}/${maxChars}`;
+    count.classList.toggle('over', length > maxChars);
     const cursor = input.selectionStart ?? input.value.length;
     currentSuggestions = suggestionsFor(input.value, cursor, screenshotHotkey);
     selectedSuggestion = Math.min(selectedSuggestion, Math.max(0, currentSuggestions.length - 1));
@@ -248,6 +271,17 @@ export function renderPrompt(root: HTMLElement) {
         updateUi();
       }
     }).catch(() => {});
+  });
+  input.addEventListener('paste', (event) => {
+    const text = event.clipboardData?.getData('text/plain') || '';
+    if (!text.trim()) return;
+    event.preventDefault();
+    clipboardSeq += 1;
+    const tag = `[clipboard${clipboardSeq}]`;
+    clipboardPastes.set(tag, text);
+    insertTextAtCursor(`${tag} `);
+    selectedSuggestion = 0;
+    updateUi();
   });
   input.addEventListener('click', updateUi);
   input.addEventListener('keyup', updateUi);

@@ -400,8 +400,25 @@ pub fn normalize_prompt_text(text: String) -> serde_json::Value {
 }
 
 #[tauri::command]
-pub fn capture_screenshot(mode: String, runtime: State<RuntimeState>) -> Result<String, String> {
+pub fn capture_screenshot(
+    mode: String,
+    app: AppHandle,
+    runtime: State<RuntimeState>,
+) -> Result<String, String> {
     let mode = mode.trim().to_ascii_lowercase();
+    let restore_prompt = mode == "area";
+    if restore_prompt {
+        let _ = crate::ui::windows::hide_prompt(app.clone());
+        thread::sleep(std::time::Duration::from_millis(220));
+    }
+    let result = capture_screenshot_inner(&mode, runtime);
+    if restore_prompt {
+        let _ = crate::ui::windows::show_prompt_window(&app);
+    }
+    result
+}
+
+fn capture_screenshot_inner(mode: &str, runtime: State<RuntimeState>) -> Result<String, String> {
     let dir = dirs::picture_dir()
         .or_else(dirs::home_dir)
         .unwrap_or_else(|| std::path::PathBuf::from("."))
@@ -438,7 +455,16 @@ pub fn capture_screenshot(mode: String, runtime: State<RuntimeState>) -> Result<
     };
     let output = command.output().map_err(|err| err.to_string())?;
     if !output.status.success() || !path.exists() {
-        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let detail = if !stderr.is_empty() {
+            stderr
+        } else if !stdout.is_empty() {
+            stdout
+        } else {
+            format!("screenshot command exited with status {}", output.status)
+        };
+        return Err(detail);
     }
     let tag = formatting::screenshot_tag(&path_text);
     let mut state = runtime.0.lock().expect("state lock");
