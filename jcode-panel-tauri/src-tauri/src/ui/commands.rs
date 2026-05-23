@@ -505,6 +505,14 @@ pub fn active_context_snapshot() -> crate::core::context::ActiveContext {
 
 #[tauri::command]
 pub fn popup_context_chips() -> Vec<popup_context::PopupContextChip> {
+    let cached = cached_popup_context_chips();
+    if !cached.is_empty() {
+        return cached;
+    }
+    refresh_popup_context_chips()
+}
+
+pub fn refresh_popup_context_chips() -> Vec<popup_context::PopupContextChip> {
     let ctx = crate::core::context::capture_active_context();
     let chips = build_selected_context_chips(&ctx);
     store_popup_context_chips(chips)
@@ -516,10 +524,11 @@ fn build_selected_context_chips(
     let mut chips = vec![];
     let mut seq = 1;
     let app_lower = ctx.app.to_ascii_lowercase();
+    let title_lower = ctx.window_title.to_ascii_lowercase();
     let focused_browser = ["firefox", "chrome", "chromium", "brave", "edge", "browser"]
         .iter()
-        .any(|name| app_lower.contains(name));
-    if focused_browser {
+        .any(|name| app_lower.contains(name) || title_lower.contains(name));
+    if focused_browser || ctx.app.trim().is_empty() {
         if let Some(browser) = &ctx.browser {
             if !browser.selected_text.trim().is_empty() {
                 chips.push(selected_text_chip(

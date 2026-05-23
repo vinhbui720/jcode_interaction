@@ -159,6 +159,7 @@ pub fn toggle_prompt(app: AppHandle) -> Result<(), String> {
 }
 
 pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
+    let _ = crate::ui::commands::refresh_popup_context_chips();
     let window = ensure_window(app, PanelWindow::Prompt)?;
     place_prompt_at_mouse_or_center(&window);
     let _ = window.set_focusable(true);
