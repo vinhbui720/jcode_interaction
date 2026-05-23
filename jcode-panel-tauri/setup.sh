@@ -67,14 +67,14 @@ cat > "$USER_BIN/jcp" <<EOF
 #!/usr/bin/env bash
 export GDK_BACKEND=x11
 cd "$APP_DIR" || exit 1
-if [[ "\${1:-}" == "settings" || "\${1:-}" == "--settings" ]]; then
-  exec "$BIN" settings
+if [[ "\${1:-}" == "settings" || "\${1:-}" == "--settings" || "\${1:-}" == "dropdown" || "\${1:-}" == "--dropdown" || "\${1:-}" == "open" || "\${1:-}" == "--open" ]]; then
+  exec "$BIN" dropdown
 fi
 if [[ "\${1:-}" == "prompt" || "\${1:-}" == "--prompt" || "\${1:-}" == "--show" ]]; then
-  exec "$BIN" --prompt
+  exec "$BIN" prompt
 fi
 if [[ "\$#" -eq 0 ]]; then
-  exec "$BIN" --prompt
+  exec "$BIN" dropdown
 fi
 exec "$BIN" "\$@"
 EOF
