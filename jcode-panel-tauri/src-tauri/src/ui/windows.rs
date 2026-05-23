@@ -1,7 +1,7 @@
 use crate::core::{formatting, positioning, state::TokenStats};
 use serde::Serialize;
 use std::{
-    process::Command,
+    process::{Command, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
         Mutex,
@@ -292,7 +292,12 @@ fn should_throttle_shell_focus() -> bool {
 
 fn focus_prompt_via_gnome_shell() {
     for args in gnome_shell_focus_prompt_args() {
-        let _ = Command::new("gdbus").args(args).output();
+        let _ = Command::new("gdbus")
+            .args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
     }
 }
 
