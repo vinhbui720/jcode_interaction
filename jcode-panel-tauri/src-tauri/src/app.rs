@@ -20,7 +20,9 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 
 pub fn register_prompt_shortcut(app: &tauri::AppHandle) {
     let cfg = config::load_config();
-    let shortcut = parse_prompt_shortcut_or_default(&cfg.prompt_hotkey);
+    let Some(shortcut) = parse_prompt_shortcut(&cfg.prompt_hotkey) else {
+        return;
+    };
     let handle = app.clone();
     let _ = app
         .global_shortcut()
@@ -35,13 +37,12 @@ pub fn prompt_hotkey_supported(hotkey: &str) -> bool {
     parse_shortcut(hotkey).is_some()
 }
 
-fn parse_prompt_shortcut_or_default(hotkey: &str) -> Shortcut {
+fn parse_prompt_shortcut(hotkey: &str) -> Option<Shortcut> {
     let hotkey = hotkey.trim();
     if hotkey.is_empty() {
-        return parse_shortcut("F8").expect("default F8 shortcut is valid");
+        return parse_shortcut("F8");
     }
     parse_shortcut(hotkey)
-        .unwrap_or_else(|| parse_shortcut("F8").expect("default F8 shortcut is valid"))
 }
 
 pub fn reset_prompt_shortcut(app: &tauri::AppHandle) {
@@ -52,6 +53,10 @@ pub fn reset_prompt_shortcut(app: &tauri::AppHandle) {
     // show/hide behavior.
     let _ = app.global_shortcut().unregister_all();
     register_prompt_shortcut(app);
+}
+
+pub fn suspend_prompt_shortcut(app: &tauri::AppHandle) {
+    let _ = app.global_shortcut().unregister_all();
 }
 
 fn lock_path() -> PathBuf {
@@ -277,6 +282,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::snapshot,
             commands::save_settings,
+            commands::suspend_prompt_hotkey,
+            commands::resume_prompt_hotkey,
             commands::available_terminals,
             commands::submit_prompt,
             commands::submit_prompt_async,
@@ -323,10 +330,8 @@ mod tests {
     }
 
     #[test]
-    fn invalid_prompt_hotkey_falls_back_to_f8() {
-        assert_eq!(
-            parse_prompt_shortcut_or_default("Mouse9"),
-            parse_shortcut("F8").unwrap()
-        );
+    fn mouse_prompt_hotkey_is_left_to_gnome_extension() {
+        assert_eq!(parse_prompt_shortcut("Mouse9"), None);
+        assert_eq!(parse_prompt_shortcut(""), parse_shortcut("F8"));
     }
 }

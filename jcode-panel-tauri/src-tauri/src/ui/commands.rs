@@ -74,6 +74,18 @@ pub fn save_settings(new_config: config::AppConfig, app: AppHandle) -> Result<()
     Ok(())
 }
 
+#[tauri::command]
+pub fn suspend_prompt_hotkey(app: AppHandle) -> Result<(), String> {
+    crate::app::suspend_prompt_shortcut(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn resume_prompt_hotkey(app: AppHandle) -> Result<(), String> {
+    crate::app::reset_prompt_shortcut(&app);
+    Ok(())
+}
+
 fn prompt_hotkey_supported(hotkey: &str) -> bool {
     crate::app::prompt_hotkey_supported(hotkey) || gnome_binding(hotkey).is_some()
 }

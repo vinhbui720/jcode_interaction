@@ -24,6 +24,10 @@ function hotkeyFromEvent(event: KeyboardEvent) {
   return parts.join('+');
 }
 
+function isModifierKey(key: string) {
+  return ['Control', 'Shift', 'Alt', 'Meta', 'Super'].includes(key);
+}
+
 function mouseButtonName(button: number) {
   // DOM button 3/4 are the common browser Back/Forward side buttons,
   // matching X11 button map 8/9 on typical mice.
@@ -51,11 +55,13 @@ function installHotkeyCapture(root: HTMLElement, inputId: string, buttonId: stri
     capturing = false;
     button.textContent = 'Record';
     button.classList.remove('recording');
+    void api.resumePromptHotkey();
   };
 
-  button.onclick = () => {
+  button.onclick = async () => {
     capturing = true;
-    button.textContent = 'Press keys...';
+    await api.suspendPromptHotkey().catch(() => {});
+    button.textContent = 'Press combo...';
     button.classList.add('recording');
     input.focus();
   };
@@ -71,7 +77,18 @@ function installHotkeyCapture(root: HTMLElement, inputId: string, buttonId: stri
     const hotkey = hotkeyFromEvent(event);
     if (!hotkey) return;
     input.value = hotkey;
-    if (!['Control', 'Shift', 'Alt', 'Meta', 'Super'].includes(event.key)) stopCapture();
+    if (!isModifierKey(event.key)) stopCapture();
+  });
+
+  input.addEventListener('keyup', (event) => {
+    if (!capturing) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const hotkey = hotkeyFromEvent(event);
+    if (hotkey && !isModifierKey(event.key)) {
+      input.value = hotkey;
+      stopCapture();
+    }
   });
 
   const captureMouse = (event: MouseEvent) => {
@@ -89,7 +106,7 @@ function installHotkeyCapture(root: HTMLElement, inputId: string, buttonId: stri
   button.addEventListener('contextmenu', (event) => { if (capturing) event.preventDefault(); });
 
   input.addEventListener('blur', () => {
-    if (capturing) window.setTimeout(stopCapture, 150);
+    if (capturing) window.setTimeout(stopCapture, 500);
   });
 }
 
