@@ -84,8 +84,10 @@ export function renderFeedback(root: HTMLElement) {
   const soundButton = root.querySelector<HTMLButtonElement>('#toast-sound')!;
   let hideTimer: number | undefined;
   let speakTimer: number | undefined;
+  let hovering = false;
   let soundEnabled = false;
   let lastSpokenText = '';
+  let pendingSpokenText = '';
   let userPinnedScroll = false;
 
   const isAtBottom = () => scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 8;
@@ -97,7 +99,8 @@ export function renderFeedback(root: HTMLElement) {
 
   const scheduleHide = () => {
     if (hideTimer) window.clearTimeout(hideTimer);
-    hideTimer = window.setTimeout(() => api.hideFeedback(), 60_000);
+    if (hovering) return;
+    hideTimer = window.setTimeout(() => api.hideFeedback(), 2_000);
   };
 
   const updateSoundButton = () => {
@@ -106,18 +109,22 @@ export function renderFeedback(root: HTMLElement) {
     soundButton.setAttribute('aria-pressed', String(soundEnabled));
   };
 
-  const scheduleSpeak = (text: string) => {
+  const scheduleSpeak = (text: string, status: string) => {
     if (!soundEnabled) return;
     const trimmed = text.trim();
-    if (!trimmed || trimmed === lastSpokenText) return;
+    const stableStatus = ['complete', 'error'].includes(status.toLowerCase());
+    if (!stableStatus) return;
+    if (!trimmed || trimmed === lastSpokenText || trimmed === pendingSpokenText) return;
+    pendingSpokenText = trimmed;
     if (speakTimer) window.clearTimeout(speakTimer);
     speakTimer = window.setTimeout(() => {
       lastSpokenText = trimmed;
+      pendingSpokenText = '';
       void api.speakFeedbackText(trimmed).catch(() => {});
-    }, 900);
+    }, 650);
   };
 
-  const apply = (payload: FeedbackPayload, resetHideTimer = true) => {
+  const apply = (payload: FeedbackPayload, resetHideTimer = true, allowSpeak = false) => {
     const shouldStickToLatest = !userPinnedScroll && isAtBottom();
     const oldScrollTop = scrollEl.scrollTop;
     textEl.innerHTML = renderMarkdown(payload.text || 'No feedback text.');
@@ -133,7 +140,7 @@ export function renderFeedback(root: HTMLElement) {
       scrollEl.scrollTop = oldScrollTop;
       jumpButton.hidden = isAtBottom();
     }
-    scheduleSpeak(payload.text || '');
+    if (allowSpeak) scheduleSpeak(payload.text || '', payload.status || '');
     if (resetHideTimer) scheduleHide();
   };
 
@@ -152,24 +159,30 @@ export function renderFeedback(root: HTMLElement) {
       const cfg = await api.setTtsEnabled(soundEnabled);
       soundEnabled = cfg.tts_enabled;
       updateSoundButton();
-      if (soundEnabled) void api.currentFeedback().then((payload) => payload && scheduleSpeak(payload.text));
+      if (soundEnabled) void api.currentFeedback().then((payload) => payload && scheduleSpeak(payload.text, payload.status || ''));
     } catch {
       soundEnabled = !soundEnabled;
       updateSoundButton();
     }
   };
 
-  root.addEventListener('mouseenter', () => { if (hideTimer) window.clearTimeout(hideTimer); });
-  root.addEventListener('mouseleave', scheduleHide);
+  root.addEventListener('mouseenter', () => {
+    hovering = true;
+    if (hideTimer) window.clearTimeout(hideTimer);
+  });
+  root.addEventListener('mouseleave', () => {
+    hovering = false;
+    scheduleHide();
+  });
   window.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') void api.hideFeedback();
   });
 
-  void listen<FeedbackPayload>('feedback-update', (event) => apply(event.payload));
+  void listen<FeedbackPayload>('feedback-update', (event) => apply(event.payload, true, true));
   const replay = () => {
     void api.currentFeedback()
       .then((payload) => {
-        if (payload) apply(payload, false);
+        if (payload) apply(payload, false, false);
         return api.snapshot();
       })
       .then((snapshot) => {

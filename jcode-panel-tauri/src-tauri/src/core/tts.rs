@@ -1,8 +1,14 @@
-use std::{process::Command, thread};
+use std::{
+    process::{Child, Command},
+    sync::{Mutex, OnceLock},
+    thread,
+    time::Duration,
+};
 
 use super::config::AppConfig;
 
 const MAX_TTS_CHARS: usize = 1_200;
+static ACTIVE_TTS: OnceLock<Mutex<Option<Child>>> = OnceLock::new();
 
 pub fn speak_feedback_async(config: AppConfig, text: String) {
     if !config.tts_enabled {
@@ -12,9 +18,24 @@ pub fn speak_feedback_async(config: AppConfig, text: String) {
     if text.trim().is_empty() {
         return;
     }
+    stop_active_tts();
     thread::spawn(move || {
         let _ = speak_feedback(&config, &text);
     });
+}
+
+fn active_tts() -> &'static Mutex<Option<Child>> {
+    ACTIVE_TTS.get_or_init(|| Mutex::new(None))
+}
+
+fn stop_active_tts() {
+    if let Ok(mut active) = active_tts().lock() {
+        if let Some(child) = active.as_mut() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        *active = None;
+    }
 }
 
 fn speak_feedback(config: &AppConfig, text: &str) -> Result<(), String> {
@@ -26,7 +47,7 @@ fn speak_feedback(config: &AppConfig, text: &str) -> Result<(), String> {
 
 fn speak_via_api(url: &str, text: &str) -> Result<(), String> {
     let body = format!(r#"{{"text":{}}}"#, json_string(text));
-    let status = Command::new("curl")
+    let child = Command::new("curl")
         .args([
             "-fsS",
             "-X",
@@ -37,13 +58,9 @@ fn speak_via_api(url: &str, text: &str) -> Result<(), String> {
             &body,
             url,
         ])
-        .status()
+        .spawn()
         .map_err(|err| err.to_string())?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!("TTS API exited with {status}"))
-    }
+    wait_active_child(child, "TTS API")
 }
 
 fn speak_via_command(template: &str, text: &str) -> Result<(), String> {
@@ -56,14 +73,45 @@ fn speak_via_command(template: &str, text: &str) -> Result<(), String> {
     } else {
         format!("{} {}", command, shell_quote(text))
     };
-    let status = Command::new("sh")
+    let child = Command::new("sh")
         .args(["-lc", &script])
-        .status()
+        .spawn()
         .map_err(|err| err.to_string())?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!("TTS command exited with {status}"))
+    wait_active_child(child, "TTS command")
+}
+
+fn wait_active_child(child: Child, label: &str) -> Result<(), String> {
+    let child_id = child.id();
+    if let Ok(mut active) = active_tts().lock() {
+        *active = Some(child);
+    }
+
+    loop {
+        let maybe_status = {
+            let mut active = active_tts()
+                .lock()
+                .map_err(|_| "TTS lock poisoned".to_string())?;
+            let Some(child) = active.as_mut() else {
+                return Ok(());
+            };
+            if child.id() != child_id {
+                return Ok(());
+            }
+            child.try_wait().map_err(|err| err.to_string())?
+        };
+        if let Some(status) = maybe_status {
+            if let Ok(mut active) = active_tts().lock() {
+                if active.as_ref().map(|child| child.id()) == Some(child_id) {
+                    *active = None;
+                }
+            }
+            return if status.success() {
+                Ok(())
+            } else {
+                Err(format!("{label} exited with {status}"))
+            };
+        }
+        thread::sleep(Duration::from_millis(40));
     }
 }
 

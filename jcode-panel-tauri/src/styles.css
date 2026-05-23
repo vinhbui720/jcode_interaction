@@ -108,32 +108,38 @@ footer button, .settings-shell button { border: 0; border-radius: 12px; padding:
 .toast-shell { padding: 12px; background: transparent; box-sizing: border-box; height: 100vh; overflow: hidden; }
 .toast-shell-notification { padding-top: 0; display: flex; align-items: flex-start; justify-content: center; pointer-events: none; }
 .toast-card {
-  box-sizing: border-box; width: 100%; height: 100%; padding: 14px;
+  box-sizing: border-box; width: 100%; height: 100%; padding: 8px 10px;
   border-radius: 24px; background: rgba(255,255,255,.78); backdrop-filter: blur(22px) saturate(1.2);
   box-shadow: 0 18px 45px rgba(15,23,42,.24), 0 0 0 1px rgba(15,23,42,.08);
   display: flex; flex-direction: column; gap: 8px;
 }
-.toast-card-notification { pointer-events: auto; height: auto; max-height: calc(100vh - 18px); min-height: 168px; border-radius: 0 0 28px 28px; animation: slideDownToast .28s cubic-bezier(.2,.9,.2,1); background: rgba(255,255,255,.88); }
+.toast-card-notification { pointer-events: auto; height: 38px; max-height: calc(100vh - 18px); min-height: 0; overflow: hidden; border-radius: 0 0 18px 18px; animation: slideDownToast .28s cubic-bezier(.2,.9,.2,1); background: rgba(255,255,255,.92); transition: height .18s ease, border-radius .18s ease, padding .18s ease, box-shadow .18s ease; }
+.toast-card-notification:hover, .toast-card-notification:focus-within { height: min(320px, calc(100vh - 18px)); padding: 12px; border-radius: 0 0 28px 28px; box-shadow: 0 24px 60px rgba(15,23,42,.22), 0 0 0 1px rgba(15,23,42,.08); }
 @keyframes slideDownToast { from { transform: translateY(-24px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-.toast-grabber { width: 68px; height: 4px; margin: 0 auto 2px; border-radius: 999px; background: rgba(148,163,184,.55); }
-.toast-topline { display: flex; align-items: start; justify-content: space-between; gap: 10px; }
-.toast-title-wrap { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.toast-agent-dot { flex: 0 0 auto; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 14px; background: linear-gradient(135deg,#2563eb,#7c3aed); color: white; font-size: 12px; font-weight: 900; box-shadow: 0 10px 22px rgba(37,99,235,.24); }
-.toast-title { color: #64748b; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
-.toast-stats { display: flex; gap: 8px; color: #2563eb; font-size: 12px; font-weight: 800; white-space: nowrap; }
-.toast-scroll { flex: 1; min-height: 0; overflow: hidden; padding: 6px 4px 0 0; position: relative; }
-.toast-card:hover .toast-scroll, .toast-scroll:focus-within { overflow-y: auto; }
-.toast-text { white-space: pre-wrap; color: #0f172a; line-height: 1.42; font-size: 14px; outline: none; user-select: text; padding: 10px 12px; border-radius: 18px; background: linear-gradient(135deg, rgba(248,250,252,.92), rgba(239,246,255,.84)); border: 1px solid rgba(226,232,240,.86); }
+.toast-grabber { width: 54px; height: 3px; margin: 0 auto 1px; border-radius: 999px; background: rgba(148,163,184,.46); }
+.toast-topline { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 22px; }
+.toast-card-notification:not(:hover):not(:focus-within) .toast-topline { display: none; }
+.toast-title-wrap { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.toast-agent-dot { flex: 0 0 auto; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 9px; background: linear-gradient(135deg,#2563eb,#7c3aed); color: white; font-size: 9px; font-weight: 900; box-shadow: 0 8px 18px rgba(37,99,235,.2); }
+.toast-title { color: #64748b; font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; white-space: nowrap; }
+.toast-stats { display: flex; gap: 6px; color: #2563eb; font-size: 11px; font-weight: 800; white-space: nowrap; }
+.toast-scroll { flex: 1; min-height: 0; overflow: hidden; padding: 0; position: relative; }
+.toast-card-notification:not(:hover):not(:focus-within) .toast-scroll { flex: 0 0 auto; }
+.toast-card:hover .toast-scroll, .toast-scroll:focus-within { overflow-y: auto; padding-top: 5px; }
+.toast-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #0f172a; line-height: 1.32; font-size: 12px; outline: none; user-select: text; padding: 0 2px; border-radius: 0; background: transparent; border: 0; }
+.toast-card:hover .toast-text, .toast-card:focus-within .toast-text { white-space: pre-wrap; line-height: 1.42; font-size: 14px; padding: 10px 12px; border-radius: 18px; background: linear-gradient(135deg, rgba(248,250,252,.92), rgba(239,246,255,.84)); border: 1px solid rgba(226,232,240,.86); }
 .toast-text code { color: #0f766e; background: #ecfeff; border-radius: 6px; padding: 1px 4px; }
 .toast-heading { color: #7c3aed; font-size: 15px; }
 .toast-bullet { color: #06b6d4; }
-.toast-statusbar { display: flex; align-items: center; gap: 8px; min-height: 22px; border-top: 1px solid rgba(15,23,42,.08); padding-top: 6px; }
+.toast-statusbar { display: none; align-items: center; gap: 8px; min-height: 22px; border-top: 1px solid rgba(15,23,42,.08); padding-top: 6px; }
+.toast-card:hover .toast-statusbar, .toast-card:focus-within .toast-statusbar { display: flex; }
 .toast-status { border-radius: 999px; padding: 3px 8px; background: #e2e8f0; color: #475569; font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
 .toast-status-sending, .toast-status-answering { background: #fef3c7; color: #92400e; }
 .toast-status-complete { background: #dcfce7; color: #166534; }
 .toast-status-error { background: #fee2e2; color: #991b1b; }
 .toast-notice, .toast-live-hint { color: #64748b; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.toast-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.toast-actions { display: none; gap: 8px; justify-content: flex-end; }
+.toast-card:hover .toast-actions, .toast-card:focus-within .toast-actions { display: flex; }
 .toast-actions button { border: 0; border-radius: 999px; padding: 7px 11px; background: rgba(15,23,42,.08); color: #0f172a; font-weight: 700; }
 .toast-actions button.active { background: #dcfce7; color: #166534; }
 .toast-actions button:last-child { background: #0f172a; color: white; }
