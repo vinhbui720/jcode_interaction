@@ -140,8 +140,8 @@ pub fn sync_gnome_prompt_shortcut(hotkey: &str) {
         .args(["set", schema, "binding", &binding])
         .status();
     let command = dirs::home_dir()
-        .map(|home| home.join(".local/bin/jcp").to_string_lossy().to_string())
-        .unwrap_or_else(|| "jcp".into());
+        .map(|home| format!("{} prompt", home.join(".local/bin/jcp").to_string_lossy()))
+        .unwrap_or_else(|| "jcp prompt".into());
     let _ = Command::new("gsettings")
         .args(["set", schema, "command", &command])
         .status();

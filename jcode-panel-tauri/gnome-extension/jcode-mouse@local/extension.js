@@ -90,20 +90,35 @@ class Extension {
         return this._focusPromptWindow();
     }
 
+    _findPromptWindow() {
+        const actors = global.get_window_actors ? global.get_window_actors() : [];
+        for (const actor of actors) {
+            const win = actor.meta_window;
+            if (!win)
+                continue;
+            const title = win.get_title ? win.get_title() : '';
+            if (title === PROMPT_TITLE)
+                return win;
+        }
+        return null;
+    }
+
+    _isPromptVisible() {
+        try {
+            const win = this._findPromptWindow();
+            return !!win && (!win.showing_on_its_workspace || win.showing_on_its_workspace());
+        } catch (error) {
+            log(`jcode-mouse failed to check prompt visibility: ${error}`);
+            return false;
+        }
+    }
+
     _focusPromptWindow() {
         try {
-            const actors = global.get_window_actors ? global.get_window_actors() : [];
-            for (const actor of actors) {
-                const win = actor.meta_window;
-                if (!win)
-                    continue;
-                const title = win.get_title ? win.get_title() : '';
-                if (title !== PROMPT_TITLE)
-                    continue;
-                if (win.activate) {
-                    win.activate(global.get_current_time());
-                    return true;
-                }
+            const win = this._findPromptWindow();
+            if (win && win.activate) {
+                win.activate(global.get_current_time());
+                return true;
             }
         } catch (error) {
             log(`jcode-mouse failed to focus prompt: ${error}`);
@@ -128,6 +143,15 @@ class Extension {
     }
 
     _handleCapturedEvent(_actor, event) {
+        if (event.type() === Clutter.EventType.KEY_PRESS) {
+            const symbol = event.get_key_symbol ? event.get_key_symbol() : 0;
+            if (symbol === Clutter.KEY_Escape && this._isPromptVisible()) {
+                this._launchPrompt();
+                return Clutter.EVENT_STOP;
+            }
+            return Clutter.EVENT_PROPAGATE;
+        }
+
         if (event.type() !== Clutter.EventType.BUTTON_PRESS)
             return Clutter.EVENT_PROPAGATE;
 

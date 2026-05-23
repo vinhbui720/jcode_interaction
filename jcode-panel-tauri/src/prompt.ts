@@ -175,13 +175,23 @@ export function renderPrompt(root: HTMLElement) {
     renderSuggestions();
   };
 
-  input.addEventListener('keydown', (event) => {
+  const handleEscape = (event: KeyboardEvent) => {
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
+      event.stopImmediatePropagation();
       void hide();
-      return;
+      return true;
     }
+    return false;
+  };
+
+  window.addEventListener('keydown', handleEscape, { capture: true });
+  document.addEventListener('keydown', handleEscape, { capture: true });
+  document.body.addEventListener('keydown', handleEscape, { capture: true });
+
+  input.addEventListener('keydown', (event) => {
+    if (handleEscape(event)) return;
     if (event.key === 'ArrowRight' && event.altKey && currentSuggestions.length) {
       event.preventDefault();
       selectedSuggestion = (selectedSuggestion + 1) % currentSuggestions.length;
@@ -212,13 +222,6 @@ export function renderPrompt(root: HTMLElement) {
       event.preventDefault();
       event.stopPropagation();
       void submit();
-    }
-  });
-
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      void hide();
     }
   });
 

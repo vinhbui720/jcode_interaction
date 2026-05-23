@@ -16,4 +16,5 @@ shell-words = "1"
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-shell = "2"
+x11rb = "0.13"
 toml = "0.8"

@@ -55,25 +55,6 @@ pub fn reset_prompt_shortcut(app: &tauri::AppHandle) {
     register_prompt_shortcut(app);
 }
 
-pub fn register_prompt_close_shortcut(app: &tauri::AppHandle) {
-    let shortcut = Shortcut::new(None, Code::Escape);
-    let _ = app.global_shortcut().unregister(shortcut);
-    let handle = app.clone();
-    let _ = app
-        .global_shortcut()
-        .on_shortcut(shortcut, move |_app, _shortcut, event| {
-            if event.state() == ShortcutState::Pressed {
-                let _ = crate::ui::windows::hide_prompt(handle.clone());
-            }
-        });
-}
-
-pub fn unregister_prompt_close_shortcut(app: &tauri::AppHandle) {
-    let _ = app
-        .global_shortcut()
-        .unregister(Shortcut::new(None, Code::Escape));
-}
-
 pub fn suspend_prompt_shortcut(app: &tauri::AppHandle) {
     let _ = app.global_shortcut().unregister_all();
 }

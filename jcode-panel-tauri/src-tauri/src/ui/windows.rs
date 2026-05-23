@@ -16,6 +16,7 @@ use tauri::{
 
 static LAST_FEEDBACK: Mutex<Option<FeedbackPayload>> = Mutex::new(None);
 static PROMPT_FOLLOW_RUNNING: AtomicBool = AtomicBool::new(false);
+static PROMPT_ESCAPE_GRAB_RUNNING: AtomicBool = AtomicBool::new(false);
 const PROMPT_INPUT_FOCUS_SCRIPT: &str = r#"
 window.focus();
 document.body.setAttribute('tabindex', '-1');
@@ -28,6 +29,7 @@ if (promptInput) {
 }
 "#;
 const PROMPT_REFOCUS_DELAYS_MS: [u64; 7] = [40, 120, 260, 520, 900, 1_400, 2_000];
+const PROMPT_X11_CLICK_FOCUS_DELAYS_MS: [u64; 3] = [90, 240, 520];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PromptToggleAction {
@@ -168,8 +170,9 @@ pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
     activate_window_title(PanelWindow::Prompt.title());
     let _ = window.emit("prompt-shown", ());
     let _ = window.eval(PROMPT_INPUT_FOCUS_SCRIPT);
-    crate::app::register_prompt_close_shortcut(app);
+    grab_escape_while_prompt_visible(app.clone());
     refocus_prompt_after_show(app.clone());
+    click_focus_prompt_input_after_show(app.clone());
     follow_prompt_while_visible(app.clone());
     Ok(())
 }
@@ -189,6 +192,24 @@ fn refocus_prompt_after_show(app: AppHandle) {
                 let _ = window.set_focus();
                 let _ = window.emit("prompt-shown", ());
                 let _ = window.eval(PROMPT_INPUT_FOCUS_SCRIPT);
+            });
+        }
+    });
+}
+
+fn click_focus_prompt_input_after_show(app: AppHandle) {
+    thread::spawn(move || {
+        for delay in PROMPT_X11_CLICK_FOCUS_DELAYS_MS {
+            thread::sleep(Duration::from_millis(delay));
+            let app_for_main = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                let Some(window) = app_for_main.get_webview_window("prompt") else {
+                    return;
+                };
+                if !window.is_visible().unwrap_or(false) {
+                    return;
+                }
+                click_focus_prompt_input_x11(PanelWindow::Prompt.title());
             });
         }
     });
@@ -222,6 +243,25 @@ fn activate_window_title(title: &str) {
          xdotool windowraise \"$wid\" 2>/dev/null || true; \
          xdotool windowactivate --sync \"$wid\" 2>/dev/null || true; \
          xdotool windowfocus \"$wid\" 2>/dev/null || true",
+        title.replace('\'', "'\\''")
+    );
+    let _ = Command::new("sh").args(["-c", script.as_str()]).spawn();
+}
+
+fn click_focus_prompt_input_x11(title: &str) {
+    if std::env::var_os("DISPLAY").is_none() {
+        return;
+    }
+    let script = format!(
+        "wid=$(xdotool search --name '{}' 2>/dev/null | tail -n1) || exit 0; \
+         [ -n \"$wid\" ] || exit 0; \
+         eval $(xdotool getmouselocation --shell 2>/dev/null); ox=$X; oy=$Y; \
+         eval $(xdotool getwindowgeometry --shell \"$wid\" 2>/dev/null); \
+         tx=$((X + WIDTH / 2)); ty=$((Y + 42)); \
+         xdotool windowactivate --sync \"$wid\" 2>/dev/null || true; \
+         xdotool windowfocus \"$wid\" 2>/dev/null || true; \
+         xdotool mousemove \"$tx\" \"$ty\" click 1 2>/dev/null || true; \
+         [ -n \"$ox\" ] && [ -n \"$oy\" ] && xdotool mousemove \"$ox\" \"$oy\" 2>/dev/null || true",
         title.replace('\'', "'\\''")
     );
     let _ = Command::new("sh").args(["-c", script.as_str()]).spawn();
@@ -274,6 +314,69 @@ fn follow_prompt_while_visible(app: AppHandle) {
 
 pub fn stop_prompt_follow() {
     PROMPT_FOLLOW_RUNNING.store(false, Ordering::SeqCst);
+}
+
+fn grab_escape_while_prompt_visible(app: AppHandle) {
+    if PROMPT_ESCAPE_GRAB_RUNNING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    thread::spawn(move || {
+        let result = run_x11_escape_grab(app.clone());
+        if result.is_err() {
+            PROMPT_ESCAPE_GRAB_RUNNING.store(false, Ordering::SeqCst);
+        }
+    });
+}
+
+fn run_x11_escape_grab(app: AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    use x11rb::{
+        connection::Connection,
+        protocol::{
+            xproto::{ConnectionExt, GrabMode, ModMask},
+            Event,
+        },
+    };
+
+    let (conn, screen_num) = x11rb::connect(None)?;
+    let root = conn.setup().roots[screen_num].root;
+    let escape_keycode = 9_u8;
+    // Use ANY modifier rather than hand-picked NumLock/CapsLock combinations.
+    // GNOME/XWayland can expose extra effective modifier bits, and then an Esc
+    // press would bypass the grab even while the prompt owns focus.
+    let _ = conn.grab_key(
+        false,
+        root,
+        ModMask::ANY,
+        escape_keycode,
+        GrabMode::ASYNC,
+        GrabMode::ASYNC,
+    );
+    let _ = conn.flush();
+
+    while PROMPT_ESCAPE_GRAB_RUNNING.load(Ordering::SeqCst) {
+        let visible = app
+            .get_webview_window("prompt")
+            .and_then(|window| window.is_visible().ok())
+            .unwrap_or(false);
+        if !visible {
+            break;
+        }
+        if let Some(Event::KeyPress(event)) = conn.poll_for_event()? {
+            if event.detail != escape_keycode {
+                continue;
+            }
+            let app_for_main = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                let _ = hide_prompt(app_for_main);
+            });
+            break;
+        }
+        thread::sleep(Duration::from_millis(16));
+    }
+    let _ = conn.ungrab_key(escape_keycode, root, ModMask::ANY);
+    let _ = conn.flush();
+    PROMPT_ESCAPE_GRAB_RUNNING.store(false, Ordering::SeqCst);
+    Ok(())
 }
 
 fn smooth_step(current: f64, target: f64, alpha: f64) -> f64 {
@@ -384,7 +487,7 @@ fn clamped_overlay_position(
 #[tauri::command]
 pub fn hide_prompt(app: AppHandle) -> Result<(), String> {
     stop_prompt_follow();
-    crate::app::unregister_prompt_close_shortcut(&app);
+    PROMPT_ESCAPE_GRAB_RUNNING.store(false, Ordering::SeqCst);
     let result = if let Some(window) = app.get_webview_window(PanelWindow::Prompt.label()) {
         // Keep the prompt webview alive between toggles. Closing and rebuilding
         // the transparent WebKit window can race frontend listener setup, so a
