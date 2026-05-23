@@ -85,7 +85,6 @@ export function renderFeedback(root: HTMLElement) {
   let hideTimer: number | undefined;
   let speakTimer: number | undefined;
   let hovering = false;
-  let focused = false;
   let ttsFinished = false;
   let soundEnabled = false;
   let soundLoaded = false;
@@ -100,11 +99,9 @@ export function renderFeedback(root: HTMLElement) {
     jumpButton.hidden = true;
   };
 
-  const interacting = () => hovering || focused;
-
   const scheduleHide = (delayMs = ttsFinished ? 2_000 : 5_000) => {
     if (hideTimer) window.clearTimeout(hideTimer);
-    if (interacting()) return;
+    if (hovering) return;
     hideTimer = window.setTimeout(() => api.hideFeedback(), delayMs);
   };
 
@@ -187,16 +184,7 @@ export function renderFeedback(root: HTMLElement) {
     hovering = true;
     if (hideTimer) window.clearTimeout(hideTimer);
   });
-  root.addEventListener('focusin', () => {
-    focused = true;
-    if (hideTimer) window.clearTimeout(hideTimer);
-  });
-  root.addEventListener('focusout', () => {
-    window.setTimeout(() => {
-      focused = root.contains(document.activeElement);
-      scheduleHide();
-    }, 0);
-  });
+  root.addEventListener('pointerdown', () => scheduleHide(ttsFinished ? 2_000 : 5_000));
   root.addEventListener('mouseleave', () => {
     hovering = false;
     scheduleHide();
