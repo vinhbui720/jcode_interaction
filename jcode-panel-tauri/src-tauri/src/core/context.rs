@@ -2,10 +2,10 @@ use serde::{Deserialize, Serialize};
 use std::{
     io::{Read, Write},
     net::TcpListener,
-    process::Command,
+    process::{Command, Stdio},
     sync::{Mutex, OnceLock},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 static LATEST_BROWSER: OnceLock<Mutex<BrowserContext>> = OnceLock::new();
@@ -261,7 +261,28 @@ fn read_selection(selection: &str) -> Option<String> {
 }
 
 fn run_text(program: &str, args: &[&str]) -> Option<String> {
-    let output = Command::new(program).args(args).output().ok()?;
+    let mut child = Command::new(program)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let deadline = Instant::now() + Duration::from_millis(350);
+    while Instant::now() < deadline {
+        match child.try_wait().ok()? {
+            Some(status) if status.success() => {
+                let mut stdout = String::new();
+                if let Some(mut pipe) = child.stdout.take() {
+                    let _ = pipe.read_to_string(&mut stdout);
+                }
+                return Some(stdout);
+            }
+            Some(_) => return None,
+            None => thread::sleep(Duration::from_millis(10)),
+        }
+    }
+    let _ = child.kill();
+    let output = child.wait_with_output().ok()?;
     output
         .status
         .success()

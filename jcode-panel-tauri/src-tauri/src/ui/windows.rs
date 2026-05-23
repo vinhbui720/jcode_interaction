@@ -15,6 +15,7 @@ use tauri::{
 };
 
 static LAST_FEEDBACK: Mutex<Option<FeedbackPayload>> = Mutex::new(None);
+static PROMPT_VISIBLE: AtomicBool = AtomicBool::new(false);
 static PROMPT_FOLLOW_RUNNING: AtomicBool = AtomicBool::new(false);
 static PROMPT_ESCAPE_GRAB_RUNNING: AtomicBool = AtomicBool::new(false);
 const PROMPT_INPUT_FOCUS_SCRIPT: &str = r#"
@@ -150,10 +151,8 @@ pub fn show_prompt(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn toggle_prompt(app: AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("prompt") {
-        if prompt_toggle_action(window.is_visible().unwrap_or(false)) == PromptToggleAction::Hide {
-            return hide_prompt(app);
-        }
+    if prompt_toggle_action(PROMPT_VISIBLE.load(Ordering::SeqCst)) == PromptToggleAction::Hide {
+        return hide_prompt(app);
     }
     show_prompt_window(&app)
 }
@@ -177,6 +176,7 @@ pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
     place_prompt_at_mouse_or_center(&window);
     let _ = window.set_focusable(true);
     window.show().map_err(|err| err.to_string())?;
+    PROMPT_VISIBLE.store(true, Ordering::SeqCst);
     let _ = window.set_always_on_top(true);
     window.unminimize().map_err(|err| err.to_string())?;
     activate_window_title(PanelWindow::Prompt.title());
@@ -202,7 +202,7 @@ fn refocus_prompt_after_show(app: AppHandle, context_chips: Vec<popup_context::P
                 let Some(window) = app_for_main.get_webview_window("prompt") else {
                     return;
                 };
-                if !window.is_visible().unwrap_or(false) {
+                if !PROMPT_VISIBLE.load(Ordering::SeqCst) {
                     return;
                 }
                 let _ = window.set_focus();
@@ -220,10 +220,10 @@ fn click_focus_prompt_input_after_show(app: AppHandle) {
             thread::sleep(Duration::from_millis(delay));
             let app_for_main = app.clone();
             let _ = app.run_on_main_thread(move || {
-                let Some(window) = app_for_main.get_webview_window("prompt") else {
+                if app_for_main.get_webview_window("prompt").is_none() {
                     return;
-                };
-                if !window.is_visible().unwrap_or(false) {
+                }
+                if !PROMPT_VISIBLE.load(Ordering::SeqCst) {
                     return;
                 }
                 click_focus_prompt_input_x11(PanelWindow::Prompt.title());
@@ -289,7 +289,7 @@ pub fn prompt_follow_mouse_tick(app: AppHandle) -> Result<bool, String> {
     let Some(window) = app.get_webview_window("prompt") else {
         return Ok(false);
     };
-    let visible = window.is_visible().unwrap_or(false);
+    let visible = PROMPT_VISIBLE.load(Ordering::SeqCst);
     if visible {
         place_prompt_at_mouse_or_center(&window);
     }
@@ -308,7 +308,7 @@ fn follow_prompt_while_visible(app: AppHandle) {
                     PROMPT_FOLLOW_RUNNING.store(false, Ordering::SeqCst);
                     return;
                 };
-                if window.is_visible().unwrap_or(false) {
+                if PROMPT_VISIBLE.load(Ordering::SeqCst) {
                     place_prompt_at_mouse_or_center(&window);
                     // Desired modal-keyboard behavior: while the prompt is open,
                     // keep keyboard focus on the prompt so keystrokes do not leak
@@ -371,10 +371,7 @@ fn run_x11_escape_grab(app: AppHandle) -> Result<(), Box<dyn std::error::Error>>
     let _ = conn.flush();
 
     while PROMPT_ESCAPE_GRAB_RUNNING.load(Ordering::SeqCst) {
-        let visible = app
-            .get_webview_window("prompt")
-            .and_then(|window| window.is_visible().ok())
-            .unwrap_or(false);
+        let visible = PROMPT_VISIBLE.load(Ordering::SeqCst);
         if !visible {
             break;
         }
@@ -503,6 +500,7 @@ fn clamped_overlay_position(
 
 #[tauri::command]
 pub fn hide_prompt(app: AppHandle) -> Result<(), String> {
+    PROMPT_VISIBLE.store(false, Ordering::SeqCst);
     stop_prompt_follow();
     PROMPT_ESCAPE_GRAB_RUNNING.store(false, Ordering::SeqCst);
     let result = if let Some(window) = app.get_webview_window(PanelWindow::Prompt.label()) {
