@@ -30,7 +30,7 @@ impl Default for AppConfig {
 }
 
 fn default_tts_command() -> String {
-    "cd /home/vinbui/IELTS/jcode_interaction/supertonic/py && mkdir -p /tmp/jcode-supertonic-tts && rm -f /tmp/jcode-supertonic-tts/*.wav && uv run python example_onnx.py --onnx-dir ../assets/onnx --voice-style ../assets/voice_styles/M1.json --text {text} --lang en --n-test 1 --save-dir /tmp/jcode-supertonic-tts >/tmp/jcode-supertonic-tts/last.log 2>&1 && wav=$(ls -t /tmp/jcode-supertonic-tts/*.wav 2>/dev/null | head -n1) && { command -v paplay >/dev/null && paplay \"$wav\" || aplay \"$wav\"; }".into()
+    "SUPER=${JCODE_SUPERTONIC_DIR:-$PWD/../supertonic}; cd \"$SUPER/py\" && mkdir -p /tmp/jcode-supertonic-tts && rm -f /tmp/jcode-supertonic-tts/*.wav && uv run python example_onnx.py --onnx-dir ../assets/onnx --voice-style ../assets/voice_styles/M1.json --text {text} --lang en --n-test 1 --save-dir /tmp/jcode-supertonic-tts >/tmp/jcode-supertonic-tts/last.log 2>&1 && wav=$(ls -t /tmp/jcode-supertonic-tts/*.wav 2>/dev/null | head -n1) && { command -v paplay >/dev/null && paplay \"$wav\" || aplay \"$wav\"; }".into()
 }
 
 pub fn config_path() -> PathBuf {

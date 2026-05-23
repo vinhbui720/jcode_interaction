@@ -28,6 +28,17 @@ cd jcode-panel-tauri
 ./setup.sh
 ```
 
+For a fresh machine, optional VCS dependencies such as the local Supertonic TTS backend are documented in [`../DEPENDENCIES.md`](../DEPENDENCIES.md). The short version is:
+
+```bash
+git clone git@github.com:vinhbui720/jcode_interaction.git
+cd jcode_interaction
+git checkout rust/tauri
+git clone https://github.com/supertone-inc/supertonic.git supertonic  # optional TTS
+cd jcode-panel-tauri
+./setup.sh
+```
+
 `setup.sh` is the one-command installer/update path. It will:
 
 1. Install Rust with `rustup` if `cargo` is missing.
@@ -145,6 +156,9 @@ cargo test -- --test-threads=1
 # Full release build
 cd ..
 npm run build
+
+# Stable Linux packages used for publishing (.deb + .rpm)
+npm run build:linux-packages
 ```
 
 ## Git push workflow for this branch

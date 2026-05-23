@@ -5,3 +5,11 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+
+# Local optional VCS dependencies. See DEPENDENCIES.md.
+/supertonic/
+
+# Desktop build outputs
+/jcode-panel-tauri/src-tauri/target/
+/jcode-panel-tauri/dist/
+/jcode-panel-tauri/node_modules/
