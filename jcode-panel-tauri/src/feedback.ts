@@ -45,10 +45,17 @@ function renderStats(stats?: TokenStats | null) {
 
 export function renderFeedback(root: HTMLElement) {
   root.innerHTML = `
-    <main class="toast-shell">
-      <section class="toast-card">
+    <main class="toast-shell toast-shell-notification">
+      <section class="toast-card toast-card-notification">
+        <div class="toast-grabber"></div>
         <div class="toast-topline">
-          <div class="toast-title">jcode feedback</div>
+          <div class="toast-title-wrap">
+            <span class="toast-agent-dot">JC</span>
+            <div>
+              <div class="toast-title">Jcode says</div>
+              <div id="toast-notice" class="toast-notice"></div>
+            </div>
+          </div>
           <div id="toast-stats" class="toast-stats"></div>
         </div>
         <div class="toast-scroll">
@@ -57,7 +64,7 @@ export function renderFeedback(root: HTMLElement) {
         </div>
         <div class="toast-statusbar">
           <span id="toast-status" class="toast-status">idle</span>
-          <span id="toast-notice" class="toast-notice"></span>
+          <span class="toast-live-hint">Esc dismisses · Reply opens prompt</span>
         </div>
         <div class="toast-actions">
           <button id="toast-sound" title="Speak feedback" aria-pressed="false">Sound off</button>

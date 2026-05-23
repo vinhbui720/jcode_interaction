@@ -89,7 +89,7 @@ impl PanelWindow {
             Self::Dropdown => (420.0, 620.0),
             Self::Prompt => (720.0, 112.0),
             Self::Settings => (720.0, 520.0),
-            Self::Feedback => (540.0, 300.0),
+            Self::Feedback => (640.0, 360.0),
         }
     }
 
@@ -603,9 +603,11 @@ fn move_feedback_to_mouse_screen(window: &tauri::WebviewWindow) {
         let window_size = window
             .outer_size()
             .ok()
-            .unwrap_or_else(|| PhysicalSize::new(540_u32, 300_u32));
-        let x = pos.x + 24;
-        let y = pos.y + size.height as i32 - window_size.height as i32 - 48;
+            .unwrap_or_else(|| PhysicalSize::new(640_u32, 360_u32));
+        // Presentation only: make feedback feel like a notification sliding down
+        // from the top/header area instead of a bottom toast.
+        let x = pos.x + ((size.width as i32 - window_size.width as i32) / 2).max(0);
+        let y = pos.y + 42;
         let _ = window.set_position(PhysicalPosition::new(x, y));
     }
 }
