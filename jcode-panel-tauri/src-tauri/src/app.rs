@@ -91,7 +91,7 @@ fn cli_wants_dropdown_from_args<'a>(args: impl IntoIterator<Item = &'a str>) -> 
 fn startup_command_from_args<'a>(args: impl IntoIterator<Item = &'a str>) -> Option<&'static str> {
     let args = args.into_iter().collect::<Vec<_>>();
     if cli_wants_settings_from_args(args.iter().copied()) {
-        Some("show_settings")
+        Some("show_dropdown")
     } else if cli_wants_dropdown_from_args(args.iter().copied()) {
         Some("show_dropdown")
     } else if cli_wants_prompt_from_args(args.iter().copied()) {
@@ -142,7 +142,7 @@ fn start_ipc_server(app: &tauri::AppHandle) {
             let app_for_main = app.clone();
             let _ = app.run_on_main_thread(move || match command.as_str() {
                 "show_settings" | "settings" | "--settings" => {
-                    let _ = crate::ui::windows::show_settings(app_for_main.clone());
+                    let _ = crate::ui::windows::show_dropdown(app_for_main.clone());
                 }
                 "show_dropdown" | "dropdown" | "--dropdown" | "open" | "--open" => {
                     let _ = crate::ui::windows::show_dropdown(app_for_main.clone());
@@ -272,7 +272,7 @@ pub fn run() {
                 let handle = app.handle().clone();
                 let _ = app.handle().run_on_main_thread(move || match command {
                     "show_settings" | "settings" | "--settings" => {
-                        let _ = crate::ui::windows::show_settings(handle.clone());
+                        let _ = crate::ui::windows::show_dropdown(handle.clone());
                     }
                     "show_dropdown" | "dropdown" | "--dropdown" | "open" | "--open" => {
                         let _ = crate::ui::windows::show_dropdown(handle.clone());
@@ -343,7 +343,7 @@ mod tests {
     fn startup_command_preserves_settings_and_dropdown_precedence() {
         assert_eq!(
             startup_command_from_args(["--prompt", "--settings"]),
-            Some("show_settings")
+            Some("show_dropdown")
         );
         assert_eq!(
             startup_command_from_args(["--prompt", "--dropdown"]),

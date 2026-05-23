@@ -7,25 +7,23 @@ use tauri::{
 };
 
 pub fn install(app: &mut App) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, "dropdown", "Open", true, None::<&str>)?;
-    let prompt = MenuItem::with_id(app, "prompt", "Prompt", true, None::<&str>)?;
-    let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
+    let open = MenuItem::with_id(
+        app,
+        "dropdown",
+        "Open Jcode Interaction",
+        true,
+        None::<&str>,
+    )?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &prompt, &settings, &quit])?;
+    let menu = Menu::with_items(app, &[&open, &quit])?;
 
     let builder = TrayIconBuilder::with_id("jcode-panel")
         .tooltip("Jcode Interaction")
         .title("jcode")
         .menu(&menu)
         .on_menu_event(|app, event| match event.id.as_ref() {
-            "prompt" => {
-                let _ = windows::show_prompt_window(app);
-            }
             "dropdown" => {
                 let _ = windows::show_dropdown(app.clone());
-            }
-            "settings" => {
-                let _ = windows::show_settings(app.clone());
             }
             "quit" => app.exit(0),
             _ => {}
@@ -38,7 +36,7 @@ pub fn install(app: &mut App) -> tauri::Result<()> {
             } = event
             {
                 let app = tray.app_handle();
-                let _ = windows::show_prompt_window(&app);
+                let _ = windows::show_dropdown(app.clone());
             }
         });
 
