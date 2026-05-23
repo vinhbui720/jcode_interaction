@@ -200,6 +200,12 @@ export function renderPrompt(root: HTMLElement) {
     updateUi();
   };
 
+  (window as unknown as { __jcodeApplyPromptContextChips?: (chips: PopupContextChip[]) => void })
+    .__jcodeApplyPromptContextChips = (chips) => {
+      applySelectedContextChips(chips || []);
+      focusInput();
+    };
+
   const loadPromptContext = async () => {
     try {
       const chips = await api.popupContextChips();

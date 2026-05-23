@@ -1,4 +1,4 @@
-use crate::core::{formatting, positioning, state::TokenStats};
+use crate::core::{formatting, popup_context, positioning, state::TokenStats};
 use serde::Serialize;
 use std::{
     process::Command,
@@ -158,6 +158,19 @@ pub fn toggle_prompt(app: AppHandle) -> Result<(), String> {
     show_prompt_window(&app)
 }
 
+fn deliver_prompt_context_chips(window: &WebviewWindow, chips: &[popup_context::PopupContextChip]) {
+    let _ = window.emit("prompt-context-chips", chips);
+    if chips.is_empty() {
+        return;
+    }
+    if let Ok(json) = serde_json::to_string(chips) {
+        let script = format!(
+            "window.__jcodeApplyPromptContextChips && window.__jcodeApplyPromptContextChips({json});"
+        );
+        let _ = window.eval(&script);
+    }
+}
+
 pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
     let context_chips = crate::ui::commands::refresh_popup_context_chips();
     let window = ensure_window(app, PanelWindow::Prompt)?;
@@ -169,21 +182,22 @@ pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
     activate_window_title(PanelWindow::Prompt.title());
     window.set_focus().map_err(|err| err.to_string())?;
     activate_window_title(PanelWindow::Prompt.title());
-    let _ = window.emit("prompt-context-chips", context_chips);
+    deliver_prompt_context_chips(&window, &context_chips);
     let _ = window.emit("prompt-shown", ());
     let _ = window.eval(PROMPT_INPUT_FOCUS_SCRIPT);
     grab_escape_while_prompt_visible(app.clone());
-    refocus_prompt_after_show(app.clone());
+    refocus_prompt_after_show(app.clone(), context_chips);
     click_focus_prompt_input_after_show(app.clone());
     follow_prompt_while_visible(app.clone());
     Ok(())
 }
 
-fn refocus_prompt_after_show(app: AppHandle) {
+fn refocus_prompt_after_show(app: AppHandle, context_chips: Vec<popup_context::PopupContextChip>) {
     thread::spawn(move || {
         for delay in PROMPT_REFOCUS_DELAYS_MS {
             thread::sleep(Duration::from_millis(delay));
             let app_for_main = app.clone();
+            let chips_for_main = context_chips.clone();
             let _ = app.run_on_main_thread(move || {
                 let Some(window) = app_for_main.get_webview_window("prompt") else {
                     return;
@@ -192,6 +206,7 @@ fn refocus_prompt_after_show(app: AppHandle) {
                     return;
                 }
                 let _ = window.set_focus();
+                deliver_prompt_context_chips(&window, &chips_for_main);
                 let _ = window.emit("prompt-shown", ());
                 let _ = window.eval(PROMPT_INPUT_FOCUS_SCRIPT);
             });
