@@ -68,7 +68,13 @@ cd "$APP_DIR" || exit 1
 if [[ "\${1:-}" == "settings" || "\${1:-}" == "--settings" ]]; then
   exec "$BIN" settings
 fi
-exec "$BIN" --prompt "\$@"
+if [[ "\${1:-}" == "prompt" || "\${1:-}" == "--prompt" || "\${1:-}" == "--show" ]]; then
+  exec "$BIN" --prompt "\${@:2}"
+fi
+if [[ "\$#" -eq 0 ]]; then
+  exec "$BIN" --prompt
+fi
+exec "$BIN" "\$@"
 EOF
 chmod +x "$USER_BIN/jcp"
 

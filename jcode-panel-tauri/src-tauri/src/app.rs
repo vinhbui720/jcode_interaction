@@ -74,9 +74,17 @@ fn cli_wants_settings() -> bool {
         .any(|arg| arg == "--settings" || arg == "settings")
 }
 
+fn cli_wants_dropdown() -> bool {
+    std::env::args()
+        .skip(1)
+        .any(|arg| matches!(arg.as_str(), "--dropdown" | "dropdown" | "--open" | "open"))
+}
+
 fn startup_command() -> Option<&'static str> {
     if cli_wants_settings() {
         Some("show_settings")
+    } else if cli_wants_dropdown() {
+        Some("show_dropdown")
     } else if cli_wants_prompt() {
         Some("show_prompt")
     } else {
@@ -113,13 +121,14 @@ fn start_ipc_server(app: &tauri::AppHandle) {
             let _ = reader.read_line(&mut command);
             let command = command.trim().to_string();
             let app_for_main = app.clone();
-            let _ = app.run_on_main_thread(move || {
-                if matches!(
-                    command.as_str(),
-                    "show_settings" | "settings" | "--settings"
-                ) {
+            let _ = app.run_on_main_thread(move || match command.as_str() {
+                "show_settings" | "settings" | "--settings" => {
                     let _ = crate::ui::windows::show_settings(app_for_main.clone());
-                } else {
+                }
+                "show_dropdown" | "dropdown" | "--dropdown" | "open" | "--open" => {
+                    let _ = crate::ui::windows::show_dropdown(app_for_main.clone());
+                }
+                _ => {
                     let _ = crate::ui::windows::show_prompt_window(&app_for_main);
                 }
             });
@@ -221,9 +230,7 @@ pub fn run() {
     }
     let command_on_startup = startup_command();
     if !acquire_single_instance() {
-        if let Some(command) = command_on_startup {
-            let _ = send_request_to_running_instance(command);
-        }
+        let _ = send_request_to_running_instance(command_on_startup.unwrap_or("show_dropdown"));
         return;
     }
     let app = tauri::Builder::default()
@@ -241,10 +248,14 @@ pub fn run() {
             let _ = integrations::browser::install();
             if let Some(command) = command_on_startup {
                 let handle = app.handle().clone();
-                let _ = app.handle().run_on_main_thread(move || {
-                    if matches!(command, "show_settings" | "settings" | "--settings") {
+                let _ = app.handle().run_on_main_thread(move || match command {
+                    "show_settings" | "settings" | "--settings" => {
                         let _ = crate::ui::windows::show_settings(handle.clone());
-                    } else {
+                    }
+                    "show_dropdown" | "dropdown" | "--dropdown" | "open" | "--open" => {
+                        let _ = crate::ui::windows::show_dropdown(handle.clone());
+                    }
+                    _ => {
                         let _ = crate::ui::windows::show_prompt_window(&handle);
                     }
                 });
