@@ -1,6 +1,9 @@
 use std::{
     process::{Child, Command},
-    sync::{Mutex, OnceLock},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Mutex, OnceLock,
+    },
     thread,
     time::Duration,
 };
@@ -9,6 +12,7 @@ use super::config::AppConfig;
 
 const MAX_TTS_CHARS: usize = 1_200;
 static ACTIVE_TTS: OnceLock<Mutex<Option<Child>>> = OnceLock::new();
+static TTS_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 pub fn speak_feedback_async(config: AppConfig, text: String) {
     if !config.tts_enabled {
@@ -18,8 +22,13 @@ pub fn speak_feedback_async(config: AppConfig, text: String) {
     if text.trim().is_empty() {
         return;
     }
-    stop_active_tts();
+    let generation = TTS_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
     thread::spawn(move || {
+        thread::sleep(Duration::from_millis(900));
+        if TTS_GENERATION.load(Ordering::SeqCst) != generation {
+            return;
+        }
+        stop_active_tts();
         let _ = speak_feedback(&config, &text);
     });
 }

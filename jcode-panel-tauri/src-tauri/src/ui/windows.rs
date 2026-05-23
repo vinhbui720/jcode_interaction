@@ -540,7 +540,7 @@ pub fn show_feedback_window(
         })
         .unwrap_or_else(|| "idle".into());
     let payload = FeedbackPayload {
-        text,
+        text: text.clone(),
         notice: notice.trim().to_string(),
         status,
         stats,
@@ -548,6 +548,7 @@ pub fn show_feedback_window(
     if let Ok(mut last) = LAST_FEEDBACK.lock() {
         *last = Some(payload.clone());
     }
+    crate::core::tts::speak_feedback_async(crate::core::config::load_config(), text.clone());
     let app_for_main = app.clone();
     let payload_for_main = payload.clone();
     app.run_on_main_thread(move || {

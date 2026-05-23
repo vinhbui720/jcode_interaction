@@ -190,7 +190,7 @@ export function renderFeedback(root: HTMLElement) {
     if (event.key === 'Escape') void api.hideFeedback();
   });
 
-  void listen<FeedbackPayload>('feedback-update', (event) => apply(event.payload, true, true));
+  void listen<FeedbackPayload>('feedback-update', (event) => apply(event.payload, true, false));
   const replay = () => {
     void api.currentFeedback()
       .then((payload) => {
