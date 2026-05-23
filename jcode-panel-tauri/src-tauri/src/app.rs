@@ -308,7 +308,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn prompt_hotkey_support_rejects_mouse_buttons() {
+    fn tauri_prompt_hotkey_support_is_keyboard_only() {
         assert!(prompt_hotkey_supported("Super+Z"));
         assert!(prompt_hotkey_supported("F8"));
         assert!(!prompt_hotkey_supported("Mouse9"));

@@ -62,9 +62,9 @@ pub fn snapshot(runtime: State<RuntimeState>) -> AppSnapshot {
 
 #[tauri::command]
 pub fn save_settings(new_config: config::AppConfig, app: AppHandle) -> Result<(), String> {
-    if !crate::app::prompt_hotkey_supported(&new_config.prompt_hotkey) {
+    if !prompt_hotkey_supported(&new_config.prompt_hotkey) {
         return Err(format!(
-            "Prompt hotkey '{}' is not supported by the Tauri global shortcut backend. Use a keyboard shortcut like F8 or Super+Z. Mouse buttons can still be used for screenshot hotkeys.",
+            "Prompt hotkey '{}' is not supported. Use a keyboard shortcut like F8/Super+Z or a GNOME mouse shortcut like Mouse8/Mouse9.",
             new_config.prompt_hotkey
         ));
     }
@@ -72,6 +72,10 @@ pub fn save_settings(new_config: config::AppConfig, app: AppHandle) -> Result<()
     sync_gnome_prompt_shortcut(&new_config.prompt_hotkey);
     crate::app::reset_prompt_shortcut(&app);
     Ok(())
+}
+
+fn prompt_hotkey_supported(hotkey: &str) -> bool {
+    crate::app::prompt_hotkey_supported(hotkey) || gnome_binding(hotkey).is_some()
 }
 
 pub fn sync_gnome_prompt_shortcut(hotkey: &str) {
@@ -536,5 +540,12 @@ mod tests {
     #[test]
     fn gnome_binding_formats_mouse_shortcut() {
         assert_eq!(gnome_binding("Super+Mouse8"), Some("<Super>Button8".into()));
+    }
+
+    #[test]
+    fn prompt_hotkey_accepts_keyboard_or_gnome_mouse_shortcut() {
+        assert!(prompt_hotkey_supported("Super+Z"));
+        assert!(prompt_hotkey_supported("Mouse9"));
+        assert!(prompt_hotkey_supported("Super+Mouse8"));
     }
 }
