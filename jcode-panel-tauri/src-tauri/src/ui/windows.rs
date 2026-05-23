@@ -1,21 +1,12 @@
 use crate::core::{formatting, positioning, state::TokenStats};
 use serde::Serialize;
-use std::{
-    process::Command,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Mutex,
-    },
-    thread,
-    time::Duration,
-};
+use std::{process::Command, sync::Mutex, thread, time::Duration};
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder,
 };
 
 static LAST_FEEDBACK: Mutex<Option<FeedbackPayload>> = Mutex::new(None);
-static PROMPT_FOLLOW_RUNNING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FeedbackPayload {
@@ -68,6 +59,10 @@ impl PanelWindow {
     fn is_overlay(self) -> bool {
         matches!(self, Self::Prompt | Self::Feedback)
     }
+
+    fn is_topmost_overlay(self) -> bool {
+        matches!(self, Self::Feedback)
+    }
 }
 
 fn ensure_window(app: &AppHandle, kind: PanelWindow) -> Result<WebviewWindow, String> {
@@ -87,7 +82,7 @@ fn ensure_window(app: &AppHandle, kind: PanelWindow) -> Result<WebviewWindow, St
             .decorations(false)
             .transparent(true)
             .shadow(false)
-            .always_on_top(true)
+            .always_on_top(kind.is_topmost_overlay())
             .skip_taskbar(true);
     } else {
         builder = builder.decorations(true);
@@ -129,13 +124,17 @@ pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
     activate_window_title(PanelWindow::Prompt.title());
     let _ = window.emit("prompt-shown", ());
     refocus_prompt_after_show(app.clone());
-    follow_prompt_while_visible(app.clone());
+    // Focus is intentionally only forced during the initial show path. Keeping a
+    // background focus loop made the prompt behave like a topmost modal overlay:
+    // mouse interaction with other apps was possible visually, but focus was
+    // stolen back every frame. After the prompt is focused, keyboard input is
+    // consumed by the prompt until the user deliberately focuses another app.
     Ok(())
 }
 
 fn refocus_prompt_after_show(app: AppHandle) {
     thread::spawn(move || {
-        for delay in [40_u64, 120, 260, 520, 900] {
+        for delay in [40_u64, 120, 260] {
             thread::sleep(Duration::from_millis(delay));
             let app_for_main = app.clone();
             let _ = app.run_on_main_thread(move || {
@@ -192,36 +191,10 @@ pub fn prompt_follow_mouse_tick(app: AppHandle) -> Result<bool, String> {
     Ok(visible)
 }
 
-fn follow_prompt_while_visible(app: AppHandle) {
-    if PROMPT_FOLLOW_RUNNING.swap(true, Ordering::SeqCst) {
-        return;
-    }
-    thread::spawn(move || loop {
-        let app_for_main = app.clone();
-        let still_visible = app
-            .run_on_main_thread(move || {
-                let Some(window) = app_for_main.get_webview_window("prompt") else {
-                    PROMPT_FOLLOW_RUNNING.store(false, Ordering::SeqCst);
-                    return;
-                };
-                if window.is_visible().unwrap_or(false) {
-                    place_prompt_at_mouse_or_center(&window);
-                    let _ = window.set_focus();
-                } else {
-                    PROMPT_FOLLOW_RUNNING.store(false, Ordering::SeqCst);
-                }
-            })
-            .is_ok();
-        if !still_visible || !PROMPT_FOLLOW_RUNNING.load(Ordering::SeqCst) {
-            PROMPT_FOLLOW_RUNNING.store(false, Ordering::SeqCst);
-            break;
-        }
-        thread::sleep(Duration::from_millis(33));
-    });
-}
-
 pub fn stop_prompt_follow() {
-    PROMPT_FOLLOW_RUNNING.store(false, Ordering::SeqCst);
+    // Kept as a no-op for callers that hide the prompt. Older builds used a
+    // background follow/focus loop here, but that made the prompt steal focus
+    // from other apps while open.
 }
 
 fn smooth_step(current: f64, target: f64, alpha: f64) -> f64 {

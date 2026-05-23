@@ -91,7 +91,7 @@ export function renderPrompt(root: HTMLElement) {
     };
     focusNow();
     requestAnimationFrame(focusNow);
-    for (const delay of [20, 60, 120, 240, 500, 900]) {
+    for (const delay of [20, 60, 120, 240]) {
       window.setTimeout(focusNow, delay);
     }
   };
