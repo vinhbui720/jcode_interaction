@@ -128,8 +128,30 @@ pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
     window.set_focus().map_err(|err| err.to_string())?;
     activate_window_title(PanelWindow::Prompt.title());
     let _ = window.emit("prompt-shown", ());
+    refocus_prompt_after_show(app.clone());
     follow_prompt_while_visible(app.clone());
     Ok(())
+}
+
+fn refocus_prompt_after_show(app: AppHandle) {
+    thread::spawn(move || {
+        for delay in [40_u64, 120, 260, 520, 900] {
+            thread::sleep(Duration::from_millis(delay));
+            let app_for_main = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                let Some(window) = app_for_main.get_webview_window("prompt") else {
+                    return;
+                };
+                if !window.is_visible().unwrap_or(false) {
+                    return;
+                }
+                let _ = window.set_focus();
+                let _ = window.emit("prompt-shown", ());
+                let _ = window
+                    .eval("document.querySelector('#prompt-input')?.focus({preventScroll:true});");
+            });
+        }
+    });
 }
 
 fn place_window_on_mouse_screen(window: &tauri::WebviewWindow) {

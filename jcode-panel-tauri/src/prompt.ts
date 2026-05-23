@@ -84,12 +84,16 @@ export function renderPrompt(root: HTMLElement) {
 
   const focusInput = () => {
     input.disabled = false;
-    requestAnimationFrame(() => {
-      input.focus();
-      input.select();
-    });
-    setTimeout(() => input.focus(), 40);
-    setTimeout(() => input.focus(), 120);
+    const placeCursorAtEnd = () => input.setSelectionRange(input.value.length, input.value.length);
+    const focusNow = () => {
+      input.focus({ preventScroll: true });
+      placeCursorAtEnd();
+    };
+    focusNow();
+    requestAnimationFrame(focusNow);
+    for (const delay of [20, 60, 120, 240, 500, 900]) {
+      window.setTimeout(focusNow, delay);
+    }
   };
 
   const loadPromptContext = async () => {
@@ -224,6 +228,11 @@ export function renderPrompt(root: HTMLElement) {
         focusInput();
       }
     }, 80);
+  });
+  window.addEventListener('focus', focusInput);
+  window.addEventListener('pageshow', focusInput);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') focusInput();
   });
 
   input.addEventListener('input', () => {
