@@ -26,6 +26,7 @@ export const api = {
   saveSettings: (newConfig: Snapshot['config']) => invoke('save_settings', { newConfig }),
   suspendPromptHotkey: () => invoke('suspend_prompt_hotkey'),
   resumePromptHotkey: () => invoke('resume_prompt_hotkey'),
+  quitApp: () => invoke('quit_app'),
   availableTerminals: () => invoke<string[]>('available_terminals'),
   refreshIntegrations: () => invoke('refresh_integrations'),
   integrationStatus: () => invoke('integration_status'),

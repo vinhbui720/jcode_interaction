@@ -292,6 +292,7 @@ pub fn run() {
             commands::save_settings,
             commands::suspend_prompt_hotkey,
             commands::resume_prompt_hotkey,
+            commands::quit_app,
             commands::available_terminals,
             commands::submit_prompt,
             commands::submit_prompt_async,

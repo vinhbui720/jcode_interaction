@@ -86,6 +86,11 @@ pub fn resume_prompt_hotkey(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+pub fn quit_app() {
+    std::process::exit(0);
+}
+
 fn prompt_hotkey_supported(hotkey: &str) -> bool {
     crate::app::prompt_hotkey_supported(hotkey) || gnome_binding(hotkey).is_some()
 }

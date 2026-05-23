@@ -8,7 +8,7 @@ function clientStatus(snapshot: Snapshot) {
   if (!snapshot.jcode_available) return { label: 'missing', tone: 'error', detail: 'Jcode CLI is not available on PATH.' };
   const status = snapshot.header_status || snapshot.state.process_status || 'idle';
   const active = snapshot.state.live_activity;
-  const detail = active?.active ? `${active.label}: ${active.state}` : 'Client is ready for the prompt hotkey.';
+  const detail = active?.active ? `${active.label}: ${active.state}` : 'Ready. Use the prompt hotkey to talk to Jcode.';
   return { label: status, tone: status.replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'idle', detail };
 }
 
@@ -25,7 +25,12 @@ export async function renderDropdown(root: HTMLElement) {
   const section = snapshot.state.active_section || 'Previous section';
   root.innerHTML = `
     <main class="panel-shell panel-shell-modern">
-      <header class="dropdown-hero">
+      <nav class="dropdown-tabs" aria-label="Dropdown actions">
+        <button id="statusTab" class="dropdown-tab active" type="button">Status</button>
+        <button id="quit" class="dropdown-tab danger" type="button">Quit</button>
+      </nav>
+
+      <header class="dropdown-hero compact">
         <div class="prompt-logo dropdown-logo">JC</div>
         <div class="dropdown-title">
           <p class="eyebrow">Jcode client</p>
@@ -36,7 +41,7 @@ export async function renderDropdown(root: HTMLElement) {
 
       <section class="client-card">
         <div class="client-card-topline">
-          <span>Current status</span>
+          <span>Status</span>
           <strong>${snapshot.jcode_available ? 'Ready' : 'Needs setup'}</strong>
         </div>
         <p class="client-detail">${escapeHtml(status.detail)}</p>
@@ -52,14 +57,13 @@ export async function renderDropdown(root: HTMLElement) {
         <button id="newSection" class="primary-action">New</button>
       </section>
 
-      <section class="quick-actions" aria-label="Quick actions">
-        <button id="settings">Settings</button>
-        <button id="terminal">Open terminal</button>
-        <button id="refresh">Refresh</button>
+      <section class="status-actions" aria-label="Status actions">
+        <button id="terminal" class="status-action-card" type="button"><span>Open</span><strong>Terminal</strong></button>
+        <button id="settings" class="status-action-card" type="button"><span>Open</span><strong>Settings</strong></button>
       </section>
     </main>`;
 
-  root.querySelector<HTMLButtonElement>('#refresh')!.onclick = async () => { await api.refreshIntegrations(); renderDropdown(root); };
+  root.querySelector<HTMLButtonElement>('#quit')!.onclick = () => api.quitApp();
   root.querySelector<HTMLButtonElement>('#settings')!.onclick = () => api.showSettings();
   root.querySelector<HTMLButtonElement>('#terminal')!.onclick = () => api.launchTerminal();
   root.querySelector<HTMLButtonElement>('#resume')!.onclick = async () => {
