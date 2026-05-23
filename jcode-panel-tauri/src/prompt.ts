@@ -1,4 +1,6 @@
 import { listen } from '@tauri-apps/api/event';
+import { convertFileSrc } from '@tauri-apps/api/core';
+import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
 import { api } from './api';
 
 type Suggestion = { value: string; label: string; detail: string };
@@ -70,11 +72,13 @@ export function renderPrompt(root: HTMLElement) {
         <input id="prompt-input" placeholder="Ask jcode..." autofocus />
         <span id="prompt-count" class="prompt-count">0/4000</span>
       </div>
+      <div id="prompt-preview" class="prompt-preview" hidden></div>
       <div id="prompt-suggestions" class="prompt-suggestions"></div>
     </main>`;
 
   const input = root.querySelector<HTMLInputElement>('#prompt-input')!;
   const count = root.querySelector<HTMLSpanElement>('#prompt-count')!;
+  const previewEl = root.querySelector<HTMLDivElement>('#prompt-preview')!;
   const suggestionEl = root.querySelector<HTMLDivElement>('#prompt-suggestions')!;
   let submitting = false;
   let maxChars = 4000;
@@ -83,10 +87,15 @@ export function renderPrompt(root: HTMLElement) {
   let selectedSuggestion = 0;
   let clipboardSeq = 0;
   const clipboardPastes = new Map<string, string>();
+  let picSeq = 0;
+  const picTags = new Map<string, string>();
 
   const expandClipboardTags = (text: string) => {
     let expanded = text;
     for (const [tag, body] of clipboardPastes) {
+      expanded = expanded.split(tag).join(body);
+    }
+    for (const [tag, body] of picTags) {
       expanded = expanded.split(tag).join(body);
     }
     return expanded;
@@ -100,6 +109,28 @@ export function renderPrompt(root: HTMLElement) {
     input.value = `${input.value.slice(0, start)}${text}${input.value.slice(end)}`;
     const next = start + text.length;
     input.setSelectionRange(next, next);
+  };
+
+  const screenshotPathFromTag = (tag: string) => tag.match(/^\[screenshot:(.*)\]$/)?.[1] || '';
+
+  const resizePromptWindow = (hasPreview: boolean) => {
+    const height = hasPreview ? 238 : 112;
+    void getCurrentWindow().setSize(new LogicalSize(720, height)).catch(() => {});
+  };
+
+  const updatePreview = () => {
+    const activePics = [...picTags.entries()].filter(([tag]) => input.value.includes(tag));
+    previewEl.hidden = activePics.length === 0;
+    resizePromptWindow(activePics.length > 0);
+    previewEl.innerHTML = activePics.map(([tag, fullTag]) => {
+      const path = screenshotPathFromTag(fullTag);
+      const src = path ? convertFileSrc(path) : '';
+      return `
+        <figure class="prompt-shot">
+          <img src="${src}" alt="${tag}" />
+          <figcaption>${tag}</figcaption>
+        </figure>`;
+    }).join('');
   };
 
   const focusInput = () => {
@@ -147,7 +178,10 @@ export function renderPrompt(root: HTMLElement) {
       try {
         const tag = await api.captureScreenshot('area');
         const rest = screenshotMatch[1]?.trim();
-        input.value = rest ? `${tag} ${rest}` : `${tag} `;
+        picSeq += 1;
+        const picTag = `[pic${picSeq}]`;
+        picTags.set(picTag, tag);
+        input.value = rest ? `${picTag} ${rest}` : `${picTag} `;
         updateUi();
       } catch (error) {
         await api.showFeedback(String(error || 'Screenshot failed'), 'Error');
@@ -195,6 +229,7 @@ export function renderPrompt(root: HTMLElement) {
     const cursor = input.selectionStart ?? input.value.length;
     currentSuggestions = suggestionsFor(input.value, cursor, screenshotHotkey);
     selectedSuggestion = Math.min(selectedSuggestion, Math.max(0, currentSuggestions.length - 1));
+    updatePreview();
     renderSuggestions();
   };
 
