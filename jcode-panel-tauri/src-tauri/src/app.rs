@@ -73,34 +73,42 @@ fn socket_path() -> PathBuf {
         .join("jcode-panel-tauri.sock")
 }
 
-fn cli_wants_prompt() -> bool {
-    std::env::args()
-        .skip(1)
+fn cli_wants_prompt_from_args<'a>(args: impl IntoIterator<Item = &'a str>) -> bool {
+    args.into_iter()
         .any(|arg| arg == "--prompt" || arg == "prompt" || arg == "--show")
 }
 
-fn cli_wants_settings() -> bool {
-    std::env::args()
-        .skip(1)
+fn cli_wants_settings_from_args<'a>(args: impl IntoIterator<Item = &'a str>) -> bool {
+    args.into_iter()
         .any(|arg| arg == "--settings" || arg == "settings")
 }
 
-fn cli_wants_dropdown() -> bool {
-    std::env::args()
-        .skip(1)
-        .any(|arg| matches!(arg.as_str(), "--dropdown" | "dropdown" | "--open" | "open"))
+fn cli_wants_dropdown_from_args<'a>(args: impl IntoIterator<Item = &'a str>) -> bool {
+    args.into_iter()
+        .any(|arg| matches!(arg, "--dropdown" | "dropdown" | "--open" | "open"))
 }
 
-fn startup_command() -> Option<&'static str> {
-    if cli_wants_settings() {
+fn startup_command_from_args<'a>(args: impl IntoIterator<Item = &'a str>) -> Option<&'static str> {
+    let args = args.into_iter().collect::<Vec<_>>();
+    if cli_wants_settings_from_args(args.iter().copied()) {
         Some("show_settings")
-    } else if cli_wants_dropdown() {
+    } else if cli_wants_dropdown_from_args(args.iter().copied()) {
         Some("show_dropdown")
-    } else if cli_wants_prompt() {
+    } else if cli_wants_prompt_from_args(args.iter().copied()) {
         Some("toggle_prompt")
     } else {
         None
     }
+}
+
+fn startup_command() -> Option<&'static str> {
+    startup_command_from_args(
+        std::env::args()
+            .skip(1)
+            .collect::<Vec<_>>()
+            .iter()
+            .map(String::as_str),
+    )
 }
 
 fn send_request_to_running_instance(command: &str) -> bool {
@@ -321,6 +329,29 @@ pub fn run() {
 mod tests {
     use super::*;
 
+    #[test]
+    fn prompt_cli_args_route_to_toggle_prompt() {
+        for arg in ["--prompt", "prompt", "--show"] {
+            assert_eq!(startup_command_from_args([arg]), Some("toggle_prompt"));
+        }
+    }
+
+    #[test]
+    fn startup_command_preserves_settings_and_dropdown_precedence() {
+        assert_eq!(
+            startup_command_from_args(["--prompt", "--settings"]),
+            Some("show_settings")
+        );
+        assert_eq!(
+            startup_command_from_args(["--prompt", "--dropdown"]),
+            Some("show_dropdown")
+        );
+    }
+
+    #[test]
+    fn startup_command_ignores_unknown_args() {
+        assert_eq!(startup_command_from_args(["--unknown"]), None);
+    }
     #[test]
     fn tauri_prompt_hotkey_support_is_keyboard_only() {
         assert!(prompt_hotkey_supported("Super+Z"));
