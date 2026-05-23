@@ -50,26 +50,38 @@ function installHotkeyCapture(root: HTMLElement, inputId: string, buttonId: stri
   const input = root.querySelector<HTMLInputElement>(`#${inputId}`)!;
   const button = root.querySelector<HTMLButtonElement>(`#${buttonId}`)!;
   let capturing = false;
+  let resumeTimer: number | null = null;
 
   const stopCapture = () => {
+    if (!capturing) return;
     capturing = false;
     button.textContent = 'Record';
     button.classList.remove('recording');
-    void api.resumePromptHotkey();
+    if (resumeTimer !== null) window.clearTimeout(resumeTimer);
+    resumeTimer = window.setTimeout(() => {
+      resumeTimer = null;
+      void api.resumePromptHotkey();
+    }, 120);
   };
 
   button.onclick = async () => {
-    capturing = true;
+    if (resumeTimer !== null) {
+      window.clearTimeout(resumeTimer);
+      resumeTimer = null;
+    }
     await api.suspendPromptHotkey().catch(() => {});
+    capturing = true;
     button.textContent = 'Press combo...';
     button.classList.add('recording');
     input.focus();
   };
 
-  input.addEventListener('keydown', (event) => {
+  const captureKeyboard = (event: KeyboardEvent) => {
     if (!capturing) return;
     event.preventDefault();
     event.stopPropagation();
+    event.stopImmediatePropagation();
+    if (event.repeat) return;
     if (event.key === 'Escape') {
       stopCapture();
       return;
@@ -78,18 +90,22 @@ function installHotkeyCapture(root: HTMLElement, inputId: string, buttonId: stri
     if (!hotkey) return;
     input.value = hotkey;
     if (!isModifierKey(event.key)) stopCapture();
-  });
+  };
 
-  input.addEventListener('keyup', (event) => {
+  const captureKeyboardUp = (event: KeyboardEvent) => {
     if (!capturing) return;
     event.preventDefault();
     event.stopPropagation();
+    event.stopImmediatePropagation();
     const hotkey = hotkeyFromEvent(event);
     if (hotkey && !isModifierKey(event.key)) {
       input.value = hotkey;
       stopCapture();
     }
-  });
+  };
+
+  document.addEventListener('keydown', captureKeyboard, true);
+  document.addEventListener('keyup', captureKeyboardUp, true);
 
   const captureMouse = (event: MouseEvent) => {
     if (!capturing) return;
@@ -106,7 +122,9 @@ function installHotkeyCapture(root: HTMLElement, inputId: string, buttonId: stri
   button.addEventListener('contextmenu', (event) => { if (capturing) event.preventDefault(); });
 
   input.addEventListener('blur', () => {
-    if (capturing) window.setTimeout(stopCapture, 500);
+    if (capturing) window.setTimeout(() => {
+      if (capturing && document.activeElement !== input && document.activeElement !== button) stopCapture();
+    }, 800);
   });
 }
 
