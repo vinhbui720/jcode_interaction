@@ -150,7 +150,12 @@ export async function renderSettings(root: HTMLElement) {
       max_prompt_chars: Number(root.querySelector<HTMLInputElement>('#maxPromptChars')!.value || 4000),
       send_context_default: root.querySelector<HTMLInputElement>('#sendContext')!.checked,
     };
-    await api.saveSettings(newConfig);
-    root.querySelector<HTMLPreElement>('#status')!.textContent = `Saved. Prompt hotkey is now ${newConfig.prompt_hotkey}.`;
+    const status = root.querySelector<HTMLPreElement>('#status')!;
+    try {
+      await api.saveSettings(newConfig);
+      status.textContent = `Saved. Prompt hotkey is now ${newConfig.prompt_hotkey}.`;
+    } catch (error) {
+      status.textContent = `Could not save settings: ${String(error)}`;
+    }
   };
 }

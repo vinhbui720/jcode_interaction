@@ -20,14 +20,7 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 
 pub fn register_prompt_shortcut(app: &tauri::AppHandle) {
     let cfg = config::load_config();
-    let hotkey = if cfg.prompt_hotkey.trim().is_empty() {
-        "F8"
-    } else {
-        cfg.prompt_hotkey.trim()
-    };
-    let Some(shortcut) = parse_shortcut(hotkey) else {
-        return;
-    };
+    let shortcut = parse_prompt_shortcut_or_default(&cfg.prompt_hotkey);
     let handle = app.clone();
     let _ = app
         .global_shortcut()
@@ -36,6 +29,19 @@ pub fn register_prompt_shortcut(app: &tauri::AppHandle) {
                 let _ = crate::ui::windows::show_prompt_window(&handle);
             }
         });
+}
+
+pub fn prompt_hotkey_supported(hotkey: &str) -> bool {
+    parse_shortcut(hotkey).is_some()
+}
+
+fn parse_prompt_shortcut_or_default(hotkey: &str) -> Shortcut {
+    let hotkey = hotkey.trim();
+    if hotkey.is_empty() {
+        return parse_shortcut("F8").expect("default F8 shortcut is valid");
+    }
+    parse_shortcut(hotkey)
+        .unwrap_or_else(|| parse_shortcut("F8").expect("default F8 shortcut is valid"))
 }
 
 pub fn reset_prompt_shortcut(app: &tauri::AppHandle) {
@@ -295,4 +301,25 @@ pub fn run() {
             api.prevent_exit();
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prompt_hotkey_support_rejects_mouse_buttons() {
+        assert!(prompt_hotkey_supported("Super+Z"));
+        assert!(prompt_hotkey_supported("F8"));
+        assert!(!prompt_hotkey_supported("Mouse9"));
+        assert!(!prompt_hotkey_supported("Super+Mouse8"));
+    }
+
+    #[test]
+    fn invalid_prompt_hotkey_falls_back_to_f8() {
+        assert_eq!(
+            parse_prompt_shortcut_or_default("Mouse9"),
+            parse_shortcut("F8").unwrap()
+        );
+    }
 }

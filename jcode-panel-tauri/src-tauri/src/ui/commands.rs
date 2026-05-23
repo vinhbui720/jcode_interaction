@@ -62,6 +62,12 @@ pub fn snapshot(runtime: State<RuntimeState>) -> AppSnapshot {
 
 #[tauri::command]
 pub fn save_settings(new_config: config::AppConfig, app: AppHandle) -> Result<(), String> {
+    if !crate::app::prompt_hotkey_supported(&new_config.prompt_hotkey) {
+        return Err(format!(
+            "Prompt hotkey '{}' is not supported by the Tauri global shortcut backend. Use a keyboard shortcut like F8 or Super+Z. Mouse buttons can still be used for screenshot hotkeys.",
+            new_config.prompt_hotkey
+        ));
+    }
     config::save_config(&new_config).map_err(|err| err.to_string())?;
     sync_gnome_prompt_shortcut(&new_config.prompt_hotkey);
     crate::app::reset_prompt_shortcut(&app);
