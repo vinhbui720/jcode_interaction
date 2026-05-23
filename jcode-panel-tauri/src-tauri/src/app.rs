@@ -26,7 +26,7 @@ pub fn register_prompt_shortcut(app: &tauri::AppHandle) {
         .global_shortcut()
         .on_shortcut(shortcut, move |_app, _shortcut, event| {
             if event.state() == ShortcutState::Pressed {
-                let _ = crate::ui::windows::show_prompt_window(&handle);
+                let _ = crate::ui::windows::toggle_prompt(handle.clone());
             }
         });
 }
@@ -92,7 +92,7 @@ fn startup_command() -> Option<&'static str> {
     } else if cli_wants_dropdown() {
         Some("show_dropdown")
     } else if cli_wants_prompt() {
-        Some("show_prompt")
+        Some("toggle_prompt")
     } else {
         None
     }
@@ -133,6 +133,9 @@ fn start_ipc_server(app: &tauri::AppHandle) {
                 }
                 "show_dropdown" | "dropdown" | "--dropdown" | "open" | "--open" => {
                     let _ = crate::ui::windows::show_dropdown(app_for_main.clone());
+                }
+                "toggle_prompt" | "prompt" | "--prompt" | "--show" => {
+                    let _ = crate::ui::windows::toggle_prompt(app_for_main.clone());
                 }
                 _ => {
                     let _ = crate::ui::windows::show_prompt_window(&app_for_main);
@@ -261,6 +264,9 @@ pub fn run() {
                     "show_dropdown" | "dropdown" | "--dropdown" | "open" | "--open" => {
                         let _ = crate::ui::windows::show_dropdown(handle.clone());
                     }
+                    "toggle_prompt" | "prompt" | "--prompt" | "--show" => {
+                        let _ = crate::ui::windows::toggle_prompt(handle.clone());
+                    }
                     _ => {
                         let _ = crate::ui::windows::show_prompt_window(&handle);
                     }
@@ -285,6 +291,7 @@ pub fn run() {
             commands::integration_status,
             commands::refresh_integrations,
             crate::ui::windows::show_prompt,
+            crate::ui::windows::toggle_prompt,
             crate::ui::windows::show_dropdown,
             crate::ui::windows::show_settings,
             crate::ui::windows::hide_prompt,

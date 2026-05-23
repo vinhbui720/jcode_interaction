@@ -120,6 +120,16 @@ pub fn show_prompt(app: AppHandle) -> Result<(), String> {
     show_prompt_window(&app)
 }
 
+#[tauri::command]
+pub fn toggle_prompt(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("prompt") {
+        if window.is_visible().unwrap_or(false) {
+            return hide_prompt(app);
+        }
+    }
+    show_prompt_window(&app)
+}
+
 pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
     let window = ensure_window(app, PanelWindow::Prompt)?;
     place_prompt_at_mouse_or_center(&window);

@@ -71,7 +71,7 @@ if [[ "\${1:-}" == "settings" || "\${1:-}" == "--settings" ]]; then
   exec "$BIN" settings
 fi
 if [[ "\${1:-}" == "prompt" || "\${1:-}" == "--prompt" || "\${1:-}" == "--show" ]]; then
-  exec "$BIN" --prompt "\${@:2}"
+  exec "$BIN" --prompt
 fi
 if [[ "\$#" -eq 0 ]]; then
   exec "$BIN" --prompt
