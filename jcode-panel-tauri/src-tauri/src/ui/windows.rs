@@ -596,7 +596,9 @@ pub fn hide_feedback(app: AppHandle) -> Result<(), String> {
 }
 
 fn move_feedback_to_mouse_screen(window: &tauri::WebviewWindow) {
-    let monitor = monitor_at_mouse(window).or_else(|| window.current_monitor().ok().flatten());
+    let monitor = monitor_at_focused_window(window)
+        .or_else(|| monitor_at_mouse(window))
+        .or_else(|| window.current_monitor().ok().flatten());
     if let Some(monitor) = monitor {
         let pos = monitor.position();
         let size = monitor.size();
@@ -610,6 +612,51 @@ fn move_feedback_to_mouse_screen(window: &tauri::WebviewWindow) {
         let y = pos.y + 42;
         let _ = window.set_position(PhysicalPosition::new(x, y));
     }
+}
+
+fn monitor_at_focused_window(window: &tauri::WebviewWindow) -> Option<tauri::Monitor> {
+    let (x, y) = active_window_center()?;
+    monitor_for_point(window, x, y)
+}
+
+fn active_window_center() -> Option<(i32, i32)> {
+    if std::env::var_os("DISPLAY").is_none() {
+        return None;
+    }
+    let output = Command::new("sh")
+        .args([
+            "-c",
+            "wid=$(xdotool getactivewindow 2>/dev/null) || exit 1; xdotool getwindowgeometry --shell \"$wid\" 2>/dev/null",
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let (x, y, width, height) = parse_xdotool_window_geometry(&text);
+    Some((x? + width? / 2, y? + height? / 2))
+}
+
+fn parse_xdotool_window_geometry(
+    text: &str,
+) -> (Option<i32>, Option<i32>, Option<i32>, Option<i32>) {
+    let mut x = None;
+    let mut y = None;
+    let mut width = None;
+    let mut height = None;
+    for line in text.lines() {
+        if let Some(value) = line.strip_prefix("X=") {
+            x = value.trim().parse().ok();
+        } else if let Some(value) = line.strip_prefix("Y=") {
+            y = value.trim().parse().ok();
+        } else if let Some(value) = line.strip_prefix("WIDTH=") {
+            width = value.trim().parse().ok();
+        } else if let Some(value) = line.strip_prefix("HEIGHT=") {
+            height = value.trim().parse().ok();
+        }
+    }
+    (x, y, width, height)
 }
 
 fn monitor_at_mouse(window: &tauri::WebviewWindow) -> Option<tauri::Monitor> {
@@ -655,6 +702,17 @@ mod tests {
         assert!(PanelWindow::Prompt.is_overlay());
         assert_eq!(PanelWindow::Prompt.label(), "prompt");
         assert_eq!(PanelWindow::Prompt.title(), "Jcode Prompt");
+    }
+
+    #[test]
+    fn parses_xdotool_window_geometry() {
+        let (x, y, width, height) = parse_xdotool_window_geometry(
+            "WINDOW=123\nX=1920\nY=24\nWIDTH=1280\nHEIGHT=720\nSCREEN=0\n",
+        );
+        assert_eq!(
+            (x, y, width, height),
+            (Some(1920), Some(24), Some(1280), Some(720))
+        );
     }
 
     #[test]

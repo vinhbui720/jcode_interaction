@@ -86,6 +86,7 @@ export function renderFeedback(root: HTMLElement) {
   let speakTimer: number | undefined;
   let hovering = false;
   let soundEnabled = false;
+  let soundLoaded = false;
   let lastSpokenText = '';
   let pendingSpokenText = '';
   let userPinnedScroll = false;
@@ -110,9 +111,20 @@ export function renderFeedback(root: HTMLElement) {
   };
 
   const scheduleSpeak = (text: string, status: string) => {
+    if (!soundLoaded) {
+      void api.snapshot().then((snapshot) => {
+        soundLoaded = true;
+        soundEnabled = !!snapshot.config.tts_enabled;
+        updateSoundButton();
+        scheduleSpeak(text, status);
+      }).catch(() => { soundLoaded = true; });
+      return;
+    }
     if (!soundEnabled) return;
     const trimmed = text.trim();
-    const stableStatus = ['complete', 'error'].includes(status.toLowerCase());
+    const normalizedStatus = status.toLowerCase();
+    const streamingStatus = ['sending', 'answering', 'working'].some((part) => normalizedStatus.includes(part));
+    const stableStatus = !streamingStatus;
     if (!stableStatus) return;
     if (!trimmed || trimmed === lastSpokenText || trimmed === pendingSpokenText) return;
     pendingSpokenText = trimmed;
@@ -193,6 +205,7 @@ export function renderFeedback(root: HTMLElement) {
           statsEl.hidden = false;
         }
         soundEnabled = !!snapshot.config.tts_enabled;
+        soundLoaded = true;
         updateSoundButton();
       })
       .catch(() => {});

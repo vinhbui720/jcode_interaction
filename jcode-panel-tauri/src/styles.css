@@ -113,8 +113,10 @@ footer button, .settings-shell button { border: 0; border-radius: 12px; padding:
   box-shadow: 0 18px 45px rgba(15,23,42,.24), 0 0 0 1px rgba(15,23,42,.08);
   display: flex; flex-direction: column; gap: 8px;
 }
-.toast-card-notification { pointer-events: auto; height: 38px; max-height: calc(100vh - 18px); min-height: 0; overflow: hidden; border-radius: 0 0 18px 18px; animation: slideDownToast .28s cubic-bezier(.2,.9,.2,1); background: rgba(255,255,255,.92); transition: height .18s ease, border-radius .18s ease, padding .18s ease, box-shadow .18s ease; }
+.toast-card-notification { position: relative; pointer-events: auto; height: 38px; max-height: calc(100vh - 18px); min-height: 0; overflow: hidden; border-radius: 0 0 18px 18px; animation: slideDownToast .28s cubic-bezier(.2,.9,.2,1); background: linear-gradient(135deg, rgba(255,255,255,.96), rgba(239,246,255,.94)); border: 1px solid rgba(191,219,254,.82); transition: height .18s ease, border-radius .18s ease, padding .18s ease, box-shadow .18s ease; }
+.toast-card-notification::before { content: "JC"; display: grid; place-items: center; position: absolute; left: 10px; top: 9px; width: 20px; height: 20px; border-radius: 8px; background: linear-gradient(135deg,#2563eb,#7c3aed); color: white; font-size: 9px; font-weight: 900; box-shadow: 0 8px 18px rgba(37,99,235,.22); }
 .toast-card-notification:hover, .toast-card-notification:focus-within { height: min(320px, calc(100vh - 18px)); padding: 12px; border-radius: 0 0 28px 28px; box-shadow: 0 24px 60px rgba(15,23,42,.22), 0 0 0 1px rgba(15,23,42,.08); }
+.toast-card-notification:hover::before, .toast-card-notification:focus-within::before { display: none; }
 @keyframes slideDownToast { from { transform: translateY(-24px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 .toast-grabber { width: 54px; height: 3px; margin: 0 auto 1px; border-radius: 999px; background: rgba(148,163,184,.46); }
 .toast-topline { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 22px; }
@@ -124,9 +126,12 @@ footer button, .settings-shell button { border: 0; border-radius: 12px; padding:
 .toast-title { color: #64748b; font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; white-space: nowrap; }
 .toast-stats { display: flex; gap: 6px; color: #2563eb; font-size: 11px; font-weight: 800; white-space: nowrap; }
 .toast-scroll { flex: 1; min-height: 0; overflow: hidden; padding: 0; position: relative; }
-.toast-card-notification:not(:hover):not(:focus-within) .toast-scroll { flex: 0 0 auto; }
+.toast-card-notification:not(:hover):not(:focus-within) .toast-scroll { flex: 0 0 auto; padding-left: 28px; }
 .toast-card:hover .toast-scroll, .toast-scroll:focus-within { overflow-y: auto; padding-top: 5px; }
 .toast-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #0f172a; line-height: 1.32; font-size: 12px; outline: none; user-select: text; padding: 0 2px; border-radius: 0; background: transparent; border: 0; }
+.toast-card-notification:not(:hover):not(:focus-within) .toast-text, .toast-card-notification:not(:hover):not(:focus-within) .toast-text * { display: inline; white-space: nowrap; }
+.toast-card-notification:not(:hover):not(:focus-within) .toast-text br { display: none; }
+.toast-card-notification:not(:hover):not(:focus-within) .toast-bullet { display: none; }
 .toast-card:hover .toast-text, .toast-card:focus-within .toast-text { white-space: pre-wrap; line-height: 1.42; font-size: 14px; padding: 10px 12px; border-radius: 18px; background: linear-gradient(135deg, rgba(248,250,252,.92), rgba(239,246,255,.84)); border: 1px solid rgba(226,232,240,.86); }
 .toast-text code { color: #0f766e; background: #ecfeff; border-radius: 6px; padding: 1px 4px; }
 .toast-heading { color: #7c3aed; font-size: 15px; }
