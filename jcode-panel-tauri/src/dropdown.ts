@@ -20,7 +20,7 @@ function tokenLine(snapshot: Snapshot) {
 }
 
 function conversationBubbles(snapshot: Snapshot) {
-  const messages = snapshot.state.recent_messages.slice(-4);
+  const messages = snapshot.state.recent_messages.slice(-12);
   if (!messages.length) {
     return `
       <div class="chat-empty">
