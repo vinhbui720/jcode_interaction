@@ -217,20 +217,14 @@ fn follow_prompt_while_visible(app: AppHandle) {
                 };
                 if window.is_visible().unwrap_or(false) {
                     place_prompt_at_mouse_or_center(&window);
-                    // Keep the overlay following the cursor without constantly
-                    // stealing focus back from whatever the user clicks. On X11
-                    // and Wayland, keyboard input is delivered to the focused
-                    // toplevel window; Tauri does not expose a safe global
-                    // keyboard grab for a webview. We therefore take focus when
-                    // the prompt is shown (see refocus_prompt_after_show), but
-                    // do not re-grab it on every mouse-follow tick. This keeps
-                    // keyboard input captured by the prompt after hotkey open,
-                    // while still allowing mouse interaction with other apps as
-                    // much as the window manager permits. If another app is
-                    // clicked, that app may receive subsequent keyboard input
-                    // until the prompt is focused again; preventing that would
-                    // require a platform-specific keyboard grab/input-method
-                    // implementation outside Tauri's portable window API.
+                    // Desired modal-keyboard behavior: while the prompt is open,
+                    // keep keyboard focus on the prompt so keystrokes do not leak
+                    // into the previously focused app. Mouse clicks can still be
+                    // made, but the prompt immediately reclaims keyboard focus.
+                    let _ = window.set_focus();
+                    let _ = window.eval(
+                        "document.querySelector('#prompt-input')?.focus({preventScroll:true});",
+                    );
                 } else {
                     PROMPT_FOLLOW_RUNNING.store(false, Ordering::SeqCst);
                 }
