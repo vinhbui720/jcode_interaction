@@ -234,6 +234,7 @@ pub fn run() {
             tray::install(app)?;
             start_ipc_server(app.handle());
             register_prompt_shortcut(app.handle());
+            commands::sync_gnome_prompt_shortcut(&config::load_config().prompt_hotkey);
             context::start_browser_bridge();
             let _ = integrations::vscode::install();
             let _ = integrations::obsidian::install();

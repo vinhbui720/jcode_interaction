@@ -22,16 +22,10 @@ pub fn install(app: &mut App) -> tauri::Result<()> {
                 let _ = windows::show_prompt_window(app);
             }
             "dropdown" => {
-                let _ = app.get_webview_window("dropdown").map(|w| {
-                    let _ = w.show();
-                    let _ = w.set_focus();
-                });
+                let _ = windows::show_dropdown(app.clone());
             }
             "settings" => {
-                let _ = app.get_webview_window("settings").map(|w| {
-                    let _ = w.show();
-                    let _ = w.set_focus();
-                });
+                let _ = windows::show_settings(app.clone());
             }
             "quit" => app.exit(0),
             _ => {}

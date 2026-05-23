@@ -68,10 +68,46 @@ pub fn save_settings(new_config: config::AppConfig, app: AppHandle) -> Result<()
     Ok(())
 }
 
-fn sync_gnome_prompt_shortcut(hotkey: &str) {
+pub fn sync_gnome_prompt_shortcut(hotkey: &str) {
     let Some(binding) = gnome_binding(hotkey) else {
         return;
     };
+    let base =
+        "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/jcode-panel-prompt/";
+    let media_schema = "org.gnome.settings-daemon.plugins.media-keys";
+    let media_key = "custom-keybindings";
+    if let Ok(output) = Command::new("gsettings")
+        .args(["get", media_schema, media_key])
+        .output()
+    {
+        let current = String::from_utf8_lossy(&output.stdout);
+        let mut entries: Vec<String> = if current.trim() == "@as []" {
+            Vec::new()
+        } else {
+            current
+                .trim()
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .split(',')
+                .map(|entry| entry.trim().trim_matches('\'').to_string())
+                .filter(|entry| !entry.is_empty())
+                .collect()
+        };
+        if !entries.iter().any(|entry| entry == base) {
+            entries.push(base.into());
+            let rendered = format!(
+                "[{}]",
+                entries
+                    .iter()
+                    .map(|entry| format!("'{}'", entry.replace('\'', "\\'")))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            let _ = Command::new("gsettings")
+                .args(["set", media_schema, media_key, &rendered])
+                .status();
+        }
+    }
     let schema = "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/jcode-panel-prompt/";
     let _ = Command::new("gsettings")
         .args(["set", schema, "binding", &binding])
@@ -477,4 +513,22 @@ pub fn launch_terminal(command: Option<String>) -> Result<(), String> {
         .spawn()
         .map_err(|err| err.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gnome_binding_formats_keyboard_shortcut() {
+        assert_eq!(
+            gnome_binding("Ctrl+Alt+F8"),
+            Some("<Primary><Alt>f8".into())
+        );
+    }
+
+    #[test]
+    fn gnome_binding_formats_mouse_shortcut() {
+        assert_eq!(gnome_binding("Super+Mouse8"), Some("<Super>Button8".into()));
+    }
 }
