@@ -603,13 +603,12 @@ fn move_feedback_to_mouse_screen(window: &tauri::WebviewWindow) {
     if let Some(monitor) = monitor {
         let pos = monitor.position();
         let size = monitor.size();
-        let window_size = window
-            .outer_size()
-            .ok()
-            .unwrap_or_else(|| PhysicalSize::new(640_u32, 360_u32));
+        let window_width = 640_u32.min(size.width.saturating_sub(48).max(320));
+        let window_height = 360_u32.min(size.height.saturating_sub(64).max(180));
+        let _ = window.set_size(PhysicalSize::new(window_width, window_height));
         // Presentation only: make feedback feel like a notification sliding down
         // from the top/header area instead of a bottom toast.
-        let x = pos.x + ((size.width as i32 - window_size.width as i32) / 2).max(0);
+        let x = pos.x + ((size.width as i32 - window_width as i32) / 2).max(0);
         let y = pos.y + 42;
         let _ = window.set_position(PhysicalPosition::new(x, y));
     }
