@@ -536,6 +536,8 @@ fn build_selected_context_chips(
                 && normalized_selection_eq(&browser.selected_text, &ctx.selected_text)
         })
         .unwrap_or(false);
+    let likely_browser_source =
+        focused_browser || ctx.app.trim().is_empty() || browser_selection_matches;
     if focused_browser || ctx.app.trim().is_empty() {
         if let Some(browser) = &ctx.browser {
             if !browser.selected_text.trim().is_empty() {
@@ -565,7 +567,7 @@ fn build_selected_context_chips(
             selected_text,
             &ctx.app,
             &ctx.window_title,
-            ctx.browser.as_ref().filter(|_| browser_selection_matches),
+            ctx.browser.as_ref().filter(|_| likely_browser_source),
         ));
     }
     chips

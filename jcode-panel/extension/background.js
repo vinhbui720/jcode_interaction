@@ -36,8 +36,66 @@ async function selectionDetails(tabId) {
   }
 }
 
+async function installSelectionReporter(tabId) {
+  if (!tabId) return;
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        if (window.__jcodeSelectionReporterInstalled) return;
+        window.__jcodeSelectionReporterInstalled = true;
+        let timer = null;
+        const reportSoon = () => {
+          window.clearTimeout(timer);
+          timer = window.setTimeout(() => {
+            const selection = window.getSelection ? window.getSelection() : null;
+            const selectedText = selection ? String(selection) : "";
+            let selectionLine = null;
+            let selectionContext = "";
+            try {
+              if (selection && selection.rangeCount > 0 && selectedText.trim()) {
+                const range = selection.getRangeAt(0);
+                const container = range.startContainer;
+                const element = container.nodeType === Node.ELEMENT_NODE
+                  ? container
+                  : container.parentElement;
+                const block = element && element.closest
+                  ? element.closest('p,li,pre,code,blockquote,article,section,main,div,td,th,h1,h2,h3,h4,h5,h6')
+                  : null;
+                selectionContext = (block && block.innerText ? block.innerText : (element && element.innerText) || selectedText)
+                  .replace(/\s+/g, ' ')
+                  .trim()
+                  .slice(0, 500);
+                const preRange = document.createRange();
+                preRange.selectNodeContents(document.body);
+                preRange.setEnd(range.startContainer, range.startOffset);
+                selectionLine = String(preRange.toString()).split(/\n/).length;
+              }
+            } catch (_err) {}
+            fetch("http://127.0.0.1:8765/", {
+              method: "POST",
+              headers: {"content-type": "application/json"},
+              body: JSON.stringify({
+                title: document.title || "",
+                url: location.href || "",
+                selectedText,
+                selectionLine,
+                selectionContext
+              })
+            }).catch(() => {});
+          }, 120);
+        };
+        document.addEventListener("selectionchange", reportSoon, true);
+        document.addEventListener("mouseup", reportSoon, true);
+        document.addEventListener("keyup", reportSoon, true);
+      }
+    });
+  } catch (_err) {}
+}
+
 async function report(tab) {
   if (!tab || !tab.id) return;
+  await installSelectionReporter(tab.id);
   const details = await selectionDetails(tab.id);
   try {
     await fetch("http://127.0.0.1:8765/", {
