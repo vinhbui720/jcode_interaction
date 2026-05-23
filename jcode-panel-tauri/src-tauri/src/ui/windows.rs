@@ -16,6 +16,23 @@ use tauri::{
 
 static LAST_FEEDBACK: Mutex<Option<FeedbackPayload>> = Mutex::new(None);
 static PROMPT_FOLLOW_RUNNING: AtomicBool = AtomicBool::new(false);
+const PROMPT_INPUT_FOCUS_SCRIPT: &str =
+    "document.querySelector('#prompt-input')?.focus({preventScroll:true});";
+const PROMPT_REFOCUS_DELAYS_MS: [u64; 5] = [40, 120, 260, 520, 900];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PromptToggleAction {
+    Show,
+    Hide,
+}
+
+fn prompt_toggle_action(prompt_visible: bool) -> PromptToggleAction {
+    if prompt_visible {
+        PromptToggleAction::Hide
+    } else {
+        PromptToggleAction::Show
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct FeedbackPayload {
@@ -123,7 +140,7 @@ pub fn show_prompt(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn toggle_prompt(app: AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("prompt") {
-        if window.is_visible().unwrap_or(false) {
+        if prompt_toggle_action(window.is_visible().unwrap_or(false)) == PromptToggleAction::Hide {
             return hide_prompt(app);
         }
     }
@@ -146,7 +163,7 @@ pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
 
 fn refocus_prompt_after_show(app: AppHandle) {
     thread::spawn(move || {
-        for delay in [40_u64, 120, 260, 520, 900] {
+        for delay in PROMPT_REFOCUS_DELAYS_MS {
             thread::sleep(Duration::from_millis(delay));
             let app_for_main = app.clone();
             let _ = app.run_on_main_thread(move || {
@@ -158,8 +175,7 @@ fn refocus_prompt_after_show(app: AppHandle) {
                 }
                 let _ = window.set_focus();
                 let _ = window.emit("prompt-shown", ());
-                let _ = window
-                    .eval("document.querySelector('#prompt-input')?.focus({preventScroll:true});");
+                let _ = window.eval(PROMPT_INPUT_FOCUS_SCRIPT);
             });
         }
     });
@@ -222,9 +238,7 @@ fn follow_prompt_while_visible(app: AppHandle) {
                     // into the previously focused app. Mouse clicks can still be
                     // made, but the prompt immediately reclaims keyboard focus.
                     let _ = window.set_focus();
-                    let _ = window.eval(
-                        "document.querySelector('#prompt-input')?.focus({preventScroll:true});",
-                    );
+                    let _ = window.eval(PROMPT_INPUT_FOCUS_SCRIPT);
                 } else {
                     PROMPT_FOLLOW_RUNNING.store(false, Ordering::SeqCst);
                 }
@@ -492,6 +506,30 @@ fn monitor_for_point(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prompt_toggle_hides_when_prompt_is_visible() {
+        assert_eq!(prompt_toggle_action(true), PromptToggleAction::Hide);
+    }
+
+    #[test]
+    fn prompt_toggle_shows_when_prompt_is_missing_or_hidden() {
+        assert_eq!(prompt_toggle_action(false), PromptToggleAction::Show);
+    }
+
+    #[test]
+    fn prompt_window_is_overlay_so_builder_keeps_it_always_on_top() {
+        assert!(PanelWindow::Prompt.is_overlay());
+        assert_eq!(PanelWindow::Prompt.label(), "prompt");
+        assert_eq!(PanelWindow::Prompt.title(), "Jcode Prompt");
+    }
+
+    #[test]
+    fn prompt_refocus_targets_prompt_input_repeatedly_after_show() {
+        assert_eq!(PROMPT_REFOCUS_DELAYS_MS, [40, 120, 260, 520, 900]);
+        assert!(PROMPT_INPUT_FOCUS_SCRIPT.contains("#prompt-input"));
+        assert!(PROMPT_INPUT_FOCUS_SCRIPT.contains("preventScroll:true"));
+    }
 
     #[test]
     fn smooth_step_snaps_when_close() {
