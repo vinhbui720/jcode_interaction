@@ -85,6 +85,7 @@ export function renderFeedback(root: HTMLElement) {
   let hideTimer: number | undefined;
   let speakTimer: number | undefined;
   let hovering = false;
+  let clicked = false;
   let soundEnabled = false;
   let soundLoaded = false;
   let lastSpokenText = '';
@@ -100,8 +101,8 @@ export function renderFeedback(root: HTMLElement) {
 
   const scheduleHide = () => {
     if (hideTimer) window.clearTimeout(hideTimer);
-    if (hovering) return;
-    hideTimer = window.setTimeout(() => api.hideFeedback(), 2_000);
+    if (hovering || clicked) return;
+    hideTimer = window.setTimeout(() => api.hideFeedback(), 5_000);
   };
 
   const updateSoundButton = () => {
@@ -180,6 +181,10 @@ export function renderFeedback(root: HTMLElement) {
 
   root.addEventListener('mouseenter', () => {
     hovering = true;
+    if (hideTimer) window.clearTimeout(hideTimer);
+  });
+  root.addEventListener('pointerdown', () => {
+    clicked = true;
     if (hideTimer) window.clearTimeout(hideTimer);
   });
   root.addEventListener('mouseleave', () => {
