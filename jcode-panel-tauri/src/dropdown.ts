@@ -4,47 +4,61 @@ function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]!));
 }
 
-function tokenBadge(snapshot: Snapshot) {
+function clientStatus(snapshot: Snapshot) {
+  if (!snapshot.jcode_available) return { label: 'missing', tone: 'error', detail: 'Jcode CLI is not available on PATH.' };
+  const status = snapshot.header_status || snapshot.state.process_status || 'idle';
+  const active = snapshot.state.live_activity;
+  const detail = active?.active ? `${active.label}: ${active.state}` : 'Client is ready for the prompt hotkey.';
+  return { label: status, tone: status.replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'idle', detail };
+}
+
+function tokenLine(snapshot: Snapshot) {
   const stats = snapshot.state.token_stats;
-  if (!stats) return '<span class="badge muted">no token data</span>';
-  return `<span class="badge">⬆ ${stats.upload} · ⬇ ${stats.download} · cache ${stats.cache_read}/${stats.cache_write}</span>`;
+  if (!stats) return 'No token usage yet';
+  return `↑ ${stats.upload} · ↓ ${stats.download} · cache ${stats.cache_read}/${stats.cache_write}`;
 }
 
 export async function renderDropdown(root: HTMLElement) {
   const snapshot = await api.snapshot();
-  const diagnostics = await api.diagnosticsReport();
-  const messages = snapshot.state.recent_messages.slice(-8).map((m) => `
-    <article class="message"><strong>${m.author}</strong><p>${m.text}</p></article>`).join('') || '<p class="muted">No messages yet.</p>';
-  const history = snapshot.state.prompt_history.slice(-6).reverse().map((item) => `<li>${item}</li>`).join('') || '<li class="muted">No prompt history yet.</li>';
-  const checks = diagnostics.checks.map((check) => `<li class="${check.ok ? 'ok' : 'fail'}"><strong>${check.name}</strong>: ${check.message}</li>`).join('');
-  const status = snapshot.state.process_status || 'idle';
-  const statusClass = status.replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'idle';
+  const status = clientStatus(snapshot);
+  const activeSession = snapshot.state.active_session ?? '';
+  const section = snapshot.state.active_section || 'Previous section';
   root.innerHTML = `
-    <main class="panel-shell">
-      <header class="panel-header">
-        <div><h1>Jcode Interaction</h1><p>${snapshot.state.active_section}</p></div>
-        ${tokenBadge(snapshot)}
+    <main class="panel-shell panel-shell-modern">
+      <header class="dropdown-hero">
+        <div class="prompt-logo dropdown-logo">JC</div>
+        <div class="dropdown-title">
+          <p class="eyebrow">Jcode client</p>
+          <h1>${escapeHtml(section)}</h1>
+        </div>
+        <strong class="status-pill status-${escapeHtml(status.tone)}">${escapeHtml(status.label)}</strong>
       </header>
-      <section class="status-grid">
-        <div><span>status</span><strong class="status-pill status-${statusClass}">${escapeHtml(status)}</strong></div>
-        <div><span>jcode</span><strong>${snapshot.jcode_available ? 'ready' : 'missing'}</strong></div>
-        <div><span>session</span><strong>${escapeHtml(snapshot.state.active_session ?? 'new')}</strong></div>
-        <div><span>latest</span><strong>${escapeHtml(snapshot.conversation_preview)}</strong></div>
+
+      <section class="client-card">
+        <div class="client-card-topline">
+          <span>Current status</span>
+          <strong>${snapshot.jcode_available ? 'Ready' : 'Needs setup'}</strong>
+        </div>
+        <p class="client-detail">${escapeHtml(status.detail)}</p>
+        <div class="client-meta">
+          <span>${escapeHtml(tokenLine(snapshot))}</span>
+          <span>Session: ${escapeHtml(activeSession || 'new')}</span>
+        </div>
       </section>
-      <section class="session-tools">
-        <input id="sessionId" placeholder="Resume session id" value="${snapshot.state.active_session ?? ''}" />
-        <button id="resume">Resume</button>
-        <button id="newSection">New section</button>
+
+      <section class="session-tools session-tools-modern" aria-label="Session controls">
+        <input id="sessionId" placeholder="Session id to resume" value="${escapeHtml(activeSession)}" />
+        <button id="resume" class="secondary-action">Resume</button>
+        <button id="newSection" class="primary-action">New</button>
       </section>
-      <section class="conversation">${messages}</section>
-      <section class="diagnostics"><h2>Diagnostics</h2><ul>${checks}</ul></section>
-      <section class="history"><h2>Prompt history</h2><ul>${history}</ul></section>
-      <footer>
-        <button id="refresh">Refresh integrations</button>
-        <button id="terminal">Open terminal</button>
+
+      <section class="quick-actions" aria-label="Quick actions">
         <button id="settings">Settings</button>
-      </footer>
+        <button id="terminal">Open terminal</button>
+        <button id="refresh">Refresh</button>
+      </section>
     </main>`;
+
   root.querySelector<HTMLButtonElement>('#refresh')!.onclick = async () => { await api.refreshIntegrations(); renderDropdown(root); };
   root.querySelector<HTMLButtonElement>('#settings')!.onclick = () => api.showSettings();
   root.querySelector<HTMLButtonElement>('#terminal')!.onclick = () => api.launchTerminal();

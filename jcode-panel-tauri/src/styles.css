@@ -30,9 +30,21 @@ button, input { font: inherit; }
 .prompt-suggestion span { color: #64748b; }
 .prompt-suggestion.active { background: #dbeafe; color: #1d4ed8; }
 .panel-shell, .settings-shell { min-height: 100vh; box-sizing: border-box; padding: 18px; background: #f8fafc; }
+.panel-shell-modern {
+  display: grid; gap: 14px; align-content: start;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(37,99,235,.16), transparent 32%),
+    radial-gradient(circle at 90% 10%, rgba(124,58,237,.14), transparent 34%),
+    #f8fafc;
+}
 .panel-header { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
 h1 { margin: 0; font-size: 22px; }
 p { margin: 4px 0; }
+.dropdown-hero { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.dropdown-logo { box-shadow: 0 10px 24px rgba(37,99,235,.26); }
+.dropdown-title { min-width: 0; }
+.dropdown-title h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 20px; }
+.eyebrow { margin: 0 0 3px; color: #64748b; font-size: 11px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
 .badge { border-radius: 999px; padding: 6px 10px; background: #dbeafe; color: #1d4ed8; font-size: 12px; font-weight: 700; }
 .muted { color: #64748b; }
 .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 18px 0; }
@@ -41,12 +53,25 @@ p { margin: 4px 0; }
 .status-complete { background: #dcfce7; color: #166534; }
 .status-error { background: #fee2e2; color: #991b1b; }
 .status-idle { background: #e2e8f0; color: #475569; }
-.status-grid > div, .message, .session-tools, .history, .diagnostics { background: white; border: 1px solid #e2e8f0; border-radius: 16px; padding: 12px; }
+.status-grid > div, .message, .session-tools, .history, .diagnostics, .client-card, .quick-actions { background: rgba(255,255,255,.82); border: 1px solid rgba(226,232,240,.9); border-radius: 20px; padding: 12px; box-shadow: 0 14px 34px rgba(15,23,42,.08); backdrop-filter: blur(18px); }
 .status-grid span { display: block; color: #64748b; font-size: 12px; }
 .status-grid > div:last-child { grid-column: 1 / -1; }
 .session-tools { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; margin-bottom: 12px; }
 .session-tools input { min-width: 0; border: 1px solid #cbd5e1; border-radius: 12px; padding: 9px; }
 .session-tools button { border: 0; border-radius: 12px; padding: 9px 12px; background: #0f172a; color: white; }
+.client-card { display: grid; gap: 8px; }
+.client-card-topline { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #64748b; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+.client-card-topline strong { color: #0f172a; font-size: 13px; }
+.client-detail { color: #0f172a; line-height: 1.35; }
+.client-meta { display: flex; flex-wrap: wrap; gap: 8px; }
+.client-meta span { border-radius: 999px; padding: 5px 9px; background: rgba(37,99,235,.09); color: #2563eb; font-size: 12px; font-weight: 800; }
+.session-tools-modern { margin: 0; }
+.session-tools-modern input { background: rgba(255,255,255,.9); }
+.session-tools-modern .primary-action { background: linear-gradient(135deg,#2563eb,#7c3aed); box-shadow: 0 10px 22px rgba(37,99,235,.24); }
+.session-tools-modern .secondary-action { background: #0f172a; }
+.quick-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.quick-actions button { border: 0; border-radius: 999px; padding: 10px 12px; background: rgba(15,23,42,.07); color: #0f172a; font-weight: 800; }
+.quick-actions button:first-child { background: #0f172a; color: white; }
 .conversation { display: grid; gap: 10px; }
 .message p { white-space: pre-wrap; color: #334155; }
 .history, .diagnostics { margin-top: 12px; }
