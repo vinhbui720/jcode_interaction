@@ -7,9 +7,7 @@ USER_BIN="$HOME/.local/bin"
 DESKTOP_DIR="$HOME/.local/share/applications"
 AUTOSTART_DIR="$HOME/.config/autostart"
 ICON_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
-GNOME_EXT_UUID="jcode-cursor@local"
-GNOME_EXT_SRC="$APP_DIR/gnome-extension/$GNOME_EXT_UUID"
-GNOME_EXT_DIR="$HOME/.local/share/gnome-shell/extensions/$GNOME_EXT_UUID"
+GNOME_EXT_UUIDS=("jcode-cursor@local" "jcode-mouse@local")
 DESKTOP_FILE="$DESKTOP_DIR/jcode-panel.desktop"
 AUTOSTART_FILE="$AUTOSTART_DIR/jcode-panel.desktop"
 WRAPPER="$USER_BIN/jcode-panel"
@@ -24,14 +22,17 @@ npm install
 npx tauri build --no-bundle
 
 mkdir -p "$USER_BIN" "$DESKTOP_DIR" "$AUTOSTART_DIR" "$ICON_DIR"
-if [[ -d "$GNOME_EXT_SRC" ]]; then
-  mkdir -p "$GNOME_EXT_DIR"
-  cp "$GNOME_EXT_SRC/metadata.json" "$GNOME_EXT_SRC/extension.js" "$GNOME_EXT_DIR/"
-  if command -v gnome-extensions >/dev/null 2>&1; then
-    gnome-extensions enable "$GNOME_EXT_UUID" || true
-  fi
-  if command -v gsettings >/dev/null 2>&1; then
-    python3 - "$GNOME_EXT_UUID" <<'PY'
+for GNOME_EXT_UUID in "${GNOME_EXT_UUIDS[@]}"; do
+  GNOME_EXT_SRC="$APP_DIR/gnome-extension/$GNOME_EXT_UUID"
+  GNOME_EXT_DIR="$HOME/.local/share/gnome-shell/extensions/$GNOME_EXT_UUID"
+  if [[ -d "$GNOME_EXT_SRC" ]]; then
+    mkdir -p "$GNOME_EXT_DIR"
+    cp "$GNOME_EXT_SRC/metadata.json" "$GNOME_EXT_SRC/extension.js" "$GNOME_EXT_DIR/"
+    if command -v gnome-extensions >/dev/null 2>&1; then
+      gnome-extensions enable "$GNOME_EXT_UUID" || true
+    fi
+    if command -v gsettings >/dev/null 2>&1; then
+      python3 - "$GNOME_EXT_UUID" <<'PY'
 import ast, subprocess, sys
 uuid = sys.argv[1]
 current = subprocess.run(["gsettings", "get", "org.gnome.shell", "enabled-extensions"], text=True, capture_output=True).stdout.strip()
@@ -43,8 +44,9 @@ if uuid not in values:
     values.append(uuid)
 subprocess.run(["gsettings", "set", "org.gnome.shell", "enabled-extensions", str(values)])
 PY
+    fi
   fi
-fi
+done
 if [[ -f "$APP_DIR/../jcode-panel/assets/icon.svg" ]]; then
   cp "$APP_DIR/../jcode-panel/assets/icon.svg" "$ICON_DIR/jcode-panel.svg"
 elif [[ -f "$APP_DIR/src-tauri/icons/icon.png" ]]; then

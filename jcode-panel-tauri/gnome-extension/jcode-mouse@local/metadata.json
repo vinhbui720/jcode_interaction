@@ -1,0 +1,7 @@
+{
+  "uuid": "jcode-mouse@local",
+  "name": "Jcode Mouse Hotkey",
+  "description": "Handle jcode-panel prompt hotkeys bound to mouse side buttons on GNOME Wayland.",
+  "version": 1,
+  "shell-version": ["42"]
+}
