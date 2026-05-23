@@ -1,13 +1,13 @@
 use crate::core::{formatting, positioning, state::TokenStats};
 use serde::Serialize;
 use std::{
-    process::{Command, Stdio},
+    process::Command,
     sync::{
         atomic::{AtomicBool, Ordering},
         Mutex,
     },
     thread,
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
@@ -16,11 +16,18 @@ use tauri::{
 
 static LAST_FEEDBACK: Mutex<Option<FeedbackPayload>> = Mutex::new(None);
 static PROMPT_FOLLOW_RUNNING: AtomicBool = AtomicBool::new(false);
-static LAST_SHELL_FOCUS: Mutex<Option<Instant>> = Mutex::new(None);
-const PROMPT_INPUT_FOCUS_SCRIPT: &str =
-    "document.querySelector('#prompt-input')?.focus({preventScroll:true});";
+const PROMPT_INPUT_FOCUS_SCRIPT: &str = r#"
+window.focus();
+document.body.setAttribute('tabindex', '-1');
+document.body.focus({preventScroll:true});
+const promptInput = document.querySelector('#prompt-input');
+if (promptInput) {
+  promptInput.removeAttribute('disabled');
+  promptInput.focus({preventScroll:true});
+  promptInput.setSelectionRange(promptInput.value.length, promptInput.value.length);
+}
+"#;
 const PROMPT_REFOCUS_DELAYS_MS: [u64; 7] = [40, 120, 260, 520, 900, 1_400, 2_000];
-const SHELL_PROMPT_FOCUS_INTERVAL_MS: u128 = 120;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PromptToggleAction {
@@ -156,9 +163,12 @@ pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
     window.show().map_err(|err| err.to_string())?;
     let _ = window.set_always_on_top(true);
     window.unminimize().map_err(|err| err.to_string())?;
+    activate_window_title(PanelWindow::Prompt.title());
     window.set_focus().map_err(|err| err.to_string())?;
     activate_window_title(PanelWindow::Prompt.title());
     let _ = window.emit("prompt-shown", ());
+    let _ = window.eval(PROMPT_INPUT_FOCUS_SCRIPT);
+    crate::app::register_prompt_close_shortcut(app);
     refocus_prompt_after_show(app.clone());
     follow_prompt_while_visible(app.clone());
     Ok(())
@@ -177,7 +187,6 @@ fn refocus_prompt_after_show(app: AppHandle) {
                     return;
                 }
                 let _ = window.set_focus();
-                maybe_focus_prompt_via_gnome_shell();
                 let _ = window.emit("prompt-shown", ());
                 let _ = window.eval(PROMPT_INPUT_FOCUS_SCRIPT);
             });
@@ -206,9 +215,16 @@ fn activate_window_title(title: &str) {
     if std::env::var_os("DISPLAY").is_none() {
         return;
     }
-    let _ = Command::new("xdotool")
-        .args(["search", "--name", title, "windowactivate", "--sync", "%@"])
-        .spawn();
+    let script = format!(
+        "wid=$(xdotool search --name '{}' 2>/dev/null | tail -n1) || exit 0; \
+         [ -n \"$wid\" ] || exit 0; \
+         xdotool windowmap \"$wid\" 2>/dev/null || true; \
+         xdotool windowraise \"$wid\" 2>/dev/null || true; \
+         xdotool windowactivate --sync \"$wid\" 2>/dev/null || true; \
+         xdotool windowfocus \"$wid\" 2>/dev/null || true",
+        title.replace('\'', "'\\''")
+    );
+    let _ = Command::new("sh").args(["-c", script.as_str()]).spawn();
 }
 
 #[tauri::command]
@@ -242,7 +258,6 @@ fn follow_prompt_while_visible(app: AppHandle) {
                     // into the previously focused app. Mouse clicks can still be
                     // made, but the prompt immediately reclaims keyboard focus.
                     let _ = window.set_focus();
-                    maybe_focus_prompt_via_gnome_shell();
                     let _ = window.eval(PROMPT_INPUT_FOCUS_SCRIPT);
                 } else {
                     PROMPT_FOLLOW_RUNNING.store(false, Ordering::SeqCst);
@@ -259,75 +274,6 @@ fn follow_prompt_while_visible(app: AppHandle) {
 
 pub fn stop_prompt_follow() {
     PROMPT_FOLLOW_RUNNING.store(false, Ordering::SeqCst);
-}
-
-fn maybe_focus_prompt_via_gnome_shell() {
-    if !should_use_gnome_shell_focus_bridge() || !should_throttle_shell_focus() {
-        return;
-    }
-    focus_prompt_via_gnome_shell();
-}
-
-fn should_use_gnome_shell_focus_bridge() -> bool {
-    std::env::var("XDG_CURRENT_DESKTOP")
-        .map(|desktop| desktop.to_ascii_lowercase().contains("gnome"))
-        .unwrap_or(false)
-        && std::env::var_os("WAYLAND_DISPLAY").is_some()
-}
-
-fn should_throttle_shell_focus() -> bool {
-    let now = Instant::now();
-    let Ok(mut last) = LAST_SHELL_FOCUS.lock() else {
-        return true;
-    };
-    if last
-        .map(|previous| previous.elapsed().as_millis() < SHELL_PROMPT_FOCUS_INTERVAL_MS)
-        .unwrap_or(false)
-    {
-        return false;
-    }
-    *last = Some(now);
-    true
-}
-
-fn focus_prompt_via_gnome_shell() {
-    for args in gnome_shell_focus_prompt_args() {
-        let _ = Command::new("gdbus")
-            .args(args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn();
-    }
-}
-
-fn gnome_shell_focus_prompt_args() -> [[&'static str; 10]; 2] {
-    [
-        [
-            "call",
-            "--session",
-            "--dest",
-            "org.jcode.Panel.Focus",
-            "--object-path",
-            "/org/jcode/Panel/Focus",
-            "--method",
-            "org.jcode.Panel.Focus.FocusPrompt",
-            "--timeout",
-            "1",
-        ],
-        [
-            "call",
-            "--session",
-            "--dest",
-            "org.jcode.Panel.MouseHotkey",
-            "--object-path",
-            "/org/jcode/Panel/MouseHotkey",
-            "--method",
-            "org.jcode.Panel.MouseHotkey.FocusPrompt",
-            "--timeout",
-            "1",
-        ],
-    ]
 }
 
 fn smooth_step(current: f64, target: f64, alpha: f64) -> f64 {
@@ -438,6 +384,7 @@ fn clamped_overlay_position(
 #[tauri::command]
 pub fn hide_prompt(app: AppHandle) -> Result<(), String> {
     stop_prompt_follow();
+    crate::app::unregister_prompt_close_shortcut(&app);
     let result = if let Some(window) = app.get_webview_window(PanelWindow::Prompt.label()) {
         // Keep the prompt webview alive between toggles. Closing and rebuilding
         // the transparent WebKit window can race frontend listener setup, so a
@@ -613,41 +560,6 @@ mod tests {
         );
         assert!(PROMPT_INPUT_FOCUS_SCRIPT.contains("#prompt-input"));
         assert!(PROMPT_INPUT_FOCUS_SCRIPT.contains("preventScroll:true"));
-    }
-
-    #[test]
-    fn gnome_shell_focus_bridge_calls_focus_extension() {
-        let args = gnome_shell_focus_prompt_args();
-        assert_eq!(
-            args[0],
-            [
-                "call",
-                "--session",
-                "--dest",
-                "org.jcode.Panel.Focus",
-                "--object-path",
-                "/org/jcode/Panel/Focus",
-                "--method",
-                "org.jcode.Panel.Focus.FocusPrompt",
-                "--timeout",
-                "1",
-            ]
-        );
-        assert_eq!(
-            args[1],
-            [
-                "call",
-                "--session",
-                "--dest",
-                "org.jcode.Panel.MouseHotkey",
-                "--object-path",
-                "/org/jcode/Panel/MouseHotkey",
-                "--method",
-                "org.jcode.Panel.MouseHotkey.FocusPrompt",
-                "--timeout",
-                "1",
-            ]
-        );
     }
 
     #[test]

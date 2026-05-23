@@ -128,13 +128,15 @@ function installHotkeyCapture(root: HTMLElement, inputId: string, buttonId: stri
   });
 }
 
-export async function renderSettings(root: HTMLElement) {
+export async function renderSettingsForm(root: HTMLElement, options: { embedded?: boolean } = {}) {
   const snapshot = await api.snapshot();
   const cfg = snapshot.config;
   const terminals = await api.availableTerminals().catch(() => []);
   const terminalChoices = Array.from(new Set([cfg.terminal, ...terminals].filter(Boolean)));
+  const shellTag = options.embedded ? 'section' : 'main';
+  const shellClass = options.embedded ? 'settings-shell settings-shell-embedded' : 'settings-shell';
   root.innerHTML = `
-    <main class="settings-shell">
+    <${shellTag} class="${shellClass}">
       <header><h1>Settings</h1><p>Saved to disk and restored on next start.</p></header>
       <label>Prompt hotkey
         <div class="settings-inline"><input id="promptHotkey" readonly value="${escapeAttr(cfg.prompt_hotkey)}" /><button id="recordPrompt" type="button">Record</button></div>
@@ -156,7 +158,7 @@ export async function renderSettings(root: HTMLElement) {
       <label class="row"><input id="sendContext" type="checkbox" ${cfg.send_context_default ? 'checked' : ''} /> Send context by default</label>
       <button id="save">Save settings</button>
       <pre id="status"></pre>
-    </main>`;
+    </${shellTag}>`;
 
   installHotkeyCapture(root, 'promptHotkey', 'recordPrompt');
   installHotkeyCapture(root, 'screenshotHotkey', 'recordScreenshot');
@@ -193,4 +195,8 @@ export async function renderSettings(root: HTMLElement) {
       status.textContent = `Could not save settings: ${String(error)}`;
     }
   };
+}
+
+export async function renderSettings(root: HTMLElement) {
+  await renderSettingsForm(root);
 }

@@ -1,4 +1,5 @@
 import { api, Snapshot } from './api';
+import { renderSettingsForm } from './settings';
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]!));
@@ -18,16 +19,19 @@ function tokenLine(snapshot: Snapshot) {
   return `↑ ${stats.upload} · ↓ ${stats.download} · cache ${stats.cache_read}/${stats.cache_write}`;
 }
 
-export async function renderDropdown(root: HTMLElement) {
+type DropdownTab = 'status' | 'settings';
+
+export async function renderDropdown(root: HTMLElement, activeTab: DropdownTab = 'status') {
   const snapshot = await api.snapshot();
   const status = clientStatus(snapshot);
   const activeSession = snapshot.state.active_session ?? '';
   const section = snapshot.state.active_section || 'Previous section';
+  const isSettings = activeTab === 'settings';
   root.innerHTML = `
     <main class="panel-shell panel-shell-modern">
       <nav class="dropdown-tabs" aria-label="Dropdown actions">
-        <button id="statusTab" class="dropdown-tab active" type="button">Status</button>
-        <button id="quit" class="dropdown-tab danger" type="button">Quit</button>
+        <button id="statusTab" class="dropdown-tab ${!isSettings ? 'active' : ''}" type="button" aria-selected="${!isSettings}">Status</button>
+        <button id="settingsTab" class="dropdown-tab ${isSettings ? 'active' : ''}" type="button" aria-selected="${isSettings}">Settings</button>
       </nav>
 
       <header class="dropdown-hero compact">
@@ -39,40 +43,49 @@ export async function renderDropdown(root: HTMLElement) {
         <strong class="status-pill status-${escapeHtml(status.tone)}">${escapeHtml(status.label)}</strong>
       </header>
 
-      <section class="client-card">
-        <div class="client-card-topline">
-          <span>Status</span>
-          <strong>${snapshot.jcode_available ? 'Ready' : 'Needs setup'}</strong>
-        </div>
-        <p class="client-detail">${escapeHtml(status.detail)}</p>
-        <div class="client-meta">
-          <span>${escapeHtml(tokenLine(snapshot))}</span>
-          <span>Session: ${escapeHtml(activeSession || 'new')}</span>
-        </div>
-      </section>
-
-      <section class="session-tools session-tools-modern" aria-label="Session controls">
-        <input id="sessionId" placeholder="Session id to resume" value="${escapeHtml(activeSession)}" />
-        <button id="resume" class="secondary-action">Resume</button>
-        <button id="newSection" class="primary-action">New</button>
-      </section>
-
-      <section class="status-actions" aria-label="Status actions">
-        <button id="terminal" class="status-action-card" type="button"><span>Open</span><strong>Terminal</strong></button>
-        <button id="settings" class="status-action-card" type="button"><span>Open</span><strong>Settings</strong></button>
-      </section>
+      <div id="dropdownPanel"></div>
     </main>`;
 
-  root.querySelector<HTMLButtonElement>('#quit')!.onclick = () => api.quitApp();
-  root.querySelector<HTMLButtonElement>('#settings')!.onclick = () => api.showSettings();
-  root.querySelector<HTMLButtonElement>('#terminal')!.onclick = () => api.launchTerminal();
-  root.querySelector<HTMLButtonElement>('#resume')!.onclick = async () => {
-    const session = root.querySelector<HTMLInputElement>('#sessionId')!.value.trim();
+  root.querySelector<HTMLButtonElement>('#statusTab')!.onclick = () => renderDropdown(root, 'status');
+  root.querySelector<HTMLButtonElement>('#settingsTab')!.onclick = () => renderDropdown(root, 'settings');
+
+  const panel = root.querySelector<HTMLElement>('#dropdownPanel')!;
+  if (isSettings) {
+    await renderSettingsForm(panel, { embedded: true });
+    return;
+  }
+
+  panel.innerHTML = `
+    <section class="client-card">
+      <div class="client-card-topline">
+        <span>Status</span>
+        <strong>${snapshot.jcode_available ? 'Ready' : 'Needs setup'}</strong>
+      </div>
+      <p class="client-detail">${escapeHtml(status.detail)}</p>
+      <div class="client-meta">
+        <span>${escapeHtml(tokenLine(snapshot))}</span>
+        <span>Session: ${escapeHtml(activeSession || 'new')}</span>
+      </div>
+    </section>
+
+    <section class="session-tools session-tools-modern" aria-label="Session controls">
+      <input id="sessionId" placeholder="Session id to resume" value="${escapeHtml(activeSession)}" />
+      <button id="resume" class="secondary-action">Resume</button>
+      <button id="newSection" class="primary-action">New</button>
+    </section>
+
+    <section class="status-actions status-actions-single" aria-label="Status actions">
+      <button id="terminal" class="status-action-card" type="button"><span>Open</span><strong>Terminal</strong></button>
+    </section>`;
+
+  panel.querySelector<HTMLButtonElement>('#terminal')!.onclick = () => api.launchTerminal();
+  panel.querySelector<HTMLButtonElement>('#resume')!.onclick = async () => {
+    const session = panel.querySelector<HTMLInputElement>('#sessionId')!.value.trim();
     if (!session) return;
     await api.switchSession(session, session);
     renderDropdown(root);
   };
-  root.querySelector<HTMLButtonElement>('#newSection')!.onclick = async () => {
+  panel.querySelector<HTMLButtonElement>('#newSection')!.onclick = async () => {
     await api.startNewSection(`jcode-panel ${new Date().toLocaleString()}`);
     renderDropdown(root);
   };
