@@ -7,7 +7,7 @@ use std::{
         Mutex,
     },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
@@ -16,9 +16,11 @@ use tauri::{
 
 static LAST_FEEDBACK: Mutex<Option<FeedbackPayload>> = Mutex::new(None);
 static PROMPT_FOLLOW_RUNNING: AtomicBool = AtomicBool::new(false);
+static LAST_SHELL_FOCUS: Mutex<Option<Instant>> = Mutex::new(None);
 const PROMPT_INPUT_FOCUS_SCRIPT: &str =
     "document.querySelector('#prompt-input')?.focus({preventScroll:true});";
 const PROMPT_REFOCUS_DELAYS_MS: [u64; 7] = [40, 120, 260, 520, 900, 1_400, 2_000];
+const SHELL_PROMPT_FOCUS_INTERVAL_MS: u128 = 120;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PromptToggleAction {
@@ -175,6 +177,7 @@ fn refocus_prompt_after_show(app: AppHandle) {
                     return;
                 }
                 let _ = window.set_focus();
+                maybe_focus_prompt_via_gnome_shell();
                 let _ = window.emit("prompt-shown", ());
                 let _ = window.eval(PROMPT_INPUT_FOCUS_SCRIPT);
             });
@@ -239,6 +242,7 @@ fn follow_prompt_while_visible(app: AppHandle) {
                     // into the previously focused app. Mouse clicks can still be
                     // made, but the prompt immediately reclaims keyboard focus.
                     let _ = window.set_focus();
+                    maybe_focus_prompt_via_gnome_shell();
                     let _ = window.eval(PROMPT_INPUT_FOCUS_SCRIPT);
                 } else {
                     PROMPT_FOLLOW_RUNNING.store(false, Ordering::SeqCst);
@@ -255,6 +259,70 @@ fn follow_prompt_while_visible(app: AppHandle) {
 
 pub fn stop_prompt_follow() {
     PROMPT_FOLLOW_RUNNING.store(false, Ordering::SeqCst);
+}
+
+fn maybe_focus_prompt_via_gnome_shell() {
+    if !should_use_gnome_shell_focus_bridge() || !should_throttle_shell_focus() {
+        return;
+    }
+    focus_prompt_via_gnome_shell();
+}
+
+fn should_use_gnome_shell_focus_bridge() -> bool {
+    std::env::var("XDG_CURRENT_DESKTOP")
+        .map(|desktop| desktop.to_ascii_lowercase().contains("gnome"))
+        .unwrap_or(false)
+        && std::env::var_os("WAYLAND_DISPLAY").is_some()
+}
+
+fn should_throttle_shell_focus() -> bool {
+    let now = Instant::now();
+    let Ok(mut last) = LAST_SHELL_FOCUS.lock() else {
+        return true;
+    };
+    if last
+        .map(|previous| previous.elapsed().as_millis() < SHELL_PROMPT_FOCUS_INTERVAL_MS)
+        .unwrap_or(false)
+    {
+        return false;
+    }
+    *last = Some(now);
+    true
+}
+
+fn focus_prompt_via_gnome_shell() {
+    for args in gnome_shell_focus_prompt_args() {
+        let _ = Command::new("gdbus").args(args).output();
+    }
+}
+
+fn gnome_shell_focus_prompt_args() -> [[&'static str; 10]; 2] {
+    [
+        [
+            "call",
+            "--session",
+            "--dest",
+            "org.jcode.Panel.Focus",
+            "--object-path",
+            "/org/jcode/Panel/Focus",
+            "--method",
+            "org.jcode.Panel.Focus.FocusPrompt",
+            "--timeout",
+            "1",
+        ],
+        [
+            "call",
+            "--session",
+            "--dest",
+            "org.jcode.Panel.MouseHotkey",
+            "--object-path",
+            "/org/jcode/Panel/MouseHotkey",
+            "--method",
+            "org.jcode.Panel.MouseHotkey.FocusPrompt",
+            "--timeout",
+            "1",
+        ],
+    ]
 }
 
 fn smooth_step(current: f64, target: f64, alpha: f64) -> f64 {
@@ -540,6 +608,41 @@ mod tests {
         );
         assert!(PROMPT_INPUT_FOCUS_SCRIPT.contains("#prompt-input"));
         assert!(PROMPT_INPUT_FOCUS_SCRIPT.contains("preventScroll:true"));
+    }
+
+    #[test]
+    fn gnome_shell_focus_bridge_calls_focus_extension() {
+        let args = gnome_shell_focus_prompt_args();
+        assert_eq!(
+            args[0],
+            [
+                "call",
+                "--session",
+                "--dest",
+                "org.jcode.Panel.Focus",
+                "--object-path",
+                "/org/jcode/Panel/Focus",
+                "--method",
+                "org.jcode.Panel.Focus.FocusPrompt",
+                "--timeout",
+                "1",
+            ]
+        );
+        assert_eq!(
+            args[1],
+            [
+                "call",
+                "--session",
+                "--dest",
+                "org.jcode.Panel.MouseHotkey",
+                "--object-path",
+                "/org/jcode/Panel/MouseHotkey",
+                "--method",
+                "org.jcode.Panel.MouseHotkey.FocusPrompt",
+                "--timeout",
+                "1",
+            ]
+        );
     }
 
     #[test]

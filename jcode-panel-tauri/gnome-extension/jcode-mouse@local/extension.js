@@ -7,6 +7,7 @@ const Gio = imports.gi.Gio;
 const BUS_NAME = 'org.jcode.Panel.MouseHotkey';
 const OBJECT_PATH = '/org/jcode/Panel/MouseHotkey';
 const TRIGGER_COOLDOWN_MS = 450;
+const PROMPT_TITLE = 'Jcode Prompt';
 
 const MouseIface = `<node>
   <interface name="org.jcode.Panel.MouseHotkey">
@@ -15,6 +16,9 @@ const MouseIface = `<node>
     </method>
     <method name="TriggerPrompt">
       <arg type="b" name="ok" direction="out"/>
+    </method>
+    <method name="FocusPrompt">
+      <arg type="b" name="focused" direction="out"/>
     </method>
   </interface>
 </node>`;
@@ -82,9 +86,40 @@ class Extension {
         return this._launchPrompt();
     }
 
+    FocusPrompt() {
+        return this._focusPromptWindow();
+    }
+
+    _focusPromptWindow() {
+        try {
+            const actors = global.get_window_actors ? global.get_window_actors() : [];
+            for (const actor of actors) {
+                const win = actor.meta_window;
+                if (!win)
+                    continue;
+                const title = win.get_title ? win.get_title() : '';
+                if (title !== PROMPT_TITLE)
+                    continue;
+                if (win.activate) {
+                    win.activate(global.get_current_time());
+                    return true;
+                }
+            }
+        } catch (error) {
+            log(`jcode-mouse failed to focus prompt: ${error}`);
+        }
+        return false;
+    }
+
     _launchPrompt() {
         try {
             GLib.spawn_command_line_async(promptCommand());
+            for (const delay of [120, 300, 700, 1200]) {
+                GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, () => {
+                    this._focusPromptWindow();
+                    return GLib.SOURCE_REMOVE;
+                });
+            }
             return true;
         } catch (error) {
             log(`jcode-mouse failed to launch prompt: ${error}`);

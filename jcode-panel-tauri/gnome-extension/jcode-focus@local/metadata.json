@@ -1,0 +1,6 @@
+{
+  "uuid": "jcode-focus@local",
+  "name": "Jcode Prompt Focus",
+  "description": "Activates the Jcode prompt window on GNOME Wayland so keyboard input is captured by the prompt.",
+  "shell-version": ["42", "43", "44", "45", "46", "47"]
+}
