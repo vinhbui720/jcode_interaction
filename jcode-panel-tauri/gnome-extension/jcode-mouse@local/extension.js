@@ -129,12 +129,10 @@ export default class JcodeMouseExtension extends Extension {
     _launchPrompt() {
         try {
             GLib.spawn_command_line_async(promptCommand());
-            for (const delay of [120, 300, 700, 1200]) {
-                GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, () => {
-                    this._focusPromptWindow();
-                    return GLib.SOURCE_REMOVE;
-                });
-            }
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 180, () => {
+                this._focusPromptWindow();
+                return GLib.SOURCE_REMOVE;
+            });
             return true;
         } catch (error) {
             console.error(`jcode-mouse failed to launch prompt: ${error}`);

@@ -160,7 +160,12 @@ fn tray_icon_path(app: &App) -> Option<PathBuf> {
                 .and_then(|exe| exe.parent().map(|dir| dir.join("icons/icon.png")))
         })
         .filter(|path| path.exists())
-        .or_else(|| app.path().resource_dir().ok().map(|dir| dir.join("icons/icon.png")))
+        .or_else(|| {
+            app.path()
+                .resource_dir()
+                .ok()
+                .map(|dir| dir.join("icons/icon.png"))
+        })
 }
 
 fn tray_temp_dir() -> Option<PathBuf> {

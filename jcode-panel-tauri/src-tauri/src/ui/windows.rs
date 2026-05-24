@@ -29,7 +29,7 @@ if (promptInput) {
   promptInput.setSelectionRange(promptInput.value.length, promptInput.value.length);
 }
 "#;
-const PROMPT_REFOCUS_DELAYS_MS: [u64; 4] = [40, 120, 260, 520];
+const PROMPT_REFOCUS_DELAYS_MS: [u64; 2] = [40, 140];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PromptToggleAction {
@@ -221,14 +221,14 @@ pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
     PROMPT_VISIBLE.store(true, Ordering::SeqCst);
     let _ = window.set_always_on_top(true);
     window.unminimize().map_err(|err| err.to_string())?;
-    activate_window_title(PanelWindow::Prompt.title());
     window.set_focus().map_err(|err| err.to_string())?;
-    activate_window_title(PanelWindow::Prompt.title());
     deliver_prompt_context_chips(&window, &context_chips);
     let _ = window.emit("prompt-shown", ());
     let _ = window.eval(PROMPT_INPUT_FOCUS_SCRIPT);
     grab_escape_while_prompt_visible(app.clone());
-    refocus_prompt_after_show(app.clone(), context_chips);
+    if is_wayland_session() {
+        refocus_prompt_after_show(app.clone(), context_chips);
+    }
     follow_prompt_while_visible(app.clone());
     Ok(())
 }
