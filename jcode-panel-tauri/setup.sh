@@ -57,7 +57,15 @@ if command -v gtk-update-icon-cache >/dev/null 2>&1; then
 fi
 cat > "$WRAPPER" <<EOF
 #!/usr/bin/env bash
-export GDK_BACKEND=x11
+if [[ -z "\${JCODE_PANEL_GDK_BACKEND:-}" ]]; then
+  if [[ -n "\${WAYLAND_DISPLAY:-}" || "\${XDG_SESSION_TYPE:-}" == "wayland" ]]; then
+    unset GDK_BACKEND
+  elif [[ -n "\${DISPLAY:-}" ]]; then
+    export GDK_BACKEND=x11
+  fi
+else
+  export GDK_BACKEND="\$JCODE_PANEL_GDK_BACKEND"
+fi
 cd "$APP_DIR" || exit 1
 exec "$BIN" "\$@"
 EOF
@@ -65,7 +73,15 @@ chmod +x "$WRAPPER"
 cp "$WRAPPER" "$USER_BIN/jcp"
 cat > "$USER_BIN/jcp" <<EOF
 #!/usr/bin/env bash
-export GDK_BACKEND=x11
+if [[ -z "\${JCODE_PANEL_GDK_BACKEND:-}" ]]; then
+  if [[ -n "\${WAYLAND_DISPLAY:-}" || "\${XDG_SESSION_TYPE:-}" == "wayland" ]]; then
+    unset GDK_BACKEND
+  elif [[ -n "\${DISPLAY:-}" ]]; then
+    export GDK_BACKEND=x11
+  fi
+else
+  export GDK_BACKEND="\$JCODE_PANEL_GDK_BACKEND"
+fi
 cd "$APP_DIR" || exit 1
 if [[ "\${1:-}" == "settings" || "\${1:-}" == "--settings" || "\${1:-}" == "dropdown" || "\${1:-}" == "--dropdown" || "\${1:-}" == "open" || "\${1:-}" == "--open" ]]; then
   exec "$BIN" dropdown

@@ -242,14 +242,25 @@ fn parse_shortcut(hotkey: &str) -> Option<Shortcut> {
     Some(Shortcut::new(modifiers, code))
 }
 
-pub fn run() {
+fn configure_gdk_backend() {
+    if std::env::var_os("JCODE_PANEL_GDK_BACKEND").is_some() {
+        return;
+    }
+    let is_wayland = std::env::var_os("WAYLAND_DISPLAY").is_some()
+        || std::env::var("XDG_SESSION_TYPE")
+            .map(|value| value.eq_ignore_ascii_case("wayland"))
+            .unwrap_or(false);
+    if is_wayland {
+        std::env::remove_var("GDK_BACKEND");
+        return;
+    }
     if std::env::var_os("DISPLAY").is_some() {
-        // GNOME Wayland forbids normal apps from freely positioning windows.
-        // This panel needs cursor-following prompt/feedback overlays, so use
-        // XWayland when available. Windows are created on demand and destroyed
-        // on close, so this no longer leaves hidden laggy X11/WebKit windows.
         std::env::set_var("GDK_BACKEND", "x11");
     }
+}
+
+pub fn run() {
+    configure_gdk_backend();
     let command_on_startup = startup_command();
     if !acquire_single_instance() {
         let _ = send_request_to_running_instance(command_on_startup.unwrap_or("show_dropdown"));
@@ -338,6 +349,38 @@ mod tests {
         for arg in ["--prompt", "prompt", "--show"] {
             assert_eq!(startup_command_from_args([arg]), Some("toggle_prompt"));
         }
+    }
+
+    #[test]
+    fn configure_gdk_backend_prefers_native_wayland() {
+        std::env::remove_var("JCODE_PANEL_GDK_BACKEND");
+        std::env::set_var("DISPLAY", ":0");
+        std::env::set_var("WAYLAND_DISPLAY", "wayland-0");
+        std::env::set_var("GDK_BACKEND", "x11");
+        configure_gdk_backend();
+        assert!(std::env::var_os("GDK_BACKEND").is_none());
+    }
+
+    #[test]
+    fn configure_gdk_backend_uses_x11_outside_wayland() {
+        std::env::remove_var("JCODE_PANEL_GDK_BACKEND");
+        std::env::set_var("DISPLAY", ":0");
+        std::env::remove_var("WAYLAND_DISPLAY");
+        std::env::set_var("XDG_SESSION_TYPE", "x11");
+        std::env::remove_var("GDK_BACKEND");
+        configure_gdk_backend();
+        assert_eq!(std::env::var("GDK_BACKEND").ok().as_deref(), Some("x11"));
+    }
+
+    #[test]
+    fn configure_gdk_backend_respects_explicit_override() {
+        std::env::set_var("JCODE_PANEL_GDK_BACKEND", "broadway");
+        std::env::set_var("GDK_BACKEND", "broadway");
+        std::env::set_var("DISPLAY", ":0");
+        std::env::set_var("WAYLAND_DISPLAY", "wayland-0");
+        configure_gdk_backend();
+        assert_eq!(std::env::var("GDK_BACKEND").ok().as_deref(), Some("broadway"));
+        std::env::remove_var("JCODE_PANEL_GDK_BACKEND");
     }
 
     #[test]
