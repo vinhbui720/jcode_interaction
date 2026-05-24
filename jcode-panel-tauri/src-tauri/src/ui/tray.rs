@@ -1,6 +1,7 @@
 use crate::ui::{status, windows};
 use std::{path::PathBuf, process::Command};
 use tauri::{
+    image::Image,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     App, Manager,
@@ -22,7 +23,7 @@ pub fn install(app: &mut App) -> tauri::Result<()> {
         status::header_for_state(&state)
     };
 
-    let builder = TrayIconBuilder::with_id("jcode-panel")
+    let mut builder = TrayIconBuilder::with_id("jcode-panel")
         .tooltip(format!("Jcode Interaction · {initial_header}"))
         .title(&initial_header)
         .menu(&menu)
@@ -44,6 +45,14 @@ pub fn install(app: &mut App) -> tauri::Result<()> {
                 let _ = windows::show_dropdown(app.clone());
             }
         });
+
+    if let Some(icon) = tray_icon_image(app).or_else(|| app.default_window_icon().cloned()) {
+        builder = builder.icon(icon);
+    }
+
+    if let Some(temp_dir) = tray_temp_dir() {
+        builder = builder.temp_dir_path(temp_dir);
+    }
 
     builder.build(app)?;
     let _ = status::refresh_header_status(app.handle());
@@ -118,4 +127,45 @@ fn themed_icon_path() -> Option<PathBuf> {
             .join("apps")
             .join("jcode-panel.svg")
     })
+}
+
+fn tray_icon_image(app: &App) -> Option<Image<'static>> {
+    tray_icon_path(app)
+        .filter(|path| path.exists())
+        .and_then(|path| Image::from_path(path).ok())
+        .map(|image| image.to_owned())
+}
+
+fn tray_icon_path(app: &App) -> Option<PathBuf> {
+    dirs::home_dir()
+        .map(|home| {
+            home.join(".local")
+                .join("share")
+                .join("icons")
+                .join("hicolor")
+                .join("512x512")
+                .join("apps")
+                .join("jcode-panel.png")
+        })
+        .filter(|path| path.exists())
+        .or_else(|| {
+            std::env::current_dir()
+                .ok()
+                .map(|dir| dir.join("src-tauri/icons/icon.png"))
+        })
+        .filter(|path| path.exists())
+        .or_else(|| {
+            std::env::current_exe()
+                .ok()
+                .and_then(|exe| exe.parent().map(|dir| dir.join("icons/icon.png")))
+        })
+        .filter(|path| path.exists())
+        .or_else(|| app.path().resource_dir().ok().map(|dir| dir.join("icons/icon.png")))
+}
+
+fn tray_temp_dir() -> Option<PathBuf> {
+    let base = dirs::runtime_dir().or_else(|| Some(std::env::temp_dir()));
+    let path = base?.join("jcode-panel-tray");
+    std::fs::create_dir_all(&path).ok()?;
+    Some(path)
 }

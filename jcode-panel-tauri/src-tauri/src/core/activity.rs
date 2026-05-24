@@ -76,6 +76,12 @@ pub fn client_icon(client_name: &str) -> &'static str {
         "koala" => "🐨",
         "frog" => "🐸",
         "dragon" => "🐉",
+        "shrimp" => "🦐",
+        "pig" => "🐷",
+        "ram" => "🐏",
+        "hawk" => "🦅",
+        "eagle" => "🦅",
+        "sheep" => "🐑",
         _ => "",
     }
 }

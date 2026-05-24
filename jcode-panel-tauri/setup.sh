@@ -7,6 +7,7 @@ USER_BIN="$HOME/.local/bin"
 DESKTOP_DIR="$HOME/.local/share/applications"
 AUTOSTART_DIR="$HOME/.config/autostart"
 ICON_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
+ICON_PNG_DIR="$HOME/.local/share/icons/hicolor/512x512/apps"
 GNOME_EXT_UUIDS=("jcode-cursor@local" "jcode-mouse@local" "jcode-focus@local")
 GNOME_EXT_DBUS_SERVICES=("org.jcode.Panel.Cursor" "org.jcode.Panel.MouseHotkey" "org.jcode.Panel.Focus")
 DESKTOP_FILE="$DESKTOP_DIR/jcode-panel.desktop"
@@ -22,7 +23,7 @@ npm install
 
 npx tauri build --no-bundle
 
-mkdir -p "$USER_BIN" "$DESKTOP_DIR" "$AUTOSTART_DIR" "$ICON_DIR"
+mkdir -p "$USER_BIN" "$DESKTOP_DIR" "$AUTOSTART_DIR" "$ICON_DIR" "$ICON_PNG_DIR"
 for GNOME_EXT_UUID in "${GNOME_EXT_UUIDS[@]}"; do
   GNOME_EXT_SRC="$APP_DIR/gnome-extension/$GNOME_EXT_UUID"
   GNOME_EXT_DIR="$HOME/.local/share/gnome-shell/extensions/$GNOME_EXT_UUID"
@@ -68,8 +69,9 @@ MSG
 fi
 if [[ -f "$APP_DIR/../jcode-panel/assets/icon.svg" ]]; then
   cp "$APP_DIR/../jcode-panel/assets/icon.svg" "$ICON_DIR/jcode-panel.svg"
-elif [[ -f "$APP_DIR/src-tauri/icons/icon.png" ]]; then
-  cp "$APP_DIR/src-tauri/icons/icon.png" "$ICON_DIR/jcode-panel.png"
+fi
+if [[ -f "$APP_DIR/src-tauri/icons/icon.png" ]]; then
+  cp "$APP_DIR/src-tauri/icons/icon.png" "$ICON_PNG_DIR/jcode-panel.png"
 fi
 if command -v gtk-update-icon-cache >/dev/null 2>&1; then
   gtk-update-icon-cache -q -t "$HOME/.local/share/icons/hicolor" || true
@@ -89,7 +91,6 @@ cd "$APP_DIR" || exit 1
 exec "$BIN" "\$@"
 EOF
 chmod +x "$WRAPPER"
-cp "$WRAPPER" "$USER_BIN/jcp"
 cat > "$USER_BIN/jcp" <<EOF
 #!/usr/bin/env bash
 if [[ -z "\${JCODE_PANEL_GDK_BACKEND:-}" ]]; then
@@ -120,7 +121,7 @@ cat > "$DESKTOP_FILE" <<EOF
 Type=Application
 Name=Jcode Interaction
 Comment=Lightweight Rust/Tauri interaction client for jcode
-Exec=$WRAPPER
+Exec=$USER_BIN/jcp open
 Icon=jcode-panel
 Terminal=false
 Categories=Utility;Development;
