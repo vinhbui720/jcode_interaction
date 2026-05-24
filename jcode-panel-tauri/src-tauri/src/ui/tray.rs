@@ -16,10 +16,15 @@ pub fn install(app: &mut App) -> tauri::Result<()> {
     )?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open, &quit])?;
+    let initial_header = {
+        let runtime = app.state::<crate::ui::commands::RuntimeState>();
+        let state = runtime.0.lock().expect("state lock").clone();
+        status::header_for_state(&state)
+    };
 
     let builder = TrayIconBuilder::with_id("jcode-panel")
-        .tooltip("Jcode Interaction")
-        .title("jcode")
+        .tooltip(format!("Jcode Interaction · {initial_header}"))
+        .title(&initial_header)
         .menu(&menu)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "dropdown" => {

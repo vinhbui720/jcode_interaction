@@ -360,35 +360,45 @@ fn submit_prompt_background(app: &AppHandle, prompt: String) -> Result<(), Strin
 pub fn switch_session(
     session: String,
     name: Option<String>,
+    app: AppHandle,
     runtime: State<RuntimeState>,
 ) -> Result<state::AppState, String> {
-    let mut state = runtime.0.lock().expect("state lock");
-    state.active_session = Some(session.trim().to_string()).filter(|s| !s.is_empty());
-    if let Some(name) = name
-        .map(|name| name.trim().to_string())
-        .filter(|name| !name.is_empty())
-    {
-        state.active_section = name;
-    }
-    state::save_state(&state).map_err(|err| err.to_string())?;
-    Ok(state.clone())
+    let updated = {
+        let mut state = runtime.0.lock().expect("state lock");
+        state.active_session = Some(session.trim().to_string()).filter(|s| !s.is_empty());
+        if let Some(name) = name
+            .map(|name| name.trim().to_string())
+            .filter(|name| !name.is_empty())
+        {
+            state.active_section = name;
+        }
+        state::save_state(&state).map_err(|err| err.to_string())?;
+        state.clone()
+    };
+    status::refresh_header_status(&app)?;
+    Ok(updated)
 }
 
 #[tauri::command]
 pub fn start_new_section(
     name: Option<String>,
+    app: AppHandle,
     runtime: State<RuntimeState>,
 ) -> Result<state::AppState, String> {
-    let mut state = runtime.0.lock().expect("state lock");
-    state.active_session = None;
-    state.active_section = name
-        .map(|name| name.trim().to_string())
-        .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| "Fresh Panel".into());
-    state.recent_messages.clear();
-    state::save_state_to_path_preserving(&state, &state::state_path(), true)
-        .map_err(|err| err.to_string())?;
-    Ok(state.clone())
+    let updated = {
+        let mut state = runtime.0.lock().expect("state lock");
+        state.active_session = None;
+        state.active_section = name
+            .map(|name| name.trim().to_string())
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| "Fresh Panel".into());
+        state.recent_messages.clear();
+        state::save_state_to_path_preserving(&state, &state::state_path(), true)
+            .map_err(|err| err.to_string())?;
+        state.clone()
+    };
+    status::refresh_header_status(&app)?;
+    Ok(updated)
 }
 
 #[tauri::command]

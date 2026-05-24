@@ -7,10 +7,9 @@ use tauri::{AppHandle, Manager};
 
 pub fn set_process_status(app: &AppHandle, process_status: &str) -> Result<(), String> {
     let status = process_status.trim();
-    let status = if status.is_empty() {
-        activity::IDLE_STATUS
-    } else {
-        status
+    let status = match status {
+        "" | activity::IDLE_STATUS | activity::COMPLETE_STATUS => activity::IDLE_STATUS,
+        other => other,
     };
     let header = {
         let runtime = app.state::<RuntimeState>();
