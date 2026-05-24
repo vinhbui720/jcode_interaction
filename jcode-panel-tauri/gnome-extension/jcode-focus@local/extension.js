@@ -4,6 +4,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 const BUS_NAME = 'org.jcode.Panel.Focus';
 const OBJECT_PATH = '/org/jcode/Panel/Focus';
 const PROMPT_TITLE = 'Jcode Prompt';
+const APP_CLASS_HINTS = ['jcode-panel-tauri', 'jcode interaction', 'jcode prompt'];
 
 const FocusIface = `<node>
   <interface name="org.jcode.Panel.Focus">
@@ -32,6 +33,48 @@ export default class JcodeFocusExtension extends Extension {
         return this._focusPromptWindow();
     }
 
+    _matchesPromptWindow(win) {
+        const title = String(win?.get_title ? win.get_title() : '').trim();
+        const wmClass = String(win?.get_wm_class ? win.get_wm_class() : '').trim();
+        const wmClassInstance = String(win?.get_wm_class_instance ? win.get_wm_class_instance() : '').trim();
+        const haystacks = [title, wmClass, wmClassInstance].map(value => value.toLowerCase());
+        return haystacks.some(value =>
+            value.includes(PROMPT_TITLE.toLowerCase()) ||
+            APP_CLASS_HINTS.some(hint => value.includes(hint))
+        );
+    }
+
+    _activateWindow(win) {
+        if (!win)
+            return false;
+        const timestamp = global.get_current_time ? global.get_current_time() : 0;
+        try {
+            if (win.activate)
+                win.activate(timestamp);
+        } catch (error) {
+            console.error(`jcode-focus activate failed: ${error}`);
+        }
+        try {
+            if (win.raise)
+                win.raise();
+        } catch (error) {
+            console.error(`jcode-focus raise failed: ${error}`);
+        }
+        try {
+            if (win.unminimize)
+                win.unminimize(timestamp);
+        } catch (error) {
+            console.error(`jcode-focus unminimize failed: ${error}`);
+        }
+        try {
+            if (win.focus)
+                win.focus(timestamp);
+        } catch (error) {
+            console.error(`jcode-focus focus failed: ${error}`);
+        }
+        return true;
+    }
+
     _focusPromptWindow() {
         try {
             const actors = global.get_window_actors ? global.get_window_actors() : [];
@@ -39,14 +82,10 @@ export default class JcodeFocusExtension extends Extension {
                 const win = actor.meta_window;
                 if (!win)
                     continue;
-                const title = win.get_title ? win.get_title() : '';
-                if (title !== PROMPT_TITLE)
+                if (!this._matchesPromptWindow(win))
                     continue;
-                if (win.activate) {
-                    this._lastFocusedTitle = title;
-                    win.activate(global.get_current_time());
-                    return true;
-                }
+                this._lastFocusedTitle = String(win.get_title ? win.get_title() : PROMPT_TITLE);
+                return this._activateWindow(win);
             }
         } catch (error) {
             console.error(`jcode-focus failed to focus prompt: ${error}`);

@@ -120,6 +120,11 @@ fn send_request_to_running_instance(command: &str) -> bool {
     ok
 }
 
+fn clear_single_instance_artifacts() {
+    let _ = fs::remove_file(socket_path());
+    let _ = fs::remove_file(lock_path());
+}
+
 fn start_ipc_server(app: &tauri::AppHandle) {
     let path = socket_path();
     let _ = fs::remove_file(&path);
@@ -263,8 +268,13 @@ pub fn run() {
     configure_gdk_backend();
     let command_on_startup = startup_command();
     if !acquire_single_instance() {
-        let _ = send_request_to_running_instance(command_on_startup.unwrap_or("show_dropdown"));
-        return;
+        if send_request_to_running_instance(command_on_startup.unwrap_or("show_dropdown")) {
+            return;
+        }
+        clear_single_instance_artifacts();
+        if !acquire_single_instance() {
+            return;
+        }
     }
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -398,6 +408,23 @@ mod tests {
     #[test]
     fn startup_command_ignores_unknown_args() {
         assert_eq!(startup_command_from_args(["--unknown"]), None);
+    }
+
+    #[test]
+    fn clear_single_instance_artifacts_removes_pid_and_socket() {
+        let socket = socket_path();
+        let lock = lock_path();
+        if let Some(parent) = socket.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Some(parent) = lock.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let _ = fs::write(&socket, b"");
+        let _ = fs::write(&lock, b"123");
+        clear_single_instance_artifacts();
+        assert!(!socket.exists());
+        assert!(!lock.exists());
     }
     #[test]
     fn tauri_prompt_hotkey_support_is_keyboard_only() {

@@ -62,6 +62,17 @@ enum PanelWindow {
     Feedback,
 }
 
+fn is_wayland_session() -> bool {
+    std::env::var_os("WAYLAND_DISPLAY").is_some()
+        || std::env::var("XDG_SESSION_TYPE")
+            .map(|value| value.eq_ignore_ascii_case("wayland"))
+            .unwrap_or(false)
+}
+
+fn should_recreate_prompt_window() -> bool {
+    is_wayland_session()
+}
+
 impl PanelWindow {
     fn label(self) -> &'static str {
         match self {
@@ -104,6 +115,7 @@ fn ensure_window(app: &AppHandle, kind: PanelWindow) -> Result<WebviewWindow, St
         return Ok(window);
     }
     let (width, height) = kind.size();
+    let app_handle = app.clone();
     let mut builder =
         WebviewWindowBuilder::new(app, kind.label(), WebviewUrl::App(kind.url().into()))
             .title(kind.title())
@@ -122,7 +134,38 @@ fn ensure_window(app: &AppHandle, kind: PanelWindow) -> Result<WebviewWindow, St
         builder = builder.decorations(true);
     }
 
-    builder.build().map_err(|err| err.to_string())
+    let window = builder.build().map_err(|err| err.to_string())?;
+    let app_handle_for_events = app_handle.clone();
+    let window_for_events = window.clone();
+    window.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            match kind {
+                PanelWindow::Prompt => {
+                    PROMPT_VISIBLE.store(false, Ordering::SeqCst);
+                    stop_prompt_follow();
+                    PROMPT_ESCAPE_GRAB_RUNNING.store(false, Ordering::SeqCst);
+                    let _ = crate::app::reset_prompt_shortcut(&app_handle_for_events);
+                    if !should_recreate_prompt_window() {
+                        api.prevent_close();
+                        let _ = hide_prompt(app_handle_for_events.clone());
+                    }
+                }
+                PanelWindow::Feedback => {
+                    api.prevent_close();
+                    let _ = window_for_events.hide();
+                    let _ = crate::ui::status::set_process_status(
+                        &app_handle_for_events,
+                        crate::core::activity::IDLE_STATUS,
+                    );
+                }
+                PanelWindow::Dropdown | PanelWindow::Settings => {
+                    api.prevent_close();
+                    let _ = window_for_events.hide();
+                }
+            }
+        }
+    });
+    Ok(window)
 }
 
 fn show_window(app: &AppHandle, kind: PanelWindow) -> Result<WebviewWindow, String> {
@@ -504,10 +547,17 @@ pub fn hide_prompt(app: AppHandle) -> Result<(), String> {
     stop_prompt_follow();
     PROMPT_ESCAPE_GRAB_RUNNING.store(false, Ordering::SeqCst);
     let result = if let Some(window) = app.get_webview_window(PanelWindow::Prompt.label()) {
-        // Keep the prompt webview alive between toggles. Closing and rebuilding
-        // the transparent WebKit window can race frontend listener setup, so a
-        // repeated open may appear without the input owning keyboard focus.
-        window.hide().map_err(|err| err.to_string())
+        if should_recreate_prompt_window() {
+            // Wayland commonly ignores repositioning requests for an existing
+            // hidden toplevel. Recreate the prompt window on each hide/show so
+            // the next open can honor the latest cursor position.
+            window.close().map_err(|err| err.to_string())
+        } else {
+            // Keep the prompt webview alive between toggles on X11/XWayland.
+            // Closing and rebuilding the transparent WebKit window there can
+            // race frontend listener setup and lose prompt input focus.
+            window.hide().map_err(|err| err.to_string())
+        }
     } else {
         Ok(())
     };
