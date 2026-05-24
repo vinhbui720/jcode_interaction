@@ -1,5 +1,5 @@
 use crate::{
-    core::{config, context, hotkeys, state},
+    core::{config, context, hotkeys, state, tts},
     integrations,
     ui::{
         commands::{self, RuntimeState},
@@ -284,7 +284,9 @@ pub fn run() {
             tray::install(app)?;
             start_ipc_server(app.handle());
             register_prompt_shortcut(app.handle());
-            commands::sync_gnome_prompt_shortcut(&config::load_config().prompt_hotkey);
+            let current_config = config::load_config();
+            commands::sync_gnome_prompt_shortcut(&current_config.prompt_hotkey);
+            tts::sync_tts_runtime(&current_config);
             context::start_browser_bridge();
             let _ = integrations::vscode::install();
             let _ = integrations::obsidian::install();
@@ -343,10 +345,16 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("failed to build jcode-panel tauri app");
 
-    app.run(|_app_handle, event| {
-        if let tauri::RunEvent::ExitRequested { api, .. } = event {
+    app.run(|app_handle, event| match event {
+        tauri::RunEvent::ExitRequested { api, .. } => {
+            tts::shutdown_tts();
             api.prevent_exit();
         }
+        tauri::RunEvent::Exit => {
+            tts::shutdown_tts();
+            let _ = app_handle;
+        }
+        _ => {}
     });
 }
 
@@ -389,7 +397,10 @@ mod tests {
         std::env::set_var("DISPLAY", ":0");
         std::env::set_var("WAYLAND_DISPLAY", "wayland-0");
         configure_gdk_backend();
-        assert_eq!(std::env::var("GDK_BACKEND").ok().as_deref(), Some("broadway"));
+        assert_eq!(
+            std::env::var("GDK_BACKEND").ok().as_deref(),
+            Some("broadway")
+        );
         std::env::remove_var("JCODE_PANEL_GDK_BACKEND");
     }
 

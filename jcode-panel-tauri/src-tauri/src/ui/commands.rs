@@ -80,6 +80,7 @@ pub fn set_tts_enabled(enabled: bool, app: AppHandle) -> Result<config::AppConfi
     let mut cfg = config::load_config();
     cfg.tts_enabled = enabled;
     config::save_config(&cfg).map_err(|err| err.to_string())?;
+    tts::sync_tts_runtime(&cfg);
     crate::app::reset_prompt_shortcut(&app);
     Ok(cfg)
 }
@@ -105,6 +106,7 @@ pub fn resume_prompt_hotkey(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn quit_app() {
+    tts::shutdown_tts();
     std::process::exit(0);
 }
 
