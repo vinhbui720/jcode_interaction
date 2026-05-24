@@ -1,6 +1,5 @@
-'use strict';
-
-const Gio = imports.gi.Gio;
+import Gio from 'gi://Gio';
+import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const BUS_NAME = 'org.jcode.Panel.Focus';
 const OBJECT_PATH = '/org/jcode/Panel/Focus';
@@ -17,8 +16,9 @@ const FocusIface = `<node>
   </interface>
 </node>`;
 
-class Extension {
-    constructor() {
+export default class JcodeFocusExtension extends Extension {
+    constructor(metadata) {
+        super(metadata);
         this._ownerId = 0;
         this._dbus = null;
         this._lastFocusedTitle = '';
@@ -49,7 +49,7 @@ class Extension {
                 }
             }
         } catch (error) {
-            log(`jcode-focus failed to focus prompt: ${error}`);
+            console.error(`jcode-focus failed to focus prompt: ${error}`);
         }
         return false;
     }
@@ -67,7 +67,6 @@ class Extension {
             null,
             null
         );
-        log('jcode-focus enabled');
     }
 
     disable() {
@@ -79,10 +78,5 @@ class Extension {
             Gio.bus_unown_name(this._ownerId);
             this._ownerId = 0;
         }
-        log('jcode-focus disabled');
     }
-}
-
-function init() {
-    return new Extension();
 }

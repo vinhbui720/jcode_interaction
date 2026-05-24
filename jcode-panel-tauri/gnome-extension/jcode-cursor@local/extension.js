@@ -1,6 +1,5 @@
-'use strict';
-
-const Gio = imports.gi.Gio;
+import Gio from 'gi://Gio';
+import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const BUS_NAME = 'org.jcode.Panel.Cursor';
 const OBJECT_PATH = '/org/jcode/Panel/Cursor';
@@ -14,14 +13,15 @@ const CursorIface = `<node>
   </interface>
 </node>`;
 
-class Extension {
-    constructor() {
+export default class JcodeCursorExtension extends Extension {
+    constructor(metadata) {
+        super(metadata);
         this._ownerId = 0;
         this._dbus = null;
     }
 
     GetPosition() {
-        let [x, y] = global.get_pointer();
+        const [x, y] = global.get_pointer();
         return [x, y];
     }
 
@@ -50,8 +50,4 @@ class Extension {
             this._ownerId = 0;
         }
     }
-}
-
-function init() {
-    return new Extension();
 }

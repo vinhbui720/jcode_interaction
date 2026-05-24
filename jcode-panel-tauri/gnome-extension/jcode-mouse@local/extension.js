@@ -1,8 +1,7 @@
-'use strict';
-
-const Clutter = imports.gi.Clutter;
-const GLib = imports.gi.GLib;
-const Gio = imports.gi.Gio;
+import Clutter from 'gi://Clutter';
+import GLib from 'gi://GLib';
+import Gio from 'gi://Gio';
+import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const BUS_NAME = 'org.jcode.Panel.MouseHotkey';
 const OBJECT_PATH = '/org/jcode/Panel/MouseHotkey';
@@ -24,7 +23,7 @@ const MouseIface = `<node>
 </node>`;
 
 function normalizeKeyName(name) {
-    let key = String(name || '').trim().toLowerCase().replace(/ /g, '_');
+    const key = String(name || '').trim().toLowerCase().replace(/ /g, '_');
     const aliases = {
         control: 'ctrl', control_l: 'ctrl', control_r: 'ctrl', ctrl_l: 'ctrl', ctrl_r: 'ctrl',
         shift_l: 'shift', shift_r: 'shift',
@@ -45,11 +44,11 @@ function readPromptHotkey() {
     const path = GLib.build_filenamev([GLib.get_home_dir(), '.config', 'jcode-panel', 'config.toml']);
     try {
         const [, bytes] = GLib.file_get_contents(path);
-        const text = imports.byteArray.toString(bytes);
+        const text = new TextDecoder().decode(bytes);
         const match = text.match(/^prompt_hotkey\s*=\s*"([^"]+)"/m);
         return match ? match[1] : 'F8';
     } catch (error) {
-        log(`jcode-mouse could not read config: ${error}`);
+        console.error(`jcode-mouse could not read config: ${error}`);
         return 'F8';
     }
 }
@@ -67,8 +66,9 @@ function promptCommand() {
     return GLib.build_filenamev([GLib.get_home_dir(), '.local', 'bin', 'jcp']) + ' prompt';
 }
 
-class Extension {
-    constructor() {
+export default class JcodeMouseExtension extends Extension {
+    constructor(metadata) {
+        super(metadata);
         this._ownerId = 0;
         this._dbus = null;
         this._eventId = 0;
@@ -108,7 +108,7 @@ class Extension {
             const win = this._findPromptWindow();
             return !!win && (!win.showing_on_its_workspace || win.showing_on_its_workspace());
         } catch (error) {
-            log(`jcode-mouse failed to check prompt visibility: ${error}`);
+            console.error(`jcode-mouse failed to check prompt visibility: ${error}`);
             return false;
         }
     }
@@ -121,7 +121,7 @@ class Extension {
                 return true;
             }
         } catch (error) {
-            log(`jcode-mouse failed to focus prompt: ${error}`);
+            console.error(`jcode-mouse failed to focus prompt: ${error}`);
         }
         return false;
     }
@@ -137,7 +137,7 @@ class Extension {
             }
             return true;
         } catch (error) {
-            log(`jcode-mouse failed to launch prompt: ${error}`);
+            console.error(`jcode-mouse failed to launch prompt: ${error}`);
             return false;
         }
     }
@@ -159,7 +159,7 @@ class Extension {
         this._lastButtonMs = GLib.get_monotonic_time() / 1000;
         if (this._pressLogCount < 30) {
             this._pressLogCount += 1;
-            log(`jcode-mouse button press button=${this._lastButton} state=${event.get_state()} hotkey=${readPromptHotkey()}`);
+            console.log(`jcode-mouse button press button=${this._lastButton} state=${event.get_state()} hotkey=${readPromptHotkey()}`);
         }
 
         const [modifiers, key] = hotkeyParts(readPromptHotkey());
@@ -196,7 +196,7 @@ class Extension {
             null
         );
         this._eventId = global.stage.connect('captured-event', this._handleCapturedEvent.bind(this));
-        log(`jcode-mouse enabled hotkey=${readPromptHotkey()} eventId=${this._eventId}`);
+        console.log(`jcode-mouse enabled hotkey=${readPromptHotkey()} eventId=${this._eventId}`);
     }
 
     disable() {
@@ -212,10 +212,6 @@ class Extension {
             Gio.bus_unown_name(this._ownerId);
             this._ownerId = 0;
         }
-        log('jcode-mouse disabled');
+        console.log('jcode-mouse disabled');
     }
-}
-
-function init() {
-    return new Extension();
 }
