@@ -228,7 +228,13 @@ fn daemon_command(config: &AppConfig) -> Result<String, String> {
         .map(|part| part.trim_matches('"').to_string())
         .ok_or_else(|| "Could not determine SuperTonic helper path".to_string())?;
     let daemon_path = helper.replace("tts_supertonic.py", "tts_supertonic_daemon.py");
-    let daemon = PathBuf::from(&daemon_path);
+    let daemon = if PathBuf::from(&daemon_path).is_absolute() {
+        PathBuf::from(&daemon_path)
+    } else {
+        std::env::current_dir()
+            .map_err(|err| err.to_string())?
+            .join(&daemon_path)
+    };
     if !daemon.exists() {
         return Err(format!("Missing TTS daemon helper: {}", daemon.display()));
     }
