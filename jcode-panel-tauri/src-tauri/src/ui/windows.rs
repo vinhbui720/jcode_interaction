@@ -29,8 +29,7 @@ if (promptInput) {
   promptInput.setSelectionRange(promptInput.value.length, promptInput.value.length);
 }
 "#;
-const PROMPT_REFOCUS_DELAYS_MS: [u64; 7] = [40, 120, 260, 520, 900, 1_400, 2_000];
-const PROMPT_X11_CLICK_FOCUS_DELAYS_MS: [u64; 3] = [90, 240, 520];
+const PROMPT_REFOCUS_DELAYS_MS: [u64; 4] = [40, 120, 260, 520];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PromptToggleAction {
@@ -230,7 +229,6 @@ pub fn show_prompt_window(app: &AppHandle) -> Result<(), String> {
     let _ = window.eval(PROMPT_INPUT_FOCUS_SCRIPT);
     grab_escape_while_prompt_visible(app.clone());
     refocus_prompt_after_show(app.clone(), context_chips);
-    click_focus_prompt_input_after_show(app.clone());
     follow_prompt_while_visible(app.clone());
     Ok(())
 }
@@ -252,24 +250,6 @@ fn refocus_prompt_after_show(app: AppHandle, context_chips: Vec<popup_context::P
                 deliver_prompt_context_chips(&window, &chips_for_main);
                 let _ = window.emit("prompt-shown", ());
                 let _ = window.eval(PROMPT_INPUT_FOCUS_SCRIPT);
-            });
-        }
-    });
-}
-
-fn click_focus_prompt_input_after_show(app: AppHandle) {
-    thread::spawn(move || {
-        for delay in PROMPT_X11_CLICK_FOCUS_DELAYS_MS {
-            thread::sleep(Duration::from_millis(delay));
-            let app_for_main = app.clone();
-            let _ = app.run_on_main_thread(move || {
-                if app_for_main.get_webview_window("prompt").is_none() {
-                    return;
-                }
-                if !PROMPT_VISIBLE.load(Ordering::SeqCst) {
-                    return;
-                }
-                click_focus_prompt_input_x11(PanelWindow::Prompt.title());
             });
         }
     });
@@ -308,25 +288,6 @@ fn activate_window_title(title: &str) {
     let _ = Command::new("sh").args(["-c", script.as_str()]).spawn();
 }
 
-fn click_focus_prompt_input_x11(title: &str) {
-    if std::env::var_os("DISPLAY").is_none() {
-        return;
-    }
-    let script = format!(
-        "wid=$(xdotool search --name '{}' 2>/dev/null | tail -n1) || exit 0; \
-         [ -n \"$wid\" ] || exit 0; \
-         eval $(xdotool getmouselocation --shell 2>/dev/null); ox=$X; oy=$Y; \
-         eval $(xdotool getwindowgeometry --shell \"$wid\" 2>/dev/null); \
-         tx=$((X + WIDTH / 2)); ty=$((Y + 42)); \
-         xdotool windowactivate --sync \"$wid\" 2>/dev/null || true; \
-         xdotool windowfocus \"$wid\" 2>/dev/null || true; \
-         xdotool mousemove \"$tx\" \"$ty\" click 1 2>/dev/null || true; \
-         [ -n \"$ox\" ] && [ -n \"$oy\" ] && xdotool mousemove \"$ox\" \"$oy\" 2>/dev/null || true",
-        title.replace('\'', "'\\''")
-    );
-    let _ = Command::new("sh").args(["-c", script.as_str()]).spawn();
-}
-
 #[tauri::command]
 pub fn prompt_follow_mouse_tick(app: AppHandle) -> Result<bool, String> {
     let Some(window) = app.get_webview_window("prompt") else {
@@ -353,12 +314,6 @@ fn follow_prompt_while_visible(app: AppHandle) {
                 };
                 if PROMPT_VISIBLE.load(Ordering::SeqCst) {
                     place_prompt_at_mouse_or_center(&window);
-                    // Desired modal-keyboard behavior: while the prompt is open,
-                    // keep keyboard focus on the prompt so keystrokes do not leak
-                    // into the previously focused app. Mouse clicks can still be
-                    // made, but the prompt immediately reclaims keyboard focus.
-                    let _ = window.set_focus();
-                    let _ = window.eval(PROMPT_INPUT_FOCUS_SCRIPT);
                 } else {
                     PROMPT_FOLLOW_RUNNING.store(false, Ordering::SeqCst);
                 }
