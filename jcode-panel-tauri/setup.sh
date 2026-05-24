@@ -8,6 +8,7 @@ DESKTOP_DIR="$HOME/.local/share/applications"
 AUTOSTART_DIR="$HOME/.config/autostart"
 ICON_DIR="$HOME/.local/share/icons/hicolor/scalable/apps"
 GNOME_EXT_UUIDS=("jcode-cursor@local" "jcode-mouse@local" "jcode-focus@local")
+GNOME_EXT_DBUS_SERVICES=("org.jcode.Panel.Cursor" "org.jcode.Panel.MouseHotkey" "org.jcode.Panel.Focus")
 DESKTOP_FILE="$DESKTOP_DIR/jcode-panel.desktop"
 AUTOSTART_FILE="$AUTOSTART_DIR/jcode-panel.desktop"
 WRAPPER="$USER_BIN/jcode-panel"
@@ -47,6 +48,24 @@ PY
     fi
   fi
 done
+
+wayland_extension_services_ready=true
+if [[ -n "${WAYLAND_DISPLAY:-}" || "${XDG_SESSION_TYPE:-}" == "wayland" ]]; then
+  for svc in "${GNOME_EXT_DBUS_SERVICES[@]}"; do
+    if ! gdbus introspect --session --dest "$svc" --object-path "/${svc//./\/}" >/dev/null 2>&1; then
+      wayland_extension_services_ready=false
+      break
+    fi
+  done
+fi
+if [[ "$wayland_extension_services_ready" != true ]]; then
+  cat <<'MSG'
+Wayland integration note:
+  Local GNOME extensions were installed, but their session D-Bus services are not active yet.
+  GNOME Shell usually needs a logout/login cycle to load newly added local extensions.
+  After logging back in, mouse tracking / cursor / prompt-focus integration should work.
+MSG
+fi
 if [[ -f "$APP_DIR/../jcode-panel/assets/icon.svg" ]]; then
   cp "$APP_DIR/../jcode-panel/assets/icon.svg" "$ICON_DIR/jcode-panel.svg"
 elif [[ -f "$APP_DIR/src-tauri/icons/icon.png" ]]; then

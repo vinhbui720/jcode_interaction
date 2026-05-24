@@ -3,5 +3,5 @@
   "name": "Jcode Cursor Position",
   "description": "Expose GNOME Wayland cursor position to jcode-panel on demand over session DBus.",
   "version": 1,
-  "shell-version": ["42"]
+  "shell-version": ["42", "43", "44", "45", "46", "47"]
 }
