@@ -68,7 +68,7 @@ fn default_process_status() -> String {
 impl AppState {
     pub fn ready_client_name(&self) -> String {
         let section = self.active_section.trim();
-        if !section.is_empty() && section != "Fresh Panel" {
+        if !section.is_empty() {
             section.to_string()
         } else if let Some(name) = self
             .active_session
@@ -79,6 +79,15 @@ impl AppState {
         } else {
             "jcode".into()
         }
+    }
+
+    pub fn ready_client_icon(&self) -> &'static str {
+        self.active_session
+            .as_deref()
+            .and_then(client_name_from_session_id)
+            .as_deref()
+            .map(activity::client_icon)
+            .unwrap_or("")
     }
 
     pub fn remember_prompt(&mut self, prompt: &str) {

@@ -156,7 +156,13 @@ pub fn header_for_state(state: &state::AppState) -> String {
         return activity::header_status(&state.process_status, state.live_activity.as_ref());
     }
     if state.process_status.trim().is_empty() || state.process_status == activity::IDLE_STATUS {
-        activity::ready_status(&state.ready_client_name())
+        let name = state.ready_client_name();
+        let icon = state.ready_client_icon();
+        if icon.is_empty() {
+            activity::truncate_header_label(&format!("{name} Ready"))
+        } else {
+            activity::truncate_header_label(&format!("{icon} {name} Ready"))
+        }
     } else {
         activity::header_status(&state.process_status, None)
     }
