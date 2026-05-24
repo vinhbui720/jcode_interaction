@@ -68,7 +68,7 @@ fn default_process_status() -> String {
 impl AppState {
     pub fn ready_client_name(&self) -> String {
         let section = self.active_section.trim();
-        if !section.is_empty() {
+        if !section.is_empty() && section != default_active_section() {
             section.to_string()
         } else if let Some(name) = self
             .active_session
@@ -130,6 +130,15 @@ fn normalize_runtime_state(mut state: AppState) -> AppState {
     if matches!(state.process_status.as_str(), "idle" | "complete" | "error") {
         state.process_status = activity::IDLE_STATUS.into();
         state.live_activity = None;
+    }
+    if state.active_section.trim() == default_active_section() {
+        if let Some(name) = state
+            .active_session
+            .as_deref()
+            .and_then(client_name_from_session_id)
+        {
+            state.active_section = name;
+        }
     }
     state
 }
